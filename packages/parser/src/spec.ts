@@ -19,9 +19,26 @@ export interface DefinitionRule {
   readonly accept?: (node: Node) => boolean;
 }
 
+/** How a file refers to another module. */
+export type ImportKind = 'import' | 'reexport' | 'require' | 'dynamic' | 'from' | 'mod' | 'use';
+
+/** A module reference as written in source, before resolution. */
+export interface ImportReference {
+  /** The module as written: `./vat.js`, `..models`, `github.com/x/y`, `crate::tax`. */
+  readonly specifier: string;
+  readonly kind: ImportKind;
+  /** Names imported from the module, when the syntax lists them (Python `from x import a, b`). */
+  readonly names?: readonly string[];
+}
+
+/** Turns one kind of syntax node into the module references it makes. */
+export type ImportRule = (node: Node) => readonly ImportReference[];
+
 export interface LanguageSpec {
   /** Syntax node types that are definitions. */
   readonly definitions: Readonly<Record<string, DefinitionRule>>;
+  /** Syntax node types that reference other modules. Searched in the whole tree. */
+  readonly imports: Readonly<Record<string, ImportRule>>;
   /**
    * Node types whose contents are local code (function bodies, closures).
    * Definitions inside them are not symbols of the file.
@@ -49,4 +66,12 @@ export function firstDescendant(node: Node, types: ReadonlySet<string>): Node | 
     if (found) return found;
   }
   return null;
+}
+
+/** The value of a plain string literal (`'x'`, `"x"`), or null for anything computed. */
+export function stringValue(node: Node | null | undefined): string | null {
+  if (!node) return null;
+  const quoted = /^(['"`])(.*)\1$/s.exec(node.text);
+  if (!quoted || (quoted[1] === '`' && quoted[2]?.includes('${'))) return null;
+  return quoted[2] ?? null;
 }

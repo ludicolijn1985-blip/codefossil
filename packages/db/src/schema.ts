@@ -34,6 +34,8 @@ export const repositories = sqliteTable('repositories', {
   remoteUrl: text('remote_url'),
   defaultBranch: text('default_branch'),
   indexedAt: text('indexed_at'),
+  /** HEAD commit the dependency graph snapshot was last built from. */
+  graphIndexedSha: text('graph_indexed_sha'),
   createdAt: createdAt(),
 });
 
@@ -278,6 +280,13 @@ export const dependencies = sqliteTable(
     name: text('name').notNull(),
     version: text('version'),
     manifestFile: text('manifest_file').notNull(),
+    scope: text('scope', { enum: ['runtime', 'dev', 'peer', 'optional', 'build'] })
+      .notNull()
+      .default('runtime'),
+    /** Whether the manifest at HEAD still declares it. */
+    current: integer('current', { mode: 'boolean' }).notNull().default(true),
+    /** A package defined in this repository (a workspace); imports resolve to its source files. */
+    internal: integer('internal', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [
     uniqueIndex('dependencies_manifest_name_idx').on(
@@ -287,6 +296,31 @@ export const dependencies = sqliteTable(
       t.name,
     ),
   ],
+);
+
+/**
+ * Module references found in each file at HEAD (a snapshot, replaced when the
+ * file changes), with the outcome of resolving them.
+ */
+export const imports = sqliteTable(
+  'imports',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    fileId: integer('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    specifier: text('specifier').notNull(),
+    kind: text('kind', {
+      enum: ['import', 'reexport', 'require', 'dynamic', 'from', 'mod', 'use'],
+    }).notNull(),
+    line: integer('line').notNull(),
+    namesJson: text('names_json', { mode: 'json' }).$type<string[]>(),
+    evidenceId: integer('evidence_id').references(() => evidence.id, { onDelete: 'set null' }),
+    resolution: text('resolution', { enum: ['files', 'dependency', 'builtin', 'unresolved'] }),
+    /** Target description or, when unresolved, the reason. */
+    resolutionDetail: text('resolution_detail'),
+  },
+  (t) => [index('imports_file_idx').on(t.fileId)],
 );
 
 export const incidents = sqliteTable(

@@ -64,7 +64,8 @@ typechecking run against source without a build step.
 | `@codefossil/db`     | SQLite + Drizzle schema, migrations, repository and relation access                  |
 | `@codefossil/git`    | Native git access (argument arrays, never a shell) and a streaming history reader    |
 | `@codefossil/parser` | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust       |
-| `@codefossil/core`   | Git and symbol indexers: history, symbol versions and origins, each citing evidence  |
+| `@codefossil/graph`  | Manifest parsing and deterministic import resolution (files, workspaces, packages)   |
+| `@codefossil/core`   | Git, symbol and dependency indexers, each relation citing evidence                   |
 | `@codefossil/cli`    | The `fossil` command                                                                 |
 
 ### Using the CLI
@@ -76,6 +77,8 @@ node /path/to/codefossil/apps/cli/dist/bin.js init     # creates .codefossil/ (i
 node /path/to/codefossil/apps/cli/dist/bin.js index    # incremental; --since 2025-01-01 to limit
 node /path/to/codefossil/apps/cli/dist/bin.js status   # --json for scripts
 node /path/to/codefossil/apps/cli/dist/bin.js symbols src/app.ts   # symbol tree with origins
+node /path/to/codefossil/apps/cli/dist/bin.js deps src/app.ts      # imports and importers
+node /path/to/codefossil/apps/cli/dist/bin.js deps                 # declared dependencies
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
@@ -89,3 +92,8 @@ Inside this repository, `pnpm fossil <command>` does the same.
   one symbol removed and another introduced; moving it to another file likewise.
 - Merge commits are stored without file changes; a file deleted _by_ a merge gets the merge date
   as an upper bound for `deleted_at`.
+- The dependency graph is a snapshot of HEAD. When imports that no longer hold are removed,
+  their edges go too; dependency history is not tracked yet.
+- Import resolution leaves unresolved (and says why) what it cannot decide from files and
+  manifests: TypeScript `paths` aliases, Python imports whose name differs from the distribution
+  (`yaml` from PyYAML) or that are standard library, and Go `replace` directives.

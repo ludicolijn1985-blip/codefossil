@@ -3,7 +3,12 @@ import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSampleHistory, type SampleHistory } from '@codefossil/git/testing';
+import {
+  createFixtureRepo,
+  createSampleHistory,
+  type FixtureRepo,
+  type SampleHistory,
+} from '@codefossil/git/testing';
 import type { CliIO } from './io.js';
 import { runCli } from './run.js';
 
@@ -197,6 +202,62 @@ describe('fossil CLI', () => {
     const result = await fossil(root(), 'status');
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Run `fossil init` first');
+  });
+});
+
+describe('fossil deps', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('package.json', JSON.stringify({ name: 'shop', dependencies: { zod: '^4' } }));
+    await repo.write(
+      'src/app.ts',
+      "import { vat } from './vat.js';\nimport { z } from 'zod';\nimport pad from 'left-pad';\n",
+    );
+    await repo.write('src/vat.ts', 'export const vat = 0.21;\n');
+    await repo.commit('Shop');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  const root = (): string => {
+    if (!repo) throw new Error('fixture repo was not created');
+    return repo.root;
+  };
+
+  it('reports the graph when indexing', async () => {
+    await fossil(root(), 'init');
+    const indexed = await fossil(root(), 'index');
+    expect(indexed.stdout).toContain(
+      'Dependency graph (full): 1 file import edge, 1 package dependency edge, 1 declared dependency; 1 import left unresolved.',
+    );
+  });
+
+  it('lists declared dependencies with their usage', async () => {
+    await fossil(root(), 'init');
+    await fossil(root(), 'index');
+    const result = await fossil(root(), 'deps');
+    expect(result.stdout).toMatch(/^1 dependency\n/);
+    expect(result.stdout).toMatch(/npm +zod +\^4 +runtime +package\.json +imported by 1 file/);
+  });
+
+  it('shows what a file imports, including why an import is unresolved, and who imports it', async () => {
+    await fossil(root(), 'init');
+    await fossil(root(), 'index');
+
+    const app = await fossil(root(), 'deps', 'src/app.ts');
+    expect(app.stdout).toContain('Imports (3)');
+    expect(app.stdout).toMatch(/L1 +\.\/vat\.js +→ src\/vat\.ts/);
+    expect(app.stdout).toMatch(/L2 +zod +→ npm:zod \(declared dependency\)/);
+    expect(app.stdout).toMatch(/L3 +left-pad +✗ unresolved: package left-pad is not declared/);
+
+    const vat = JSON.parse((await fossil(root(), 'deps', 'src/vat.ts', '--json')).stdout) as {
+      importedBy: { path: string }[];
+    };
+    expect(vat.importedBy).toEqual([{ path: 'src/app.ts', confidence: 1 }]);
   });
 });
 

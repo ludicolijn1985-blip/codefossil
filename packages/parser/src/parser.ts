@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { Language, Parser } from 'web-tree-sitter';
-import { extractSymbols, type ParsedSymbol } from './extract.js';
+import { extractImports, extractSymbols, type ParsedImport, type ParsedSymbol } from './extract.js';
 import { ecmascript } from './languages/ecmascript.js';
 import { go } from './languages/go.js';
 import { python } from './languages/python.js';
@@ -50,6 +50,8 @@ export const MAX_SOURCE_LENGTH = 1_000_000;
 
 export interface ExtractResult {
   readonly symbols: readonly ParsedSymbol[];
+  /** Module references in source order, unresolved. */
+  readonly imports: readonly ParsedImport[];
   /** True when Tree-sitter had to recover from syntax errors; symbols may be incomplete. */
   readonly hasSyntaxErrors: boolean;
 }
@@ -72,6 +74,7 @@ export class SymbolExtractor {
     try {
       return {
         symbols: extractSymbols(tree.rootNode, GRAMMARS[grammar].spec),
+        imports: extractImports(tree.rootNode, GRAMMARS[grammar].spec),
         hasSyntaxErrors: tree.rootNode.hasError,
       };
     } finally {

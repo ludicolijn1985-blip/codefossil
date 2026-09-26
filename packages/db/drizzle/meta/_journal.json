@@ -22,6 +22,13 @@
       "when": 1790425091619,
       "tag": "0002_symbol_history",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790429103528,
+      "tag": "0003_dependency_graph",
+      "breakpoints": true
     }
   ]
 }

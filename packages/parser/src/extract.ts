@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { SymbolKind } from '@codefossil/shared';
 import type { Node } from 'web-tree-sitter';
-import { METHOD_OWNERS, nameField, type LanguageSpec } from './spec.js';
+import { METHOD_OWNERS, nameField, type ImportReference, type LanguageSpec } from './spec.js';
 
 export interface ParsedSymbol {
   /** Identity within a file across versions, e.g. `method:Cart.total`. */
@@ -89,6 +89,42 @@ export function extractSymbols(root: Node, spec: LanguageSpec): ParsedSymbol[] {
     }
   }
   return symbols;
+}
+
+export interface ParsedImport extends ImportReference {
+  /** 1-based line of the import statement. */
+  readonly line: number;
+}
+
+/**
+ * Collect every module reference in the tree, in source order. Unlike symbols,
+ * imports count wherever they appear (a `require` inside a function still
+ * makes the file depend on that module). Each (kind, specifier) is reported
+ * once, at its first occurrence, with the imported names of every occurrence
+ * merged — `from x import a` and a later `from x import b` both matter.
+ */
+export function extractImports(root: Node, spec: LanguageSpec): ParsedImport[] {
+  const byKey = new Map<string, { reference: ImportReference; line: number; names: string[] }>();
+  const stack: Node[] = [root];
+  for (let node = stack.pop(); node; node = stack.pop()) {
+    const rule = spec.imports[node.type];
+    for (const reference of rule ? rule(node) : []) {
+      const key = `${reference.kind}\0${reference.specifier}`;
+      const entry = byKey.get(key) ?? { reference, line: node.startPosition.row + 1, names: [] };
+      for (const name of reference.names ?? []) {
+        if (!entry.names.includes(name)) entry.names.push(name);
+      }
+      byKey.set(key, entry);
+    }
+    const children = node.namedChildren;
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      if (child) stack.push(child);
+    }
+  }
+  return [...byKey.values()].map(({ reference, line, names }) =>
+    reference.names === undefined ? { ...reference, line } : { ...reference, names, line },
+  );
 }
 
 /** The declaration without its body: `function total(items: Item[]): number`. */

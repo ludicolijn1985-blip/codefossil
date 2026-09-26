@@ -13,6 +13,7 @@ const EXPECTED_TABLES = [
   'evidence',
   'file_changes',
   'files',
+  'imports',
   'incidents',
   'investigations',
   'issues',

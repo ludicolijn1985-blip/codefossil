@@ -15,6 +15,7 @@ repositories
 - remote_url
 - default_branch
 - indexed_at
+- graph_indexed_sha (HEAD the dependency graph snapshot was built from)
 
 commits
 
@@ -145,6 +146,21 @@ dependencies
 - name
 - version
 - manifest_file
+- scope (runtime | dev | peer | optional | build)
+- current (declared by the manifest at HEAD)
+- internal (a package defined in this repository, e.g. a workspace)
+
+imports (snapshot at HEAD; replaced when the file changes)
+
+- id
+- file_id
+- specifier (as written: `./vat.js`, `..models`, `crate::tax`)
+- kind (import | reexport | require | dynamic | from | mod | use)
+- line
+- names_json (Python `from x import a, b`)
+- evidence_id
+- resolution (files | dependency | builtin | unresolved)
+- resolution_detail (target, or the reason it is unresolved)
 
 incidents
 

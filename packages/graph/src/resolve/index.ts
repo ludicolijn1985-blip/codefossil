@@ -1,0 +1,42 @@
+import type { GrammarId, ImportReference } from '@codefossil/parser';
+import { resolveEcmascript } from './ecmascript.js';
+import { GoPackages, resolveGo } from './go.js';
+import { LayoutIndex, type RepositoryLayout, type Resolution } from './layout.js';
+import { PythonModules, resolvePython } from './python.js';
+import { resolveRust } from './rust.js';
+
+export type ImportResolver = (
+  fromPath: string,
+  grammar: GrammarId,
+  ref: ImportReference,
+) => Resolution;
+
+/**
+ * Build a resolver for one snapshot of a repository. Resolution is
+ * deterministic: the same files and manifests always give the same result,
+ * and anything that cannot be decided from them is reported as unresolved
+ * instead of guessed.
+ */
+export function createResolver(layout: RepositoryLayout): ImportResolver {
+  const index = new LayoutIndex(layout);
+  let python: PythonModules | undefined;
+  let go: GoPackages | undefined;
+  return (fromPath, grammar, ref) => {
+    switch (grammar) {
+      case 'typescript':
+      case 'tsx':
+      case 'javascript':
+        return resolveEcmascript(index, fromPath, ref);
+      case 'python':
+        python ??= new PythonModules(layout.files);
+        return resolvePython(index, python, fromPath, ref);
+      case 'go':
+        go ??= new GoPackages(layout.files);
+        return resolveGo(index, go, fromPath, ref);
+      case 'rust':
+        return resolveRust(index, fromPath, ref);
+    }
+  };
+}
+
+export type { RepositoryLayout, Resolution } from './layout.js';

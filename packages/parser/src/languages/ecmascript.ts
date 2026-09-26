@@ -1,3 +1,4 @@
+import { ecmascriptImports } from './ecmascript-imports.js';
 import type { Node } from 'web-tree-sitter';
 import type { LanguageSpec } from '../spec.js';
 
@@ -23,6 +24,7 @@ function isModuleLevelDeclarator(node: Node): boolean {
 
 /** TypeScript, TSX and JavaScript share one spec; node types a grammar lacks never match. */
 export const ecmascript: LanguageSpec = {
+  imports: ecmascriptImports,
   definitions: {
     function_declaration: { kind: 'function' },
     generator_function_declaration: { kind: 'function' },

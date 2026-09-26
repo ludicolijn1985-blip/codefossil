@@ -4,8 +4,8 @@ import type { FileSymbol, IndexStatus } from '@codefossil/db';
 const SHORT_SHA_LENGTH = 7;
 
 /** `plural(1, 'commit')` → "1 commit", `plural(2, 'commit')` → "2 commits". */
-export function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+export function plural(count: number, noun: string, pluralNoun = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : pluralNoun}`;
 }
 
 function rows(entries: readonly (readonly [string, string])[]): string {
@@ -56,10 +56,31 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     `${plural(result.fileChanges, 'file change')}; ` +
     `parsed ${plural(result.symbols.versionsParsed, 'file version')} into ` +
     `${plural(result.symbols.symbolVersions, 'symbol version')} in ${seconds}s.\n`;
+  const lines = [summary + formatGraphSummary(result.dependencies)];
   const failures = result.symbols.parseFailures;
-  return failures === 0
-    ? summary
-    : `${summary}Warning: ${plural(failures, 'file version')} could not be parsed; their symbols are missing.\n`;
+  if (failures > 0) {
+    lines.push(
+      `Warning: ${plural(failures, 'file version')} could not be parsed; their symbols are missing.\n`,
+    );
+  }
+  for (const error of result.dependencies.manifestErrors) {
+    lines.push(`Warning: ${error}\n`);
+  }
+  for (const path of result.dependencies.parseFailures) {
+    lines.push(`Warning: ${path} could not be parsed; it contributes no import edges.\n`);
+  }
+  return lines.join('');
+}
+
+function formatGraphSummary(graph: RunIndexResult['dependencies']): string {
+  if (graph.mode === 'unchanged')
+    return 'Dependency graph: HEAD unchanged since the last snapshot.\n';
+  return (
+    `Dependency graph (${graph.mode}): ${plural(graph.importEdges, 'file import edge')}, ` +
+    `${plural(graph.dependencyEdges, 'package dependency edge')}, ` +
+    `${plural(graph.dependencies, 'declared dependency', 'declared dependencies')}; ` +
+    `${plural(graph.unresolvedImports, 'import')} left unresolved.\n`
+  );
 }
 
 /** Indent nested symbols (methods under their class) by their qualification depth. */

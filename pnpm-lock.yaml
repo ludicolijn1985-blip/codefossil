@@ -62,6 +62,9 @@ importers:
       '@codefossil/git':
         specifier: workspace:*
         version: link:../git
+      '@codefossil/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@codefossil/parser':
         specifier: workspace:*
         version: link:../parser
@@ -96,6 +99,15 @@ importers:
         version: 0.31.11
 
   packages/git: {}
+
+  packages/graph:
+    dependencies:
+      '@codefossil/parser':
+        specifier: workspace:*
+        version: link:../parser
+      smol-toml:
+        specifier: ^1.9.0
+        version: 1.9.0
 
   packages/parser:
     dependencies:
@@ -1491,6 +1503,10 @@ packages:
   simple-get@4.0.1:
     resolution: {integrity: sha512-brv7p5WgH0jmQJr1ZDDfKDOSeWWg+OVypG99A/5vYGPqJ6pxiaHLy8nxtFjBA7oMa01ebA9gfh1uMCFqOuXxvA==}
 
+  smol-toml@1.9.0:
+    resolution: {integrity: sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==}
+    engines: {node: '>= 18'}
+
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
@@ -2782,6 +2798,8 @@ snapshots:
       decompress-response: 6.0.0
       once: 1.4.0
       simple-concat: 1.0.1
+
+  smol-toml@1.9.0: {}
 
   source-map-js@1.2.1: {}
 

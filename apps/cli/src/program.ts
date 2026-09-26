@@ -2,7 +2,15 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
 import { runIndex } from '@codefossil/core';
-import { findFileByPath, getIndexStatus, listFileSymbols } from '@codefossil/db';
+import {
+  fileImports,
+  findFileByPath,
+  getIndexStatus,
+  importedBy,
+  listDependencies,
+  listFileSymbols,
+} from '@codefossil/db';
+import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -68,6 +76,19 @@ export function createProgram(io: CliIO): Command {
     .exitOverride()
     .showHelpAfterError();
 
+  /** The indexed file for a path given on the command line. */
+  const indexedFile = (ws: Workspace, path: string) => {
+    const relativePath = toRepositoryPath(ws.root, resolve(io.cwd, path));
+    const file = findFileByPath(ws.fossil.db, ws.repositoryId, relativePath);
+    if (!file) {
+      throw new CliError(
+        `No indexed history for ${relativePath}. CODEFOSSIL only knows committed files; ` +
+          'commit it and run `fossil index`.',
+      );
+    }
+    return file;
+  };
+
   const repoPath = (): string => {
     const { repo } = program.opts<GlobalOptions>();
     return repo ? resolve(io.cwd, repo) : io.cwd;
@@ -120,14 +141,7 @@ export function createProgram(io: CliIO): Command {
     .addOption(new Option('--json', 'print the symbols as JSON'))
     .action(async (path: string, options: JsonOption) => {
       await withWorkspace(openWorkspace(repoPath()), (ws) => {
-        const relativePath = toRepositoryPath(ws.root, resolve(io.cwd, path));
-        const file = findFileByPath(ws.fossil.db, ws.repositoryId, relativePath);
-        if (!file) {
-          throw new CliError(
-            `No indexed history for ${relativePath}. CODEFOSSIL only knows committed files; ` +
-              'commit it and run `fossil index`.',
-          );
-        }
+        const file = indexedFile(ws, path);
         const symbols = listFileSymbols(ws.fossil.db, file.id);
         if (options.json) {
           writeJson(io, {
@@ -139,6 +153,33 @@ export function createProgram(io: CliIO): Command {
           return;
         }
         io.stdout(formatSymbols(file.path, file.deletedAt, symbols));
+      });
+    });
+
+  program
+    .command('deps')
+    .description(
+      "Without a path: the repository's declared dependencies and how many files use each. " +
+        'With a path: what the file imports and which files import it.',
+    )
+    .argument('[path]', 'file path, relative to the current directory')
+    .addOption(new Option('--json', 'print the result as JSON'))
+    .action(async (path: string | undefined, options: JsonOption) => {
+      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+        if (path === undefined) {
+          const dependencies = listDependencies(ws.fossil.db, ws.repositoryId);
+          if (options.json) writeJson(io, { dependencies });
+          else io.stdout(formatDependencies(dependencies));
+          return;
+        }
+        const file = indexedFile(ws, path);
+        const result = {
+          path: file.path,
+          imports: fileImports(ws.fossil.db, file.id),
+          importedBy: importedBy(ws.fossil.db, ws.repositoryId, file.id),
+        };
+        if (options.json) writeJson(io, result);
+        else io.stdout(formatFileDependencies(result.path, result.imports, result.importedBy));
       });
     });
 

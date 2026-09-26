@@ -1,7 +1,7 @@
 # CLI
 
-Implemented: `init`, `index`, `status`, `symbols <path>`. All commands accept `--repo <path>`
-and `--json`. The rest of this file is the target surface.
+Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`. All commands accept
+`--repo <path>` and `--json`. The rest of this file is the target surface.
 
 fossil init
 Initialize `.codefossil/`.
@@ -17,6 +17,13 @@ Show index health and counts.
 
 fossil symbols src/payment/vat.ts
 Show a file's current symbols, their versions and the commit that introduced each one.
+
+fossil deps src/app.ts
+Show what a file imports (resolved, built-in or unresolved with the reason) and which files
+import it.
+
+fossil deps
+List declared dependencies per manifest and how many files import each.
 
 fossil timeline src/payment/vat.ts
 Show file evolution.

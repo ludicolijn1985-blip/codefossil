@@ -1,3 +1,4 @@
+import { goImports } from './go-imports.js';
 import type { SymbolKind } from '@codefossil/shared';
 import { firstDescendant, type LanguageSpec } from '../spec.js';
 
@@ -9,6 +10,7 @@ const TYPE_SPEC_KINDS: Readonly<Record<string, SymbolKind>> = {
 };
 
 export const go: LanguageSpec = {
+  imports: goImports,
   definitions: {
     function_declaration: { kind: 'function' },
     method_declaration: {

@@ -1,6 +1,8 @@
+import { rustImports } from './rust-imports.js';
 import type { LanguageSpec } from '../spec.js';
 
 export const rust: LanguageSpec = {
+  imports: rustImports,
   definitions: {
     function_item: { kind: 'function' },
     function_signature_item: { kind: 'function' },

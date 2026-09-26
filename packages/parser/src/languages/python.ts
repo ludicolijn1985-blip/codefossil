@@ -1,6 +1,8 @@
+import { pythonImports } from './python-imports.js';
 import type { LanguageSpec } from '../spec.js';
 
 export const python: LanguageSpec = {
+  imports: pythonImports,
   definitions: {
     function_definition: { kind: 'function' },
     class_definition: { kind: 'class', container: true },
