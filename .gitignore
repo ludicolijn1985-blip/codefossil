@@ -1,0 +1,12 @@
+.env
+.env.*
+node_modules
+.next
+dist
+coverage
+.codefossil
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.turbo

@@ -1,0 +1,317 @@
+import { sql } from 'drizzle-orm';
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
+import {
+  ENTITY_TYPES,
+  EVIDENCE_KINDS,
+  EVIDENCE_LEVELS,
+  RELATION_TYPES,
+  type Provenance,
+} from '@codefossil/shared';
+
+/** `('FACT', 'DERIVED', 'INFERRED')` for use in CHECK constraints. */
+const evidenceLevelList = sql.raw(`(${EVIDENCE_LEVELS.map((level) => `'${level}'`).join(', ')})`);
+
+/** All timestamps are stored as ISO-8601 text so they sort and read naturally. */
+const createdAt = () =>
+  text('created_at')
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`);
+
+export const repositories = sqliteTable('repositories', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  path: text('path').notNull().unique(),
+  name: text('name').notNull(),
+  remoteUrl: text('remote_url'),
+  defaultBranch: text('default_branch'),
+  indexedAt: text('indexed_at'),
+  createdAt: createdAt(),
+});
+
+export const commits = sqliteTable(
+  'commits',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    sha: text('sha').notNull(),
+    authorName: text('author_name').notNull(),
+    authorEmail: text('author_email').notNull(),
+    authoredAt: text('authored_at').notNull(),
+    committedAt: text('committed_at').notNull(),
+    subject: text('subject').notNull(),
+    body: text('body').notNull().default(''),
+  },
+  (t) => [uniqueIndex('commits_repository_sha_idx').on(t.repositoryId, t.sha)],
+);
+
+/**
+ * Parent links for commits. Merge commits have several parents, so this is a
+ * separate table rather than a single `parent_sha` column.
+ */
+export const commitParents = sqliteTable(
+  'commit_parents',
+  {
+    commitId: integer('commit_id')
+      .notNull()
+      .references(() => commits.id, { onDelete: 'cascade' }),
+    parentSha: text('parent_sha').notNull(),
+    ordinal: integer('ordinal').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.commitId, t.ordinal] }),
+    index('commit_parents_parent_sha_idx').on(t.parentSha),
+  ],
+);
+
+export const files = sqliteTable(
+  'files',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    path: text('path').notNull(),
+    language: text('language'),
+    firstSeenCommitId: integer('first_seen_commit_id').references(() => commits.id),
+    lastSeenCommitId: integer('last_seen_commit_id').references(() => commits.id),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => [uniqueIndex('files_repository_path_idx').on(t.repositoryId, t.path)],
+);
+
+export const fileChanges = sqliteTable(
+  'file_changes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    commitId: integer('commit_id')
+      .notNull()
+      .references(() => commits.id, { onDelete: 'cascade' }),
+    fileId: integer('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['added', 'modified', 'deleted', 'renamed'] }).notNull(),
+    previousPath: text('previous_path'),
+    additions: integer('additions').notNull().default(0),
+    deletions: integer('deletions').notNull().default(0),
+    patchHash: text('patch_hash'),
+  },
+  (t) => [
+    uniqueIndex('file_changes_file_commit_idx').on(t.fileId, t.commitId),
+    index('file_changes_commit_idx').on(t.commitId),
+  ],
+);
+
+export const symbols = sqliteTable(
+  'symbols',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    fileId: integer('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    stableKey: text('stable_key').notNull(),
+    name: text('name').notNull(),
+    kind: text('kind').notNull(),
+    signature: text('signature'),
+    startLine: integer('start_line').notNull(),
+    endLine: integer('end_line').notNull(),
+    current: integer('current', { mode: 'boolean' }).notNull().default(true),
+  },
+  (t) => [
+    uniqueIndex('symbols_file_stable_key_idx').on(t.fileId, t.stableKey),
+    index('symbols_name_idx').on(t.name),
+  ],
+);
+
+export const symbolVersions = sqliteTable(
+  'symbol_versions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    symbolId: integer('symbol_id')
+      .notNull()
+      .references(() => symbols.id, { onDelete: 'cascade' }),
+    commitId: integer('commit_id')
+      .notNull()
+      .references(() => commits.id, { onDelete: 'cascade' }),
+    contentHash: text('content_hash').notNull(),
+    signature: text('signature'),
+  },
+  (t) => [uniqueIndex('symbol_versions_symbol_commit_idx').on(t.symbolId, t.commitId)],
+);
+
+export const evidence = sqliteTable(
+  'evidence',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: EVIDENCE_KINDS }).notNull(),
+    /** Stable pointer into the source, e.g. a commit SHA or `path#L10-L20`. */
+    locator: text('locator').notNull(),
+    excerpt: text('excerpt'),
+    metadataJson: text('metadata_json', { mode: 'json' }).$type<Record<string, unknown>>(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('evidence_repository_locator_idx').on(t.repositoryId, t.type, t.locator)],
+);
+
+export const relations = sqliteTable(
+  'relations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    sourceType: text('source_type', { enum: ENTITY_TYPES }).notNull(),
+    sourceId: integer('source_id').notNull(),
+    relation: text('relation', { enum: RELATION_TYPES }).notNull(),
+    targetType: text('target_type', { enum: ENTITY_TYPES }).notNull(),
+    targetId: integer('target_id').notNull(),
+    confidence: real('confidence').notNull(),
+    evidenceType: text('evidence_type', { enum: EVIDENCE_LEVELS }).notNull(),
+    provenanceJson: text('provenance_json', { mode: 'json' }).$type<Provenance>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('relations_source_idx').on(t.repositoryId, t.sourceType, t.sourceId),
+    index('relations_target_idx').on(t.repositoryId, t.targetType, t.targetId),
+    uniqueIndex('relations_edge_idx').on(
+      t.repositoryId,
+      t.sourceType,
+      t.sourceId,
+      t.relation,
+      t.targetType,
+      t.targetId,
+    ),
+    check('relations_confidence_range', sql`${t.confidence} >= 0 AND ${t.confidence} <= 1`),
+    check('relations_evidence_type_valid', sql`${t.evidenceType} IN ${evidenceLevelList}`),
+    check('relations_fact_is_certain', sql`${t.evidenceType} <> 'FACT' OR ${t.confidence} = 1`),
+  ],
+);
+
+export const issues = sqliteTable(
+  'issues',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    externalId: text('external_id').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    state: text('state').notNull(),
+    url: text('url'),
+    createdAt: text('created_at').notNull(),
+    closedAt: text('closed_at'),
+  },
+  (t) => [uniqueIndex('issues_external_idx').on(t.repositoryId, t.provider, t.externalId)],
+);
+
+export const pullRequests = sqliteTable(
+  'pull_requests',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    externalId: text('external_id').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    state: text('state').notNull(),
+    url: text('url'),
+    createdAt: text('created_at').notNull(),
+    mergedAt: text('merged_at'),
+  },
+  (t) => [uniqueIndex('pull_requests_external_idx').on(t.repositoryId, t.provider, t.externalId)],
+);
+
+export const reviews = sqliteTable('reviews', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pullRequestId: integer('pull_request_id')
+    .notNull()
+    .references(() => pullRequests.id, { onDelete: 'cascade' }),
+  author: text('author').notNull(),
+  body: text('body').notNull().default(''),
+  submittedAt: text('submitted_at').notNull(),
+});
+
+export const tests = sqliteTable('tests', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  symbolId: integer('symbol_id').references(() => symbols.id, { onDelete: 'set null' }),
+  fileId: integer('file_id')
+    .notNull()
+    .references(() => files.id, { onDelete: 'cascade' }),
+  framework: text('framework').notNull(),
+  name: text('name').notNull(),
+});
+
+export const dependencies = sqliteTable(
+  'dependencies',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    ecosystem: text('ecosystem').notNull(),
+    name: text('name').notNull(),
+    version: text('version'),
+    manifestFile: text('manifest_file').notNull(),
+  },
+  (t) => [
+    uniqueIndex('dependencies_manifest_name_idx').on(
+      t.repositoryId,
+      t.manifestFile,
+      t.ecosystem,
+      t.name,
+    ),
+  ],
+);
+
+export const incidents = sqliteTable(
+  'incidents',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    externalId: text('external_id').notNull(),
+    title: text('title').notNull(),
+    severity: text('severity'),
+    occurredAt: text('occurred_at').notNull(),
+    resolvedAt: text('resolved_at'),
+  },
+  (t) => [uniqueIndex('incidents_external_idx').on(t.repositoryId, t.provider, t.externalId)],
+);
+
+export const investigations = sqliteTable(
+  'investigations',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    query: text('query').notNull(),
+    answer: text('answer').notNull(),
+    confidence: real('confidence').notNull(),
+    classification: text('classification', { enum: EVIDENCE_LEVELS }).notNull(),
+    evidenceIdsJson: text('evidence_ids_json', { mode: 'json' }).$type<number[]>().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check('investigations_confidence_range', sql`${t.confidence} >= 0 AND ${t.confidence} <= 1`),
+    check('investigations_classification_valid', sql`${t.classification} IN ${evidenceLevelList}`),
+  ],
+);
