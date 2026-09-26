@@ -47,6 +47,9 @@ importers:
       '@codefossil/git':
         specifier: workspace:*
         version: link:../../packages/git
+      '@codefossil/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -68,9 +71,15 @@ importers:
       '@codefossil/parser':
         specifier: workspace:*
         version: link:../parser
+      '@codefossil/providers':
+        specifier: workspace:*
+        version: link:../providers
       '@codefossil/shared':
         specifier: workspace:*
         version: link:../shared
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
     devDependencies:
       drizzle-orm:
         specifier: ^0.45.3
@@ -132,6 +141,12 @@ importers:
       web-tree-sitter:
         specifier: 0.27.0
         version: 0.27.0
+
+  packages/providers:
+    dependencies:
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/shared:
     dependencies:

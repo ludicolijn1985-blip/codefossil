@@ -58,15 +58,16 @@ typechecking run against source without a build step.
 
 ### Packages
 
-| Package              | Purpose                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `@codefossil/shared` | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod) |
-| `@codefossil/db`     | SQLite + Drizzle schema, migrations, repository and relation access                  |
-| `@codefossil/git`    | Native git access (argument arrays, never a shell) and a streaming history reader    |
-| `@codefossil/parser` | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust       |
-| `@codefossil/graph`  | Manifest parsing and deterministic import resolution (files, workspaces, packages)   |
-| `@codefossil/core`   | Git, symbol and dependency indexers, each relation citing evidence                   |
-| `@codefossil/cli`    | The `fossil` command                                                                 |
+| Package                 | Purpose                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| `@codefossil/shared`    | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod)      |
+| `@codefossil/db`        | SQLite + Drizzle schema, migrations, repository and relation access                       |
+| `@codefossil/git`       | Native git access (argument arrays, never a shell) and a streaming history reader         |
+| `@codefossil/parser`    | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust            |
+| `@codefossil/graph`     | Manifest parsing and deterministic import resolution (files, workspaces, packages)        |
+| `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing |
+| `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                        |
+| `@codefossil/cli`       | The `fossil` command                                                                      |
 
 ### Using the CLI
 
@@ -79,11 +80,18 @@ node /path/to/codefossil/apps/cli/dist/bin.js status   # --json for scripts
 node /path/to/codefossil/apps/cli/dist/bin.js symbols src/app.ts   # symbol tree with origins
 node /path/to/codefossil/apps/cli/dist/bin.js deps src/app.ts      # imports and importers
 node /path/to/codefossil/apps/cli/dist/bin.js deps                 # declared dependencies
+node /path/to/codefossil/apps/cli/dist/bin.js connect github       # link issues and PRs (token from env or gh)
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
 
 ### Known limitations
+
+- GitHub links from closing keywords (`Fixes #12`) are DERIVED with confidence 0.9: GitHub closes
+  the issue only when the change reaches the default branch, which is not verified.
+- Only same-repository references are linked; `other/repo#12` is ignored.
+- A closing keyword in a commit that was later reverted (`This reverts commit …`) only counts as
+  a reference. GitHub lists at most 250 commits per pull request; longer PRs link only those.
 
 - Only history reachable from HEAD is indexed; other branches and tags are not yet.
 - Rewritten history (rebase, force-push) is not detected: commits that are no longer reachable

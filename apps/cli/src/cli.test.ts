@@ -9,6 +9,7 @@ import {
   type FixtureRepo,
   type SampleHistory,
 } from '@codefossil/git/testing';
+import { startFakeGitHub, type FakeGitHub } from '@codefossil/providers/testing';
 import type { CliIO } from './io.js';
 import { runCli } from './run.js';
 
@@ -18,7 +19,16 @@ interface Captured {
   readonly stderr: string;
 }
 
-async function fossil(cwd: string, ...args: string[]): Promise<Captured> {
+type TokenResolver = NonNullable<CliIO['resolveGitHubToken']>;
+
+/** Tests never see the developer's real GitHub credentials. */
+const noToken: TokenResolver = () => Promise.resolve(null);
+
+async function fossilWith(
+  cwd: string,
+  resolveGitHubToken: TokenResolver,
+  ...args: string[]
+): Promise<Captured> {
   let stdout = '';
   let stderr = '';
   const io: CliIO = {
@@ -29,9 +39,14 @@ async function fossil(cwd: string, ...args: string[]): Promise<Captured> {
     stderr: (text) => {
       stderr += text;
     },
+    resolveGitHubToken,
   };
   const code = await runCli(args, io);
   return { code, stdout, stderr };
+}
+
+function fossil(cwd: string, ...args: string[]): Promise<Captured> {
+  return fossilWith(cwd, noToken, ...args);
 }
 
 describe('fossil CLI', () => {
@@ -258,6 +273,146 @@ describe('fossil deps', () => {
       importedBy: { path: string }[];
     };
     expect(vat.importedBy).toEqual([{ path: 'src/app.ts', confidence: 1 }]);
+  });
+});
+
+describe('fossil connect github and GitHub sync', () => {
+  let repo: FixtureRepo | undefined;
+  let server: FakeGitHub | undefined;
+
+  const issue = {
+    number: 1,
+    title: 'VAT is wrong',
+    body: null,
+    state: 'closed',
+    html_url: 'https://github.com/acme/shop/issues/1',
+    created_at: '2026-01-01T09:00:00Z',
+    updated_at: '2026-01-01T10:00:00Z',
+    closed_at: '2026-01-02T09:00:00Z',
+    user: { login: 'ada' },
+    labels: ['bug'],
+  };
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.git('remote', 'add', 'origin', 'https://github.com/acme/shop.git');
+    await repo.write('vat.ts', 'export const vat = 0.21;\n');
+    await repo.commit('Fix VAT\n\nFixes #1');
+    server = await startFakeGitHub((url) => {
+      if (url.pathname === '/repos/acme/shop') {
+        return { body: { full_name: 'acme/shop', private: true, default_branch: 'main' } };
+      }
+      if (url.pathname === '/repos/acme/shop/issues') return { body: [issue] };
+      return undefined;
+    });
+  });
+
+  afterEach(async () => {
+    await server?.close();
+    await repo?.cleanup();
+  });
+
+  const root = (): string => repo?.root ?? '';
+  const apiUrl = (): string => server?.apiUrl ?? '';
+  const withToken = (token: string | null) => () =>
+    Promise.resolve(token ? { token, source: 'GITHUB_TOKEN' as const } : null);
+
+  it('connects after verifying access with the resolved token, and syncs on index', async () => {
+    await fossil(root(), 'init');
+    const connected = await fossilWith(
+      root(),
+      withToken('test-token'),
+      'connect',
+      'github',
+      'acme/shop',
+      '--api-url',
+      apiUrl(),
+    );
+    expect(connected).toMatchObject({ code: 0, stderr: '' });
+    expect(connected.stdout).toContain('Connected to GitHub repository acme/shop.');
+    expect(server?.requests[0]?.headers.authorization).toBe('Bearer test-token');
+
+    const indexed = await fossilWith(root(), withToken('test-token'), 'index');
+    expect(indexed.stdout).toContain('GitHub acme/shop: synced 1 issue and 0 pull requests');
+    expect(indexed.stdout).toContain('1 issue resolution');
+
+    const status = await fossil(root(), 'status');
+    expect(status.stdout).toMatch(/GitHub +acme\/shop — 1 issue, 0 pull requests; last synced 20/);
+  });
+
+  it('derives the repository from the origin remote and can skip verification', async () => {
+    await fossil(root(), 'init');
+    const result = await fossil(root(), 'connect', 'github', '--no-verify', '--json');
+    expect(JSON.parse(result.stdout)).toEqual({
+      provider: 'github',
+      owner: 'acme',
+      name: 'shop',
+      apiUrl: 'https://api.github.com',
+      verified: false,
+    });
+  });
+
+  it('never lets a repository remote choose where a token is sent', async () => {
+    await repo?.git('remote', 'set-url', 'origin', 'https://evil.example/acme/shop.git');
+    await fossil(root(), 'init');
+    const asked: string[] = [];
+    const result = await fossilWith(
+      root(),
+      (host) => {
+        asked.push(host);
+        return Promise.resolve({ token: 'secret', source: 'GITHUB_TOKEN' });
+      },
+      'connect',
+      'github',
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('points at evil.example, not github.com');
+    expect(result.stderr).toContain('--api-url');
+    expect(asked).toEqual([]);
+  });
+
+  it('refuses insecure API URLs and explains failed verification', async () => {
+    await fossil(root(), 'init');
+    const insecure = await fossil(
+      root(),
+      'connect',
+      'github',
+      'acme/shop',
+      '--api-url',
+      'http://example.com',
+    );
+    expect(insecure.code).toBe(1);
+    expect(insecure.stderr).toContain('must use https');
+
+    const missing = await fossilWith(
+      root(),
+      withToken('t'),
+      'connect',
+      'github',
+      'acme/other',
+      '--api-url',
+      apiUrl(),
+    );
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain('--no-verify');
+  });
+
+  it('stays offline on request and warns when syncing without a token', async () => {
+    await fossil(root(), 'init');
+    await fossil(root(), 'connect', 'github', 'acme/shop', '--api-url', apiUrl(), '--no-verify');
+
+    const offline = await fossilWith(root(), withToken('t'), 'index', '--offline');
+    expect(offline.stdout).toContain('GitHub acme/shop: offline');
+    expect(server?.requests).toHaveLength(0);
+
+    const anonymous = await fossilWith(root(), withToken(null), 'index');
+    expect(anonymous.stderr).toContain('No GitHub token found');
+    expect(server?.requests[0]?.headers.authorization).toBeUndefined();
+
+    const bad = await fossil(root(), 'index', '--github-max-requests', 'lots');
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain('--github-max-requests must be a positive whole number');
   });
 });
 

@@ -106,7 +106,10 @@ issues
 - body
 - state
 - url
+- author
+- labels_json
 - created_at
+- updated_at
 - closed_at
 
 pull_requests
@@ -114,21 +117,47 @@ pull_requests
 - id
 - repository_id
 - provider
-- external_id
+- external_id (the PR number)
 - title
 - body
 - state
 - url
+- author
+- labels_json
 - created_at
+- updated_at
+- closed_at
 - merged_at
+- merge_commit_sha (only meaningful once merged; open PRs report a test merge commit)
+- base_branch
+- head_branch
+- details_synced_at (commits/reviews fetched; pending while null or older than updated_at)
+
+pull_request_commits
+
+- pull_request_id
+- sha (as GitHub reports it, whether or not the commit is indexed)
 
 reviews
 
 - id
 - pull_request_id
+- external_id
 - author
+- state
 - body
 - submitted_at
+
+provider_connections (no credentials)
+
+- id
+- repository_id
+- provider (github)
+- owner
+- name
+- api_url
+- cursor (updated_at of the newest synced issue/PR; the next sync resumes from it)
+- last_synced_at
 
 tests
 

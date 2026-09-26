@@ -17,6 +17,8 @@ const EXPECTED_TABLES = [
   'incidents',
   'investigations',
   'issues',
+  'provider_connections',
+  'pull_request_commits',
   'pull_requests',
   'relations',
   'repositories',

@@ -9,9 +9,13 @@ import {
   importedBy,
   listDependencies,
   listFileSymbols,
+  providerCounts,
+  getProviderConnection,
 } from '@codefossil/db';
 import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
+import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
+import { connectGitHub, planGitHubSync } from './github.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
 import { initWorkspace, openWorkspace, type Workspace } from './workspace.js';
@@ -33,6 +37,36 @@ function toRepositoryPath(root: string, absolutePath: string): string {
     throw new CliError(`${absolutePath} is not a file inside ${root}.`);
   }
   return rel.replaceAll('\\', '/');
+}
+
+const DEFAULT_GITHUB_MAX_REQUESTS = 1000;
+
+function gitHubStatus(ws: Workspace): GitHubStatus | null {
+  const connection = getProviderConnection(ws.fossil.db, ws.repositoryId, 'github');
+  if (!connection) return null;
+  const { owner, name, apiUrl, lastSyncedAt } = connection;
+  return { owner, name, apiUrl, lastSyncedAt, ...providerCounts(ws.fossil.db, ws.repositoryId) };
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new CliError(`${flag} must be a positive whole number, got "${value}".`);
+  }
+  return parsed;
+}
+
+interface IndexCommandOptions {
+  readonly since?: string;
+  readonly offline?: boolean;
+  readonly githubMaxRequests: string;
+  readonly json?: boolean;
+}
+
+interface ConnectCommandOptions {
+  readonly apiUrl?: string;
+  readonly verify: boolean;
+  readonly json?: boolean;
 }
 
 interface GlobalOptions {
@@ -119,18 +153,63 @@ export function createProgram(io: CliIO): Command {
       '--since <date>',
       'only index commits since this ISO date (e.g. 2025-01-01); earlier history is not recorded',
     )
+    .option('--offline', 'do not contact GitHub; stored GitHub data is still linked')
+    .option(
+      '--github-max-requests <n>',
+      'GitHub requests allowed in this run; a larger sync continues next run',
+      String(DEFAULT_GITHUB_MAX_REQUESTS),
+    )
     .addOption(new Option('--json', 'print the result as JSON'))
-    .action(async (options: JsonOption & { since?: string }) => {
+    .action(async (options: IndexCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
+      const maxRequests = parsePositiveInteger(options.githubMaxRequests, '--github-max-requests');
       await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const plan = await planGitHubSync(ws, io, {
+          offline: options.offline === true,
+          maxRequests,
+        });
+        for (const note of plan.notes) io.stderr(`Note: ${note}\n`);
         const started = performance.now();
-        const result = await runIndex(ws.fossil.db, ws.root, since ? { since } : {});
+        const result = await runIndex(ws.fossil.db, ws.root, {
+          ...(since ? { since } : {}),
+          ...(plan.factory ? { github: plan.factory } : {}),
+        });
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         if (options.json) {
           writeJson(io, result);
           return;
         }
-        io.stdout(formatIndexResult(result, seconds));
+        io.stdout(formatIndexResult(result, seconds) + formatGitHubIndex(result.github));
+      });
+    });
+
+  program
+    .command('connect')
+    .description('Connect the repository to an issue and pull request provider.')
+    .command('github')
+    .description(
+      'Link to a GitHub repository (owner/name, or the origin remote). ' +
+        'The token comes from GITHUB_TOKEN, GH_TOKEN or `gh auth login` and is never stored.',
+    )
+    .argument('[slug]', 'owner/name; defaults to the origin remote')
+    .option('--api-url <url>', 'REST API URL (GitHub Enterprise Server: https://host/api/v3)')
+    .option('--no-verify', 'save the connection without checking access')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (slug: string | undefined, options: ConnectCommandOptions) => {
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const connection = await connectGitHub(ws, io, slug, {
+          ...(options.apiUrl ? { apiUrl: options.apiUrl } : {}),
+          verify: options.verify,
+        });
+        const { owner, name, apiUrl } = connection;
+        if (options.json) {
+          writeJson(io, { provider: 'github', owner, name, apiUrl, verified: options.verify });
+          return;
+        }
+        io.stdout(
+          `Connected to GitHub repository ${owner}/${name}${options.verify ? '' : ' (not verified)'}.\n` +
+            'Next: run `fossil index` to sync issues and pull requests.\n',
+        );
       });
     });
 
@@ -192,10 +271,10 @@ export function createProgram(io: CliIO): Command {
         const status = getIndexStatus(ws.fossil.db, ws.repositoryId);
         if (!status) throw new CliError('Repository is not registered. Run `fossil init`.');
         if (options.json) {
-          writeJson(io, status);
+          writeJson(io, { ...status, github: gitHubStatus(ws) });
           return;
         }
-        io.stdout(formatStatus(status));
+        io.stdout(formatStatus(status) + formatGitHubStatus(gitHubStatus(ws)));
       });
     });
 

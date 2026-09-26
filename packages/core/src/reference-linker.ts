@@ -1,0 +1,243 @@
+import {
+  commitEvidenceIds,
+  deleteRelationsByProducer,
+  externalIdsByNumber,
+  findCommitBySha,
+  findEvidenceId,
+  listCommitMessages,
+  listPullRequests,
+  pullRequestCommitShas,
+  recordRelation,
+  type CommitMessage,
+  type FossilDb,
+  type PullRequestRow,
+} from '@codefossil/db';
+import { parseReferences, type TextReference } from '@codefossil/providers';
+import type { EntityRef, RelationInput } from '@codefossil/shared';
+
+export const GITHUB_LINKER_PRODUCER = 'github-linker@0.1.0';
+
+/**
+ * A closing keyword closes the issue only when the change reaches the default
+ * branch, which the index cannot confirm for every pull request or commit.
+ */
+const CLOSING_KEYWORD_CONFIDENCE = 0.9;
+
+/** `git revert` writes this line; the sha may be abbreviated. */
+const REVERT_MARKER = /This reverts commit ([0-9a-f]{7,64})/gi;
+
+export interface LinkResult {
+  readonly pullRequestCommits: number;
+  readonly resolutions: number;
+  readonly references: number;
+}
+
+type Draft = Omit<RelationInput, 'repositoryId' | 'provenance'> & {
+  readonly method: string;
+  readonly evidenceId: number | undefined;
+  readonly details?: Record<string, unknown>;
+};
+
+interface Lookups {
+  readonly issues: ReadonlyMap<number, number>;
+  readonly pullRequests: ReadonlyMap<number, number>;
+  /** Commits undone by a later `git revert`. */
+  readonly reverted: ReadonlySet<string>;
+}
+
+/**
+ * Rebuild the links between GitHub records and history from stored data:
+ * - `pull_request IMPLEMENTED_BY commit` (FACT): commits GitHub lists for the
+ *   PR, and the merge commit of a merged PR, when they exist locally.
+ * - `issue RESOLVED_BY pull_request|commit` (DERIVED, 0.9): a closing keyword
+ *   (`Fixes #12`) in a merged PR or in a commit message — unless that change
+ *   was reverted, or is itself a revert.
+ * - `pull_request|commit REFERENCES issue|pull_request` (DERIVED, 1): any other
+ *   mention of a number that is a synced issue or pull request.
+ *
+ * Numbers that match no synced record produce no link.
+ */
+export function linkGitHubReferences(
+  db: FossilDb,
+  repositoryId: number,
+  slug: { readonly owner: string; readonly name: string },
+  observedAt: string,
+): LinkResult {
+  return db.transaction((tx) => {
+    deleteRelationsByProducer(tx, repositoryId, GITHUB_LINKER_PRODUCER);
+    const commits = listCommitMessages(tx, repositoryId);
+    const lookups: Lookups = {
+      ...externalIdsByNumber(tx, repositoryId),
+      reverted: revertedShas(commits),
+    };
+    const evidence = commitEvidenceIds(tx, repositoryId);
+
+    const drafts: Draft[] = [];
+    for (const pullRequest of listPullRequests(tx, repositoryId)) {
+      drafts.push(...pullRequestDrafts(tx, repositoryId, slug, pullRequest, lookups));
+    }
+    for (const commit of commits) {
+      const text = `${commit.subject}\n${commit.body}`;
+      const references = parseReferences(text, slug.owner, slug.name);
+      const isRevert = /This reverts commit/i.test(text);
+      const undone = isRevert || lookups.reverted.has(commit.sha);
+      drafts.push(
+        ...referenceDrafts(
+          { type: 'commit', id: commit.id },
+          references,
+          lookups,
+          !undone,
+          evidence.get(commit.sha),
+          undone ? { reverted: !isRevert, revert: isRevert } : undefined,
+        ),
+      );
+    }
+    return writeDrafts(tx, repositoryId, drafts, observedAt);
+  });
+}
+
+function writeDrafts(
+  db: FossilDb,
+  repositoryId: number,
+  drafts: readonly Draft[],
+  observedAt: string,
+): LinkResult {
+  const result = { pullRequestCommits: 0, resolutions: 0, references: 0 };
+  for (const { method, evidenceId, details, ...relation } of drafts) {
+    recordRelation(db, {
+      ...relation,
+      repositoryId,
+      provenance: {
+        producer: GITHUB_LINKER_PRODUCER,
+        method,
+        evidenceIds: evidenceId === undefined ? [] : [evidenceId],
+        observedAt,
+        ...(details ? { details } : {}),
+      },
+    });
+    if (relation.relation === 'IMPLEMENTED_BY') result.pullRequestCommits++;
+    else if (relation.relation === 'RESOLVED_BY') result.resolutions++;
+    else result.references++;
+  }
+  return result;
+}
+
+/** Full shas of commits that a later commit reverts. */
+function revertedShas(commits: readonly CommitMessage[]): Set<string> {
+  const reverted = new Set<string>();
+  for (const commit of commits) {
+    for (const [, sha = ''] of commit.body.matchAll(REVERT_MARKER)) {
+      const needle = sha.toLowerCase();
+      const target = commits.find((c) => c.sha === needle || c.sha.startsWith(needle));
+      if (target) reverted.add(target.sha);
+    }
+  }
+  return reverted;
+}
+
+function pullRequestDrafts(
+  db: FossilDb,
+  repositoryId: number,
+  slug: { readonly owner: string; readonly name: string },
+  pullRequest: PullRequestRow,
+  lookups: Lookups,
+): Draft[] {
+  const source = { type: 'pull_request', id: pullRequest.id } as const;
+  const evidenceId = pullRequest.url
+    ? findEvidenceId(db, repositoryId, 'pull_request', pullRequest.url)
+    : undefined;
+  const drafts: Draft[] = [];
+
+  const shas = new Map(
+    pullRequestCommitShas(db, pullRequest.id).map((sha) => [sha, 'pull-request-commits']),
+  );
+  // For open pull requests GitHub reports a *test* merge commit that never
+  // lands in history, so the merge commit only counts once the PR is merged.
+  if (pullRequest.mergedAt && pullRequest.mergeCommitSha) {
+    shas.set(pullRequest.mergeCommitSha, shas.get(pullRequest.mergeCommitSha) ?? 'merge-commit');
+  }
+  for (const [sha, method] of shas) {
+    const commit = findCommitBySha(db, repositoryId, sha);
+    if (!commit) continue; // not in the indexed history (e.g. a squashed branch)
+    drafts.push({
+      source,
+      relation: 'IMPLEMENTED_BY',
+      target: { type: 'commit', id: commit.id },
+      evidenceType: 'FACT',
+      confidence: 1,
+      method,
+      evidenceId,
+    });
+  }
+
+  const reverted =
+    pullRequest.mergeCommitSha !== null && lookups.reverted.has(pullRequest.mergeCommitSha);
+  const references = parseReferences(
+    `${pullRequest.title}\n${pullRequest.body}`,
+    slug.owner,
+    slug.name,
+  ).filter((ref) => String(ref.number) !== pullRequest.externalId);
+  drafts.push(
+    ...referenceDrafts(
+      source,
+      references,
+      lookups,
+      pullRequest.mergedAt !== null && !reverted,
+      evidenceId,
+      reverted ? { reverted: true } : undefined,
+    ),
+  );
+  return drafts;
+}
+
+/**
+ * Turn text references into links. `landed` says whether the change the text
+ * belongs to is in effect (merged, not reverted, not itself a revert), which a
+ * closing keyword needs before it can be read as a resolution.
+ */
+function referenceDrafts(
+  source: EntityRef,
+  references: readonly TextReference[],
+  lookups: Lookups,
+  landed: boolean,
+  evidenceId: number | undefined,
+  details: Record<string, unknown> | undefined,
+): Draft[] {
+  return references.flatMap((reference): Draft[] => {
+    const issueId = lookups.issues.get(reference.number);
+    const extra = details ? { details } : {};
+    if (issueId !== undefined && reference.closing && landed) {
+      return [
+        {
+          source: { type: 'issue', id: issueId },
+          relation: 'RESOLVED_BY',
+          target: source,
+          evidenceType: 'DERIVED',
+          confidence: CLOSING_KEYWORD_CONFIDENCE,
+          method: 'closing-keyword',
+          evidenceId,
+        },
+      ];
+    }
+    const pullRequestId = lookups.pullRequests.get(reference.number);
+    const target: EntityRef | null =
+      issueId !== undefined
+        ? { type: 'issue', id: issueId }
+        : pullRequestId !== undefined
+          ? { type: 'pull_request', id: pullRequestId }
+          : null;
+    if (!target) return [];
+    return [
+      {
+        source,
+        relation: 'REFERENCES',
+        target,
+        evidenceType: 'DERIVED',
+        confidence: 1,
+        method: 'text-mention',
+        evidenceId,
+        ...extra,
+      },
+    ];
+  });
+}

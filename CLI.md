@@ -1,6 +1,6 @@
 # CLI
 
-Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`. All commands accept
+Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`. All commands accept
 `--repo <path>` and `--json`. The rest of this file is the target surface.
 
 fossil init
@@ -46,8 +46,13 @@ Interactive terminal investigation.
 fossil query "Why does this module exist?"
 Natural language query.
 
-fossil connect github
-Configure GitHub integration.
+fossil connect github [owner/name] [--api-url URL] [--no-verify]
+Link the repository to GitHub (defaults to the origin remote). Access is verified with the token
+from `GITHUB_TOKEN`, `GH_TOKEN` (github.com), `GH_ENTERPRISE_TOKEN` (Enterprise Server) or
+`gh auth login`; the token is never stored. A remote on another host than github.com must be
+confirmed with `--api-url`. Afterwards
+`fossil index` syncs issues, pull requests and reviews incrementally (`--offline` skips the
+network, `--github-max-requests N` caps one run; a larger sync continues on the next run).
 
 fossil export graph.json
 Export evidence graph.

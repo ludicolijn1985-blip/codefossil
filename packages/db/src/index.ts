@@ -3,6 +3,7 @@ export * from './entities.js';
 export * from './evidence.js';
 export * from './graph.js';
 export * from './history.js';
+export * from './providers.js';
 export * from './relations.js';
 export * from './repositories.js';
 export * from './status.js';

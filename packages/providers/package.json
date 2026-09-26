@@ -1,5 +1,5 @@
 {
-  "name": "@codefossil/core",
+  "name": "@codefossil/providers",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,11 @@
       "@codefossil/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "@codefossil/source": "./src/testing/index.ts",
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "files": [
@@ -20,15 +25,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@codefossil/db": "workspace:*",
-    "@codefossil/git": "workspace:*",
-    "@codefossil/shared": "workspace:*",
-    "@codefossil/parser": "workspace:*",
-    "@codefossil/graph": "workspace:*",
-    "@codefossil/providers": "workspace:*",
     "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "drizzle-orm": "^0.45.3"
   }
 }

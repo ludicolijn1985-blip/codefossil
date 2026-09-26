@@ -224,7 +224,10 @@ export const issues = sqliteTable(
     body: text('body').notNull().default(''),
     state: text('state').notNull(),
     url: text('url'),
+    author: text('author'),
+    labelsJson: text('labels_json', { mode: 'json' }).$type<string[]>(),
     createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
     closedAt: text('closed_at'),
   },
   (t) => [uniqueIndex('issues_external_idx').on(t.repositoryId, t.provider, t.externalId)],
@@ -243,21 +246,74 @@ export const pullRequests = sqliteTable(
     body: text('body').notNull().default(''),
     state: text('state').notNull(),
     url: text('url'),
+    author: text('author'),
+    labelsJson: text('labels_json', { mode: 'json' }).$type<string[]>(),
     createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at'),
+    closedAt: text('closed_at'),
     mergedAt: text('merged_at'),
+    mergeCommitSha: text('merge_commit_sha'),
+    baseBranch: text('base_branch'),
+    headBranch: text('head_branch'),
+    /** When commits, reviews and merge details were fetched; null or older than updated_at means pending. */
+    detailsSyncedAt: text('details_synced_at'),
   },
   (t) => [uniqueIndex('pull_requests_external_idx').on(t.repositoryId, t.provider, t.externalId)],
 );
 
-export const reviews = sqliteTable('reviews', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  pullRequestId: integer('pull_request_id')
-    .notNull()
-    .references(() => pullRequests.id, { onDelete: 'cascade' }),
-  author: text('author').notNull(),
-  body: text('body').notNull().default(''),
-  submittedAt: text('submitted_at').notNull(),
-});
+export const reviews = sqliteTable(
+  'reviews',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    pullRequestId: integer('pull_request_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    externalId: text('external_id'),
+    author: text('author').notNull(),
+    state: text('state'),
+    body: text('body').notNull().default(''),
+    submittedAt: text('submitted_at').notNull(),
+  },
+  (t) => [uniqueIndex('reviews_external_idx').on(t.pullRequestId, t.externalId)],
+);
+
+/** Commits GitHub reports as part of a pull request (whether or not they are indexed locally). */
+export const pullRequestCommits = sqliteTable(
+  'pull_request_commits',
+  {
+    pullRequestId: integer('pull_request_id')
+      .notNull()
+      .references(() => pullRequests.id, { onDelete: 'cascade' }),
+    sha: text('sha').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.pullRequestId, t.sha] }),
+    index('pull_request_commits_sha_idx').on(t.sha),
+  ],
+);
+
+/**
+ * A repository's link to a hosting provider: where to sync from and how far
+ * the sync got. Holds no credentials.
+ */
+export const providerConnections = sqliteTable(
+  'provider_connections',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    provider: text('provider', { enum: ['github'] }).notNull(),
+    owner: text('owner').notNull(),
+    name: text('name').notNull(),
+    apiUrl: text('api_url').notNull(),
+    /** `updated_at` of the newest issue/PR synced; the next sync resumes from it. */
+    cursor: text('cursor'),
+    lastSyncedAt: text('last_synced_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('provider_connections_repo_idx').on(t.repositoryId, t.provider)],
+);
 
 export const tests = sqliteTable('tests', {
   id: integer('id').primaryKey({ autoIncrement: true }),
