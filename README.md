@@ -68,6 +68,7 @@ typechecking run against source without a build step.
 | `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing |
 | `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                        |
 | `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export         |
+| `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                    |
 | `@codefossil/cli`       | The `fossil` command                                                                      |
 
 ### Using the CLI

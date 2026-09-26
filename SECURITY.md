@@ -12,6 +12,9 @@ Default behavior:
   and `GH_TOKEN` go to github.com only, `GH_ENTERPRISE_TOKEN` to an Enterprise Server host.
 - A repository's remote never chooses where a token is sent: only github.com is derived from it;
   any other host must be confirmed by the user with `--api-url`.
+- `fossil serve` binds to loopback only and checks the Host header (DNS rebinding) and JSON
+  content type (CSRF). With `--allow-network` the token is pinned to the connection trusted at
+  startup; a connection rewritten through the API is refused until the server is restarted.
 - Tokens travel only to the configured API host, over HTTPS (plain HTTP for `localhost` only).
   Pagination links to another host are refused; response bodies are capped at 20 MiB.
 - credentials embedded in remote URLs are removed before a URL is stored

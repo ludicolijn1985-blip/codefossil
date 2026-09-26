@@ -600,6 +600,52 @@ describe('fossil why, impact, timeline, query and investigate', () => {
   });
 });
 
+describe('fossil serve', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  it('serves the API on a loopback port until closed', async () => {
+    let server: { url: string; close: () => Promise<void> } | undefined;
+    let stdout = '';
+    const code = await runCli(['serve', '--port', '0'], {
+      cwd: sample?.repo.root ?? '',
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: () => undefined,
+      resolveGitHubToken: noToken,
+      onServe: (started) => {
+        server = started;
+      },
+    });
+    try {
+      expect(code).toBe(0);
+      expect(stdout).toMatch(/listening on http:\/\/127\.0\.0\.1:\d+\. Press Ctrl\+C to stop\./);
+      const health = await fetch(`${server?.url ?? ''}/health`);
+      expect(await health.json()).toEqual({ data: { status: 'ok', version: '0.1.0' } });
+      const repositories = await fetch(`${server?.url ?? ''}/api/repositories`);
+      expect(((await repositories.json()) as { data: unknown[] }).data).toHaveLength(1);
+    } finally {
+      await server?.close();
+    }
+  });
+
+  it('refuses to listen beyond this machine', async () => {
+    const result = await fossil(sample?.repo.root ?? '', 'serve', '--host', '0.0.0.0');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('--host must be a loopback address');
+  });
+});
+
 describe('fossil CLI outside a repository', () => {
   let plain: string;
 

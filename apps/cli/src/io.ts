@@ -14,6 +14,8 @@ export interface CliIO {
   readonly readLines?: () => AsyncIterable<string>;
   /** Whether a person is typing (show prompts), as opposed to piped input. */
   readonly interactive?: boolean;
+  /** Receives a started API server instead of wiring process signals (tests). */
+  readonly onServe?: (server: { url: string; close: () => Promise<void> }) => void;
 }
 
 /** An error meant for the user: printed without a stack trace. */

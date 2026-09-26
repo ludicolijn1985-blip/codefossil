@@ -1,7 +1,7 @@
 # CLI
 
 Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`, `trace <target>`, `export <file>`, `why`, `impact`, `timeline`, `query`,
-`investigate`. All commands accept
+`investigate`, `serve`. All commands accept
 `--repo <path>` and `--json`. The rest of this file is the target surface.
 
 fossil init
@@ -70,6 +70,9 @@ fossil trace <target> [--route origin|history|impact] [--depth n]
 Show raw evidence chains from a target, every link with its level, confidence, producer and
 evidence. Targets: a symbol, a path, `path:Symbol`, a commit sha, `#123` or `npm:package`;
 an ambiguous target lists the candidates instead of picking one.
+
+fossil serve [--port 4000] [--allow-network]
+Serve the JSON API (see API.md) on this machine only.
 
 fossil doctor
 Check Git, Node, database and parser health.

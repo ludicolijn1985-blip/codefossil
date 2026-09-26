@@ -51,3 +51,7 @@ export function markRepositoryIndexed(
     .returning()
     .get();
 }
+
+export function findRepositoryById(db: FossilDb, id: number): RepositoryRow | undefined {
+  return db.select().from(repositories).where(eq(repositories.id, id)).get();
+}

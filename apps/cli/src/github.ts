@@ -103,7 +103,14 @@ export async function connectGitHub(
 }
 
 export interface SyncPlan {
-  readonly factory: ((connection: ProviderConnectionRow) => GitHubClient) | undefined;
+  /**
+   * Builds the client for a connection — only for the API URL the token was
+   * resolved for. A connection changed since (to another URL) gets no client,
+   * so a token can never follow a connection someone rewrote afterwards.
+   */
+  readonly factory: ((connection: ProviderConnectionRow) => GitHubClient | null) | undefined;
+  /** The API URL the token belongs to; undefined when there is nothing to sync. */
+  readonly apiUrl: string | undefined;
   /** Messages to show before indexing (why the sync is offline or limited). */
   readonly notes: readonly string[];
 }
@@ -115,7 +122,7 @@ export async function planGitHubSync(
   options: { readonly offline: boolean; readonly maxRequests: number },
 ): Promise<SyncPlan> {
   const connection = getProviderConnection(ws.fossil.db, ws.repositoryId, 'github');
-  if (!connection || options.offline) return { factory: undefined, notes: [] };
+  if (!connection || options.offline) return { factory: undefined, apiUrl: undefined, notes: [] };
 
   const token = await tokenResolver(io)(tokenHost(connection.apiUrl));
   const notes: string[] = [];
@@ -128,9 +135,13 @@ export async function planGitHubSync(
         `which only works for public repositories and is limited to ${maxRequests} requests.`,
     );
   }
+  const pinnedApiUrl = connection.apiUrl;
   return {
     factory: (conn) =>
-      new GitHubClient({ apiUrl: conn.apiUrl, token: token?.token ?? null, maxRequests }),
+      conn.apiUrl === pinnedApiUrl
+        ? new GitHubClient({ apiUrl: pinnedApiUrl, token: token?.token ?? null, maxRequests })
+        : null,
+    apiUrl: pinnedApiUrl,
     notes,
   };
 }

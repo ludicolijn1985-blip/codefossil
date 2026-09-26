@@ -1,18 +1,15 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Option, type Command } from 'commander';
-import {
-  getGraphIndexedSha,
-  getInvestigation,
-  listInvestigations,
-  saveInvestigation,
-} from '@codefossil/db';
+import { getInvestigation, listInvestigations } from '@codefossil/db';
 import {
   analyzeImpact,
   buildTimeline,
   investigateWhy,
-  parseQuestion,
+  recordInvestigation,
+  resolveQuestion,
   resolveTarget,
+  SUPPORTED_QUESTIONS,
   type ImpactReport,
   type QuestionKind,
   type TargetMatch,
@@ -28,13 +25,6 @@ import { resolveOne } from './graph-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { openWorkspace, toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
 
-const SUPPORTED_QUESTIONS =
-  'CODEFOSSIL answers these questions from evidence:\n' +
-  '  why does <target> exist?        (also: what is <target> for?)\n' +
-  '  what depends on <target>?       (also: who uses / what breaks if I change <target>)\n' +
-  '  history of <path>               (also: what changed in <path>?)\n' +
-  'Open-ended questions need the optional AI layer, which is not configured.';
-
 interface AskOptions {
   readonly json?: boolean;
   readonly save: boolean;
@@ -48,25 +38,6 @@ function parseDepth(value: string): number {
     throw new CliError(`--depth must be a whole number from 1 to 10, got "${value}".`);
   }
   return depth;
-}
-
-function save(ws: Workspace, result: WhyInvestigation | ImpactReport): number {
-  const evidenceIds =
-    result.kind === 'why'
-      ? result.evidence.map((e) => e.id)
-      : [...result.direct, ...result.transitive].flatMap((d) => d.evidenceIds);
-  return saveInvestigation(ws.fossil.db, {
-    repositoryId: ws.repositoryId,
-    query: result.question,
-    kind: result.kind,
-    targetKey: result.target.key,
-    answer: result.answer,
-    confidence: result.confidence,
-    classification: result.classification,
-    evidenceIds,
-    result,
-    headSha: getGraphIndexedSha(ws.fossil.db, ws.repositoryId),
-  }).id;
 }
 
 /** Run one investigation and print it; the shared core of every command and the REPL. */
@@ -95,7 +66,7 @@ function answer(
           ...(options.depth ? { depth: options.depth } : {}),
           ...(options.question ? { question: options.question } : {}),
         });
-  const savedId = options.save ? save(ws, result) : null;
+  const savedId = options.save ? recordInvestigation(ws.fossil.db, ws.repositoryId, result) : null;
   if (options.json) {
     writeJson(io, { ...result, investigationId: savedId });
     return;
@@ -103,44 +74,31 @@ function answer(
   io.stdout(result.kind === 'why' ? formatWhy(result, savedId) : formatImpact(result, savedId));
 }
 
-/** The single entity a question is about, trying its candidate words in order. */
-function resolveQuestionTarget(
-  ws: Workspace,
-  io: CliIO,
-  candidates: readonly string[],
-): TargetMatch {
-  let ambiguous: { word: string; count: number } | null = null;
-  for (const word of candidates) {
-    let matches = resolveTarget(ws.fossil.db, ws.repositoryId, word);
-    const onDisk = resolve(io.cwd, word);
-    if (matches.length === 0 && existsSync(onDisk)) {
-      try {
-        matches = resolveTarget(ws.fossil.db, ws.repositoryId, toRepositoryPath(ws.root, onDisk));
-      } catch {
-        matches = [];
-      }
-    }
-    const [only] = matches;
-    // A more specific word that was ambiguous wins over a later, vaguer match:
-    // asking again beats answering about the wrong thing.
-    if (only && matches.length === 1 && !ambiguous) return only;
-    if (matches.length > 1) ambiguous ??= { word, count: matches.length };
-  }
-  if (ambiguous) {
-    throw new CliError(
-      `"${ambiguous.word}" matches ${ambiguous.count} entities; ask again with a path or path:Symbol.`,
-    );
-  }
-  throw new CliError(
-    `The question names nothing found in the index (tried: ${candidates.join(', ') || 'no words'}).`,
-  );
-}
-
+/** Answer a plain-words question; words may also be paths relative to the current directory. */
 function ask(ws: Workspace, io: CliIO, text: string, options: AskOptions): void {
-  const parsed = parseQuestion(text);
-  if (!parsed) throw new CliError(SUPPORTED_QUESTIONS);
-  const match = resolveQuestionTarget(ws, io, parsed.candidates);
-  answer(ws, io, parsed.kind, match, { ...options, question: text });
+  const resolution = resolveQuestion(ws.fossil.db, ws.repositoryId, text, (word) => {
+    const onDisk = resolve(io.cwd, word);
+    if (!existsSync(onDisk)) return [];
+    try {
+      return resolveTarget(ws.fossil.db, ws.repositoryId, toRepositoryPath(ws.root, onDisk));
+    } catch {
+      return [];
+    }
+  });
+  switch (resolution.status) {
+    case 'unsupported':
+      throw new CliError(SUPPORTED_QUESTIONS);
+    case 'ambiguous':
+      throw new CliError(
+        `"${resolution.word}" matches ${resolution.matches.length} entities; ask again with a path or path:Symbol.`,
+      );
+    case 'not_found':
+      throw new CliError(
+        `The question names nothing found in the index (tried: ${resolution.tried.join(', ') || 'no words'}).`,
+      );
+    case 'ok':
+      answer(ws, io, resolution.kind, resolution.match, { ...options, question: text });
+  }
 }
 
 function isInvestigationResult(value: unknown): value is WhyInvestigation | ImpactReport {
