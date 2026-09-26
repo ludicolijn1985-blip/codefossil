@@ -50,6 +50,9 @@ importers:
       '@codefossil/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      '@codefossil/query':
+        specifier: workspace:*
+        version: link:../../packages/query
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -147,6 +150,25 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
+
+  packages/query:
+    dependencies:
+      '@codefossil/db':
+        specifier: workspace:*
+        version: link:../db
+      '@codefossil/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@codefossil/core':
+        specifier: workspace:*
+        version: link:../core
+      '@codefossil/git':
+        specifier: workspace:*
+        version: link:../git
 
   packages/shared:
     dependencies:

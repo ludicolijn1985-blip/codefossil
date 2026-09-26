@@ -1,6 +1,6 @@
 # CLI
 
-Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`. All commands accept
+Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`, `trace <target>`, `export <file>`. All commands accept
 `--repo <path>` and `--json`. The rest of this file is the target surface.
 
 fossil init
@@ -54,8 +54,14 @@ confirmed with `--api-url`. Afterwards
 `fossil index` syncs issues, pull requests and reviews incrementally (`--offline` skips the
 network, `--github-max-requests N` caps one run; a larger sync continues on the next run).
 
-fossil export graph.json
-Export evidence graph.
+fossil export graph.json [--root <target>] [--depth n]
+Export the evidence graph (format `codefossil.graph/v1`: nodes, edges with provenance, cited
+evidence), whole or around one target. `-` writes to standard output.
+
+fossil trace <target> [--route origin|history|impact] [--depth n]
+Show raw evidence chains from a target, every link with its level, confidence, producer and
+evidence. Targets: a symbol, a path, `path:Symbol`, a commit sha, `#123` or `npm:package`;
+an ambiguous target lists the candidates instead of picking one.
 
 fossil doctor
 Check Git, Node, database and parser health.

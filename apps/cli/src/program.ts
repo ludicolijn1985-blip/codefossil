@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
 import { runIndex } from '@codefossil/core';
@@ -16,9 +16,16 @@ import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
 import { connectGitHub, planGitHubSync } from './github.js';
+import { registerGraphCommands } from './graph-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
-import { initWorkspace, openWorkspace, type Workspace } from './workspace.js';
+import {
+  initWorkspace,
+  openWorkspace,
+  toRepositoryPath,
+  withWorkspace,
+  type Workspace,
+} from './workspace.js';
 
 const sinceSchema = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
 
@@ -28,15 +35,6 @@ function parseSince(value: string): Date {
     throw new CliError(`--since must be an ISO date such as 2025-01-01, got "${value}".`);
   }
   return new Date(result.data);
-}
-
-/** Convert an absolute path to the forward-slash, root-relative form git and the index use. */
-function toRepositoryPath(root: string, absolutePath: string): string {
-  const rel = relative(root, absolutePath);
-  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
-    throw new CliError(`${absolutePath} is not a file inside ${root}.`);
-  }
-  return rel.replaceAll('\\', '/');
 }
 
 const DEFAULT_GITHUB_MAX_REQUESTS = 1000;
@@ -75,19 +73,6 @@ interface GlobalOptions {
 
 interface JsonOption {
   readonly json?: boolean;
-}
-
-/** Run `action` with an open workspace and always close the database afterwards. */
-async function withWorkspace<W extends Workspace, T>(
-  workspace: Promise<W>,
-  action: (ws: W) => Promise<T> | T,
-): Promise<T> {
-  const ws = await workspace;
-  try {
-    return await action(ws);
-  } finally {
-    ws.fossil.close();
-  }
 }
 
 /**
@@ -277,6 +262,8 @@ export function createProgram(io: CliIO): Command {
         io.stdout(formatStatus(status) + formatGitHubStatus(gitHubStatus(ws)));
       });
     });
+
+  registerGraphCommands(program, io, repoPath);
 
   return program;
 }

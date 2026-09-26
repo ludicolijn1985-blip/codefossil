@@ -1,11 +1,8 @@
 {
-  "name": "@codefossil/cli",
+  "name": "@codefossil/query",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "fossil": "./dist/bin.js"
-  },
   "exports": {
     ".": {
       "@codefossil/source": "./src/index.ts",
@@ -23,12 +20,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@codefossil/core": "workspace:*",
     "@codefossil/db": "workspace:*",
-    "@codefossil/git": "workspace:*",
-    "commander": "^15.0.0",
-    "zod": "^4.6.5",
-    "@codefossil/providers": "workspace:*",
-    "@codefossil/query": "workspace:*"
+    "@codefossil/shared": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@codefossil/core": "workspace:*",
+    "@codefossil/git": "workspace:*"
   }
 }

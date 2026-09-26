@@ -67,6 +67,7 @@ typechecking run against source without a build step.
 | `@codefossil/graph`     | Manifest parsing and deterministic import resolution (files, workspaces, packages)        |
 | `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing |
 | `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                        |
+| `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export         |
 | `@codefossil/cli`       | The `fossil` command                                                                      |
 
 ### Using the CLI
@@ -81,6 +82,8 @@ node /path/to/codefossil/apps/cli/dist/bin.js symbols src/app.ts   # symbol tree
 node /path/to/codefossil/apps/cli/dist/bin.js deps src/app.ts      # imports and importers
 node /path/to/codefossil/apps/cli/dist/bin.js deps                 # declared dependencies
 node /path/to/codefossil/apps/cli/dist/bin.js connect github       # link issues and PRs (token from env or gh)
+node /path/to/codefossil/apps/cli/dist/bin.js trace calculateVAT     # evidence chains (--route origin|history|impact)
+node /path/to/codefossil/apps/cli/dist/bin.js export graph.json     # the evidence graph as JSON
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.

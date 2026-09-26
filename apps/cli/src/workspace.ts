@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { lstat, mkdir, realpath, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import {
   findRepositoryByPath,
   openDatabase,
@@ -109,6 +109,28 @@ export async function initWorkspace(cwd: string): Promise<Workspace & { created:
   } catch (error) {
     fossil.close();
     throw error;
+  }
+}
+
+/** Convert an absolute path to the forward-slash, root-relative form git and the index use. */
+export function toRepositoryPath(root: string, absolutePath: string): string {
+  const rel = relative(root, absolutePath);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new CliError(`${absolutePath} is not a file inside ${root}.`);
+  }
+  return rel.replaceAll('\\', '/');
+}
+
+/** Run `action` with an open workspace and always close the database afterwards. */
+export async function withWorkspace<W extends Workspace, T>(
+  workspace: Promise<W>,
+  action: (ws: W) => Promise<T> | T,
+): Promise<T> {
+  const ws = await workspace;
+  try {
+    return await action(ws);
+  } finally {
+    ws.fossil.close();
   }
 }
 

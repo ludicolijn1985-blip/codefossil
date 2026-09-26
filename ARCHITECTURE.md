@@ -59,6 +59,13 @@ vat.test.ts
 
 A natural-language answer must be generated from these records, not invented independently.
 
+### Chains
+
+A chain holds only if every link holds: its confidence is the product of the edge confidences,
+and its evidence level is that of its weakest edge (one DERIVED edge makes the chain DERIVED).
+Traversals are bounded in depth, fan-out and number of paths; whatever a bound cuts off is
+reported with the result, so a partial answer is never presented as complete.
+
 ## Core algorithms
 
 ### Change hotspot

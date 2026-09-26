@@ -57,7 +57,28 @@ function assertReferencesExist(db: FossilDb, value: RelationInput): void {
   }
 }
 
+const neighbourQuery = (db: FossilDb, side: 'source' | 'target') => {
+  const [typeColumn, idColumn] =
+    side === 'source'
+      ? [relations.sourceType, relations.sourceId]
+      : [relations.targetType, relations.targetId];
+  return db
+    .select()
+    .from(relations)
+    .where(
+      and(
+        eq(relations.repositoryId, sql.placeholder('repositoryId')),
+        eq(typeColumn, sql.placeholder('type')),
+        eq(idColumn, sql.placeholder('id')),
+      ),
+    )
+    .orderBy(relations.id)
+    .prepare();
+};
+
 const statements = preparedFor((db) => ({
+  bySource: neighbourQuery(db, 'source'),
+  byTarget: neighbourQuery(db, 'target'),
   upsert: db
     .insert(relations)
     .values({
@@ -96,17 +117,7 @@ export function outgoingRelations(
   repositoryId: number,
   source: EntityRef,
 ): RelationRow[] {
-  return db
-    .select()
-    .from(relations)
-    .where(
-      and(
-        eq(relations.repositoryId, repositoryId),
-        eq(relations.sourceType, source.type),
-        eq(relations.sourceId, source.id),
-      ),
-    )
-    .all();
+  return statements(db).bySource.all({ repositoryId, type: source.type, id: source.id });
 }
 
 /** All relations pointing at an entity. */
@@ -115,15 +126,10 @@ export function incomingRelations(
   repositoryId: number,
   target: EntityRef,
 ): RelationRow[] {
-  return db
-    .select()
-    .from(relations)
-    .where(
-      and(
-        eq(relations.repositoryId, repositoryId),
-        eq(relations.targetType, target.type),
-        eq(relations.targetId, target.id),
-      ),
-    )
-    .all();
+  return statements(db).byTarget.all({ repositoryId, type: target.type, id: target.id });
+}
+
+/** Every relation of a repository, for exporting the whole graph. */
+export function allRelations(db: FossilDb, repositoryId: number): RelationRow[] {
+  return db.select().from(relations).where(eq(relations.repositoryId, repositoryId)).all();
 }

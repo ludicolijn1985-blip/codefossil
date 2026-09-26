@@ -10,6 +10,7 @@ import {
   type SampleHistory,
 } from '@codefossil/git/testing';
 import { startFakeGitHub, type FakeGitHub } from '@codefossil/providers/testing';
+import { graphDocumentSchema } from '@codefossil/query';
 import type { CliIO } from './io.js';
 import { runCli } from './run.js';
 
@@ -413,6 +414,72 @@ describe('fossil connect github and GitHub sync', () => {
     const bad = await fossil(root(), 'index', '--github-max-requests', 'lots');
     expect(bad.code).toBe(1);
     expect(bad.stderr).toContain('--github-max-requests must be a positive whole number');
+  });
+});
+
+describe('fossil trace and export', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+    await sample.repo.write('src/tax/helpers.ts', 'export function calculateVAT() {}\n');
+    await sample.repo.commit('Add a second calculateVAT');
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  it('traces the origin of a symbol with provenance and evidence', async () => {
+    const result = await fossil(root(), 'trace', 'src/tax/vat.ts:calculateVAT');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toContain('Origin of function calculateVAT (src/tax/vat.ts:1)');
+    expect(result.stdout).toMatch(
+      /→ introduced by [0-9a-f]{7} Add VAT calculation +\[DERIVED 1\.00 · symbol-indexer@0\.1\.0 first-indexed-version\]/,
+    );
+    expect(result.stdout).toMatch(/evidence: src\/payment\/vat\.ts@[0-9a-f]{40}#L1-L1/);
+  });
+
+  it('asks for a more specific target when a name is ambiguous', async () => {
+    const result = await fossil(root(), 'trace', 'calculateVAT');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('"calculateVAT" matches 2 entities');
+    expect(result.stderr).toContain('function calculateVAT (src/tax/helpers.ts:1)');
+  });
+
+  it('accepts paths relative to the current directory and other routes', async () => {
+    const history = await fossil(
+      join(root(), 'src', 'tax'),
+      'trace',
+      'vat.ts',
+      '--route',
+      'history',
+    );
+    expect(history.stdout).toContain('History of src/tax/vat.ts');
+    expect(history.stdout).toContain('modified by');
+
+    const bad = await fossil(root(), 'trace', 'src/tax/vat.ts', '--route', 'sideways');
+    expect(bad.code).toBe(1);
+    expect(bad.stderr).toContain('--route must be one of origin, history, impact');
+
+    const missing = await fossil(root(), 'trace', 'noSuchThing');
+    expect(missing.stderr).toContain('Nothing in the index matches "noSuchThing"');
+  });
+
+  it('exports a valid graph document to a file or stdout', async () => {
+    const written = await fossil(root(), 'export', 'graph.json');
+    expect(written.stdout).toMatch(/^Exported \d+ nodes, \d+ edges and \d+ evidence records to /);
+    const document: unknown = JSON.parse(readFileSync(join(root(), 'graph.json'), 'utf8'));
+    expect(graphDocumentSchema.safeParse(document).success).toBe(true);
+
+    const piped = await fossil(root(), 'export', '-', '--root', 'src/tax/vat.ts', '--depth', '1');
+    const scoped = graphDocumentSchema.parse(JSON.parse(piped.stdout));
+    expect(scoped.scope).toMatchObject({ depth: 1 });
+    expect(scoped.nodes.some((n) => n.label === 'src/tax/vat.ts')).toBe(true);
   });
 });
 
