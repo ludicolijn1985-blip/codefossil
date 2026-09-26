@@ -4,6 +4,7 @@ export * from './entity-records.js';
 export * from './evidence.js';
 export * from './graph.js';
 export * from './history.js';
+export * from './investigations.js';
 export * from './providers.js';
 export * from './relations.js';
 export * from './repositories.js';

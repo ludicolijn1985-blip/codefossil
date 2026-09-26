@@ -84,11 +84,18 @@ node /path/to/codefossil/apps/cli/dist/bin.js deps                 # declared de
 node /path/to/codefossil/apps/cli/dist/bin.js connect github       # link issues and PRs (token from env or gh)
 node /path/to/codefossil/apps/cli/dist/bin.js trace calculateVAT     # evidence chains (--route origin|history|impact)
 node /path/to/codefossil/apps/cli/dist/bin.js export graph.json     # the evidence graph as JSON
+node /path/to/codefossil/apps/cli/dist/bin.js why calculateVAT       # where it comes from, with evidence
+node /path/to/codefossil/apps/cli/dist/bin.js impact src/tax/vat.ts # what depends on it
+node /path/to/codefossil/apps/cli/dist/bin.js timeline src/tax/vat.ts
+node /path/to/codefossil/apps/cli/dist/bin.js query "what depends on calculateVAT?"
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
 
 ### Known limitations
+
+- `impact` is file-level: call-level edges are not indexed, so a file that imports the defining
+  file counts as a dependent even if it never calls the symbol.
 
 - GitHub links from closing keywords (`Fixes #12`) are DERIVED with confidence 0.9: GitHub closes
   the issue only when the change reaches the default branch, which is not verified.

@@ -28,6 +28,7 @@ export type EntityRecord =
       readonly id: number;
       readonly sha: string;
       readonly subject: string;
+      readonly body: string;
       readonly authorName: string;
       readonly committedAt: string;
     }
@@ -94,6 +95,7 @@ const LOADERS: Record<EntityType, Loader> = {
         id: commits.id,
         sha: commits.sha,
         subject: commits.subject,
+        body: commits.body,
         authorName: commits.authorName,
         committedAt: commits.committedAt,
       })

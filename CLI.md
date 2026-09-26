@@ -1,6 +1,7 @@
 # CLI
 
-Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`, `trace <target>`, `export <file>`. All commands accept
+Implemented: `init`, `index`, `status`, `symbols <path>`, `deps [path]`, `connect github`, `trace <target>`, `export <file>`, `why`, `impact`, `timeline`, `query`,
+`investigate`. All commands accept
 `--repo <path>` and `--json`. The rest of this file is the target surface.
 
 fossil init
@@ -26,13 +27,18 @@ fossil deps
 List declared dependencies per manifest and how many files import each.
 
 fossil timeline src/payment/vat.ts
-Show file evolution.
+Show every change to a file, following renames back, with the symbols each commit changed and
+the pull requests and issues behind it.
 
-fossil why calculateVAT
-Investigate symbol origin and intent.
+fossil why calculateVAT [--json] [--no-save]
+Explain where a symbol, file, commit, issue or dependency comes from. The answer is a list of
+statements, each with its evidence level, confidence and cited evidence; its overall confidence
+is that of its weakest statement. Missing evidence is stated, not filled in. `--json` returns the
+API.md investigation shape.
 
-fossil impact calculateVAT
-Show direct/transitive consumers.
+fossil impact calculateVAT [--depth n]
+Show direct and transitive dependents with distances, routes and which are tests (file-level:
+dependents import the file that defines a symbol).
 
 fossil hotspots
 Show historical change hotspots.
@@ -40,11 +46,13 @@ Show historical change hotspots.
 fossil dead-intent
 Show compatibility/workaround candidates.
 
-fossil investigate
-Interactive terminal investigation.
+fossil investigate [--list] [--show <id>]
+Interactive investigation (why/impact/timeline/questions), also scriptable through standard
+input. `why`, `impact` and `query` answers are saved and can be shown again later.
 
 fossil query "Why does this module exist?"
-Natural language query.
+Answer a recognized question (why …, what depends on …, history of …) deterministically;
+open-ended questions are declined until the optional AI layer is configured.
 
 fossil connect github [owner/name] [--api-url URL] [--no-verify]
 Link the repository to GitHub (defaults to the origin remote). Access is verified with the token

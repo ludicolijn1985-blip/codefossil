@@ -483,6 +483,123 @@ describe('fossil trace and export', () => {
   });
 });
 
+describe('fossil why, impact, timeline, query and investigate', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  async function session(lines: string[]): Promise<Captured> {
+    let stdout = '';
+    let stderr = '';
+    const code = await runCli(['investigate'], {
+      cwd: root(),
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: (text) => {
+        stderr += text;
+      },
+      resolveGitHubToken: noToken,
+      // eslint-disable-next-line @typescript-eslint/require-await
+      readLines: async function* () {
+        yield* lines;
+      },
+    });
+    return { code, stdout, stderr };
+  }
+
+  it('explains why, with statements, evidence and a saved investigation', async () => {
+    const result = await fossil(root(), 'why', 'calculateVAT');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toContain('Why does function calculateVAT (src/tax/vat.ts:1) exist?');
+    expect(result.stdout).toMatch(/It was introduced in commit [0-9a-f]{7} "Add VAT calculation"/);
+    expect(result.stdout).toContain('Confidence 1.00 · DERIVED');
+    expect(result.stdout).toMatch(/Evidence\n {2}\[\d+\] ast_node/);
+    expect(result.stdout).toContain('Saved as investigation #1');
+  });
+
+  it('answers in the API.md JSON shape', async () => {
+    const result = await fossil(root(), 'why', 'src/tax/vat.ts', '--json', '--no-save');
+    const answer = JSON.parse(result.stdout) as Record<string, unknown>;
+    expect(answer).toMatchObject({
+      classification: 'FACT',
+      confidence: 1,
+      investigationId: null,
+      related: [],
+    });
+    expect(typeof answer.answer).toBe('string');
+    expect(answer.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'commit', reason: 'creating commit' }),
+      ]),
+    );
+  });
+
+  it('shows impact and a timeline across a rename', async () => {
+    const impact = await fossil(root(), 'impact', 'src/tax/vat.ts', '--no-save');
+    expect(impact.stdout).toContain('Nothing in the index depends on src/tax/vat.ts.');
+
+    const timeline = await fossil(root(), 'timeline', 'src/tax/vat.ts');
+    expect(timeline.stdout).toContain(
+      'Timeline of src/tax/vat.ts (formerly src/payment/vat.ts) — 3 changes',
+    );
+    expect(timeline.stdout).toMatch(/renamed +src\/payment\/vat\.ts → src\/tax\/vat\.ts/);
+    expect(timeline.stdout).toContain('symbols: calculateVAT');
+
+    const notAFile = await fossil(root(), 'timeline', 'calculateVAT');
+    expect(notAFile.stderr).toContain('A timeline is built for a file');
+  });
+
+  it('answers recognized questions and says which questions it can answer', async () => {
+    const why = await fossil(root(), 'query', 'Why does calculateVAT exist?');
+    expect(why.stdout).toContain('It was introduced in commit');
+    const history = await fossil(root(), 'query', 'what changed in src/tax/vat.ts?');
+    expect(history.stdout).toContain('Timeline of src/tax/vat.ts');
+
+    const open = await fossil(root(), 'query', 'Summarize the architecture');
+    expect(open.code).toBe(1);
+    expect(open.stderr).toContain('Open-ended questions need the optional AI layer');
+  });
+
+  it('asks again rather than answering about a vaguer word when the subject is ambiguous', async () => {
+    await sample?.repo.write('src/tax/helpers.ts', 'export function calculateVAT() {}\n');
+    await sample?.repo.commit('Second calculateVAT');
+    await fossil(root(), 'index');
+
+    const result = await fossil(root(), 'query', 'Why does calculateVAT use README.md?');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('"calculateVAT" matches 2 entities');
+  });
+
+  it('runs an investigation session from input lines and keeps going after errors', async () => {
+    const result = await session([
+      'why calculateVAT',
+      'what depends on nothingHere?',
+      'list',
+      'exit',
+      'why this is never read',
+    ]);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('It was introduced in commit');
+    expect(result.stderr).toContain('The question names nothing found in the index');
+    expect(result.stdout).toMatch(/#1 +\d{4}-\d{2}-\d{2} [\d:]+ +why +1\.00 DERIVED +Why does/);
+
+    const shown = await fossil(root(), 'investigate', '--show', '1');
+    expect(shown.stdout).toMatch(/^Investigation #1 from .*later history may change the answer/);
+    expect(shown.stdout).toContain('It was introduced in commit');
+  });
+});
+
 describe('fossil CLI outside a repository', () => {
   let plain: string;
 

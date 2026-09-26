@@ -17,6 +17,7 @@ import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
+import { registerInvestigationCommands } from './investigate-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
 import {
@@ -264,6 +265,7 @@ export function createProgram(io: CliIO): Command {
     });
 
   registerGraphCommands(program, io, repoPath);
+  registerInvestigationCommands(program, io, repoPath);
 
   return program;
 }

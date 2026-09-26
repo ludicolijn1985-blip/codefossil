@@ -133,6 +133,7 @@ export function findFileByPath(
 }
 
 export interface FileHistoryEntry {
+  readonly commitId: number;
   readonly sha: string;
   readonly committedAt: string;
   readonly authorName: string;
@@ -147,6 +148,7 @@ export interface FileHistoryEntry {
 export function fileHistory(db: FossilDb, fileId: number): FileHistoryEntry[] {
   return db
     .select({
+      commitId: commits.id,
       sha: commits.sha,
       committedAt: commits.committedAt,
       authorName: commits.authorName,

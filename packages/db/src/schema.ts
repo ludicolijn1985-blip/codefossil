@@ -404,13 +404,22 @@ export const investigations = sqliteTable(
       .notNull()
       .references(() => repositories.id, { onDelete: 'cascade' }),
     query: text('query').notNull(),
+    /** Which investigation answered the query. */
+    kind: text('kind', { enum: ['why', 'impact'] }),
+    /** The entity investigated, as `type:id`. */
+    targetKey: text('target_key'),
     answer: text('answer').notNull(),
     confidence: real('confidence').notNull(),
     classification: text('classification', { enum: EVIDENCE_LEVELS }).notNull(),
     evidenceIdsJson: text('evidence_ids_json', { mode: 'json' }).$type<number[]>().notNull(),
+    /** The full structured result, so a past investigation can be shown again as it was. */
+    resultJson: text('result_json', { mode: 'json' }),
+    /** HEAD when the investigation ran; later history may change the answer. */
+    headSha: text('head_sha'),
     createdAt: createdAt(),
   },
   (t) => [
+    index('investigations_repository_idx').on(t.repositoryId, t.createdAt),
     check('investigations_confidence_range', sql`${t.confidence} >= 0 AND ${t.confidence} <= 1`),
     check('investigations_classification_valid', sql`${t.classification} IN ${evidenceLevelList}`),
   ],
