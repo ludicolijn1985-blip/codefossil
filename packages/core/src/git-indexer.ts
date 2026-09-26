@@ -39,6 +39,8 @@ export interface IndexOptions {
 export interface IndexResult {
   readonly repositoryId: number;
   readonly root: string;
+  /** HEAD at the time of indexing, or null for a repository without commits. */
+  readonly headSha: string | null;
   readonly commitsIndexed: number;
   readonly commitsSkipped: number;
   readonly fileChanges: number;
@@ -115,7 +117,7 @@ export async function indexRepository(
   }
 
   markRepositoryIndexed(db, repository.id, now());
-  return { repositoryId: repository.id, root: git.root, ...totals };
+  return { repositoryId: repository.id, root: git.root, headSha: git.headSha, ...totals };
 }
 
 function writeCommit(

@@ -1,9 +1,9 @@
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
-import { indexRepository } from '@codefossil/core';
-import { getIndexStatus } from '@codefossil/db';
-import { formatStatus, plural } from './format.js';
+import { runIndex } from '@codefossil/core';
+import { findFileByPath, getIndexStatus, listFileSymbols } from '@codefossil/db';
+import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
 import { initWorkspace, openWorkspace, type Workspace } from './workspace.js';
@@ -16,6 +16,15 @@ function parseSince(value: string): Date {
     throw new CliError(`--since must be an ISO date such as 2025-01-01, got "${value}".`);
   }
   return new Date(result.data);
+}
+
+/** Convert an absolute path to the forward-slash, root-relative form git and the index use. */
+function toRepositoryPath(root: string, absolutePath: string): string {
+  const rel = relative(root, absolutePath);
+  if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new CliError(`${absolutePath} is not a file inside ${root}.`);
+  }
+  return rel.replaceAll('\\', '/');
 }
 
 interface GlobalOptions {
@@ -94,19 +103,42 @@ export function createProgram(io: CliIO): Command {
       const since = options.since === undefined ? undefined : parseSince(options.since);
       await withWorkspace(openWorkspace(repoPath()), async (ws) => {
         const started = performance.now();
-        const result = await indexRepository(ws.fossil.db, ws.root, since ? { since } : {});
+        const result = await runIndex(ws.fossil.db, ws.root, since ? { since } : {});
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         if (options.json) {
           writeJson(io, result);
           return;
         }
-        io.stdout(
-          `Indexed ${plural(result.commitsIndexed, 'new commit')} ` +
-            `(${result.commitsSkipped} already indexed), ` +
-            `${plural(result.fileChanges, 'file change')} and ` +
-            `${plural(result.relations, 'relation')} in ${seconds}s.
-`,
-        );
+        io.stdout(formatIndexResult(result, seconds));
+      });
+    });
+
+  program
+    .command('symbols')
+    .description('Show the current symbols of a file and where each one came from.')
+    .argument('<path>', 'file path, relative to the current directory')
+    .addOption(new Option('--json', 'print the symbols as JSON'))
+    .action(async (path: string, options: JsonOption) => {
+      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+        const relativePath = toRepositoryPath(ws.root, resolve(io.cwd, path));
+        const file = findFileByPath(ws.fossil.db, ws.repositoryId, relativePath);
+        if (!file) {
+          throw new CliError(
+            `No indexed history for ${relativePath}. CODEFOSSIL only knows committed files; ` +
+              'commit it and run `fossil index`.',
+          );
+        }
+        const symbols = listFileSymbols(ws.fossil.db, file.id);
+        if (options.json) {
+          writeJson(io, {
+            path: file.path,
+            language: file.language,
+            deleted: file.deletedAt !== null,
+            symbols,
+          });
+          return;
+        }
+        io.stdout(formatSymbols(file.path, file.deletedAt, symbols));
       });
     });
 

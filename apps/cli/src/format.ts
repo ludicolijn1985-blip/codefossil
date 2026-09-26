@@ -1,4 +1,5 @@
-import type { IndexStatus } from '@codefossil/db';
+import type { RunIndexResult } from '@codefossil/core';
+import type { FileSymbol, IndexStatus } from '@codefossil/db';
 
 const SHORT_SHA_LENGTH = 7;
 
@@ -35,6 +36,10 @@ export function formatStatus(status: IndexStatus): string {
     ['Commits', String(counts.commits)],
     ['Files', `${counts.files} (${counts.currentFiles} current)`],
     ['File changes', String(counts.fileChanges)],
+    [
+      'Symbols',
+      `${counts.symbols} (${counts.currentSymbols} current, ${counts.symbolVersions} versions)`,
+    ],
     ['Evidence', String(counts.evidence)],
     [
       'Relations',
@@ -42,4 +47,51 @@ export function formatStatus(status: IndexStatus): string {
     ],
   ]);
   return `${header}\n\n${body}\n`;
+}
+
+export function formatIndexResult(result: RunIndexResult, seconds: string): string {
+  const summary =
+    `Indexed ${plural(result.commitsIndexed, 'new commit')} ` +
+    `(${result.commitsSkipped} already indexed) and ` +
+    `${plural(result.fileChanges, 'file change')}; ` +
+    `parsed ${plural(result.symbols.versionsParsed, 'file version')} into ` +
+    `${plural(result.symbols.symbolVersions, 'symbol version')} in ${seconds}s.\n`;
+  const failures = result.symbols.parseFailures;
+  return failures === 0
+    ? summary
+    : `${summary}Warning: ${plural(failures, 'file version')} could not be parsed; their symbols are missing.\n`;
+}
+
+/** Indent nested symbols (methods under their class) by their qualification depth. */
+function symbolLabel(symbol: FileSymbol): string {
+  return `${'  '.repeat(symbol.qualifiedName.split('.').length - 1)}${symbol.name}`;
+}
+
+function symbolOrigin(symbol: FileSymbol): string {
+  const origin = symbol.introducedBy;
+  if (!origin) return 'origin not established by indexed history';
+  return `introduced ${origin.sha.slice(0, SHORT_SHA_LENGTH)} ${origin.committedAt.slice(0, 10)} "${origin.subject}"`;
+}
+
+export function formatSymbols(
+  path: string,
+  deletedAt: string | null,
+  symbols: readonly FileSymbol[],
+): string {
+  const deleted = deletedAt ? ` (deleted ${deletedAt})` : '';
+  const header = `${path} — ${plural(symbols.length, 'symbol')}${deleted}`;
+  if (symbols.length === 0) return `${header}\n`;
+
+  const kindWidth = Math.max(...symbols.map((s) => s.kind.length));
+  const nameWidth = Math.max(...symbols.map((s) => symbolLabel(s).length));
+  const lines = symbols.map((symbol) =>
+    [
+      `  ${symbol.kind.padEnd(kindWidth)}`,
+      symbolLabel(symbol).padEnd(nameWidth),
+      `L${symbol.startLine}-${symbol.endLine}`.padEnd(9),
+      plural(symbol.versions, 'version').padEnd(10),
+      symbolOrigin(symbol),
+    ].join('  '),
+  );
+  return `${header}\n\n${lines.join('\n')}\n`;
 }

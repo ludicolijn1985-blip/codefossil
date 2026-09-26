@@ -1,7 +1,7 @@
 # CLI
 
-Implemented: `init`, `index`, `status`. All commands accept `--repo <path>`;
-`init`, `index` and `status` accept `--json`. The rest of this file is the target surface.
+Implemented: `init`, `index`, `status`, `symbols <path>`. All commands accept `--repo <path>`
+and `--json`. The rest of this file is the target surface.
 
 fossil init
 Initialize `.codefossil/`.
@@ -14,6 +14,9 @@ Incremental historical indexing.
 
 fossil status
 Show index health and counts.
+
+fossil symbols src/payment/vat.ts
+Show a file's current symbols, their versions and the commit that introduced each one.
 
 fossil timeline src/payment/vat.ts
 Show file evolution.

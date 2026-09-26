@@ -65,6 +65,10 @@ describe('indexRepository', () => {
       currentFiles: 2,
       fileChanges: 6,
       evidence: 6,
+      // The git indexer alone parses no symbols.
+      symbols: 0,
+      currentSymbols: 0,
+      symbolVersions: 0,
       relations: { FACT: 12, DERIVED: 0, INFERRED: 0 },
     });
     expect(status?.repository).toMatchObject({

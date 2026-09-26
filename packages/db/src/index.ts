@@ -5,4 +5,5 @@ export * from './history.js';
 export * from './relations.js';
 export * from './repositories.js';
 export * from './status.js';
+export * from './symbols.js';
 export * as schema from './schema.js';

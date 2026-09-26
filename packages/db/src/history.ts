@@ -270,3 +270,7 @@ const statements = preparedFor((db) => ({
     .returning()
     .prepare(),
 }));
+
+export function findFileById(db: FossilDb, fileId: number): FileRow | undefined {
+  return db.select().from(files).where(eq(files.id, fileId)).get();
+}

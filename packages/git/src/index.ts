@@ -1,4 +1,5 @@
 export { GitError, runGit, runGitOptional, streamGit } from './exec.js';
+export * from './blobs.js';
 export * from './log.js';
 export {
   GitParseError,

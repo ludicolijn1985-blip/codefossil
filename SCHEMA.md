@@ -57,18 +57,21 @@ file_changes
 - additions (null for binary files — unknown, not zero)
 - deletions (null for binary files)
 - patch_hash
+- symbols_indexed_at (null until symbols were extracted; stays null for unsupported languages)
 
 symbols
 
 - id
 - file_id
-- stable_key
+- stable_key (`kind:Qualified.name`, `#n` suffix for duplicates such as overloads)
 - name
+- qualified_name
 - kind
 - signature
 - start_line
 - end_line
-- current
+- content_hash (SHA-256 of the latest indexed version)
+- current (exists at HEAD; reconciled after each index run)
 
 symbol_versions
 

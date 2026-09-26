@@ -14,6 +14,7 @@ import {
   EVIDENCE_KINDS,
   EVIDENCE_LEVELS,
   RELATION_TYPES,
+  SYMBOL_KINDS,
   type Provenance,
 } from '@codefossil/shared';
 
@@ -105,6 +106,8 @@ export const fileChanges = sqliteTable(
     additions: integer('additions'),
     deletions: integer('deletions'),
     patchHash: text('patch_hash'),
+    /** When symbols were extracted from this change; null means not yet (or unsupported language). */
+    symbolsIndexedAt: text('symbols_indexed_at'),
   },
   (t) => [
     uniqueIndex('file_changes_file_commit_idx').on(t.fileId, t.commitId),
@@ -121,15 +124,21 @@ export const symbols = sqliteTable(
       .references(() => files.id, { onDelete: 'cascade' }),
     stableKey: text('stable_key').notNull(),
     name: text('name').notNull(),
-    kind: text('kind').notNull(),
+    /** Dotted path of enclosing containers plus the name, e.g. `Cart.total`. */
+    qualifiedName: text('qualified_name').notNull().default(''),
+    kind: text('kind', { enum: SYMBOL_KINDS }).notNull(),
     signature: text('signature'),
     startLine: integer('start_line').notNull(),
     endLine: integer('end_line').notNull(),
+    /** Hash of the latest indexed version, used to detect changes. */
+    contentHash: text('content_hash'),
+    /** Whether the symbol exists at HEAD (reconciled after each index run). */
     current: integer('current', { mode: 'boolean' }).notNull().default(true),
   },
   (t) => [
     uniqueIndex('symbols_file_stable_key_idx').on(t.fileId, t.stableKey),
     index('symbols_name_idx').on(t.name),
+    index('symbols_qualified_name_idx').on(t.qualifiedName),
   ],
 );
 

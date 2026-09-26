@@ -1,7 +1,16 @@
 import { count, desc, eq, isNull, and } from 'drizzle-orm';
 import { EVIDENCE_LEVELS, type EvidenceLevel } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
-import { commits, evidence, fileChanges, files, relations, repositories } from './schema.js';
+import {
+  commits,
+  evidence,
+  fileChanges,
+  files,
+  relations,
+  repositories,
+  symbols,
+  symbolVersions,
+} from './schema.js';
 
 export interface IndexStatus {
   readonly repository: {
@@ -18,6 +27,9 @@ export interface IndexStatus {
     readonly currentFiles: number;
     readonly fileChanges: number;
     readonly evidence: number;
+    readonly symbols: number;
+    readonly currentSymbols: number;
+    readonly symbolVersions: number;
     readonly relations: Readonly<Record<EvidenceLevel, number>>;
   };
   readonly latestCommit: { readonly sha: string; readonly committedAt: string } | null;
@@ -95,6 +107,31 @@ export function getIndexStatus(db: FossilDb, repositoryId: number): IndexStatus 
           .select({ value: count() })
           .from(evidence)
           .where(eq(evidence.repositoryId, repositoryId))
+          .all(),
+      ),
+      symbols: countOf(
+        db
+          .select({ value: count() })
+          .from(symbols)
+          .innerJoin(files, eq(symbols.fileId, files.id))
+          .where(inRepo)
+          .all(),
+      ),
+      currentSymbols: countOf(
+        db
+          .select({ value: count() })
+          .from(symbols)
+          .innerJoin(files, eq(symbols.fileId, files.id))
+          .where(and(inRepo, eq(symbols.current, true)))
+          .all(),
+      ),
+      symbolVersions: countOf(
+        db
+          .select({ value: count() })
+          .from(symbolVersions)
+          .innerJoin(symbols, eq(symbolVersions.symbolId, symbols.id))
+          .innerJoin(files, eq(symbols.fileId, files.id))
+          .where(inRepo)
           .all(),
       ),
       relations: relationCounts,

@@ -71,12 +71,14 @@ describe('fossil CLI', () => {
 
     const indexed = await fossil(subdir, 'index');
     expect(indexed).toMatchObject({ code: 0, stderr: '' });
-    expect(indexed.stdout).toMatch(/^Indexed 6 new commits \(0 already indexed\), 6 file changes/);
+    expect(indexed.stdout).toMatch(
+      /^Indexed 6 new commits \(0 already indexed\) and 6 file changes; parsed 3 file versions into 2 symbol versions/,
+    );
 
     const status = await fossil(subdir, 'status');
     expect(status.stdout).toContain('Commits       6');
     expect(status.stdout).toContain('Files         4 (2 current)');
-    expect(status.stdout).toContain('12 FACT · 0 DERIVED · 0 INFERRED');
+    expect(status.stdout).toContain('13 FACT · 3 DERIVED · 0 INFERRED');
   });
 
   it('prints machine-readable JSON for headless use', async () => {
@@ -121,6 +123,44 @@ describe('fossil CLI', () => {
     } finally {
       await rm(elsewhere, { recursive: true, force: true });
     }
+  });
+
+  it('shows the symbol tree of a file with each symbol’s origin', async () => {
+    await fossil(root(), 'init');
+    await fossil(root(), 'index');
+
+    const result = await fossil(join(root(), 'src'), 'symbols', 'tax/vat.ts');
+
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toContain('src/tax/vat.ts — 1 symbol');
+    expect(result.stdout).toMatch(
+      /function {2}calculateVAT {2}L1-2 +2 versions +introduced [0-9a-f]{7} 2026-01-01 "Add VAT calculation"/,
+    );
+  });
+
+  it('prints symbols as JSON and explains unknown paths', async () => {
+    await fossil(root(), 'init');
+    await fossil(root(), 'index');
+
+    const json = JSON.parse(
+      (await fossil(root(), 'symbols', 'src/tax/vat.ts', '--json')).stdout,
+    ) as {
+      path: string;
+      symbols: { stableKey: string; introducedBy: { sha: string } | null }[];
+    };
+    expect(json.path).toBe('src/tax/vat.ts');
+    expect(json.symbols[0]).toMatchObject({
+      stableKey: 'function:calculateVAT',
+      introducedBy: { sha: sample?.shas.addVat },
+    });
+
+    const missing = await fossil(root(), 'symbols', 'nope.ts');
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain('No indexed history for nope.ts');
+
+    const outside = await fossil(root(), 'symbols', '../elsewhere.ts');
+    expect(outside.code).toBe(1);
+    expect(outside.stderr).toContain('is not a file inside');
   });
 
   it('refuses a .codefossil symlink planted by the repository', async () => {

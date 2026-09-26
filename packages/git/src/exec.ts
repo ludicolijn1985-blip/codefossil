@@ -1,9 +1,23 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 
 /** Options applied to every git invocation so output is stable and machine-readable. */
-const BASE_ARGS = ['-c', 'core.quotepath=false', '-c', 'color.ui=false', '--no-pager'];
+export const BASE_ARGS = ['-c', 'core.quotepath=false', '-c', 'color.ui=false', '--no-pager'];
 
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Resolve with the exit code once `child` closes; reject if it fails to spawn.
+ * Callers often fail on their own (e.g. truncated output) before awaiting this,
+ * so a rejection must never go unhandled and crash the process.
+ */
+export function waitForExit(child: ChildProcess): Promise<number | null> {
+  const exited = new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  exited.catch(() => undefined);
+  return exited;
+}
 
 export class GitError extends Error {
   override readonly name = 'GitError';
@@ -70,10 +84,7 @@ export async function* streamGit(cwd: string, args: readonly string[]): AsyncGen
   child.stderr.on('data', (chunk: string) => {
     stderr += chunk;
   });
-  const exited = new Promise<number | null>((resolve, reject) => {
-    child.once('error', reject);
-    child.once('close', resolve);
-  });
+  const exited = waitForExit(child);
 
   try {
     child.stdout.setEncoding('utf8');
