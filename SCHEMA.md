@@ -40,9 +40,12 @@ files
 - repository_id
 - path
 - language
-- first_seen_commit_id
-- last_seen_commit_id
-- deleted_at
+- first_seen_commit_id (earliest _indexed_ commit touching the path, by commit date; with
+  `--since` this can be later than the true first appearance)
+- last_seen_commit_id (latest indexed commit touching the path, by commit date)
+- deleted_at (null when the path exists at HEAD — reconciled with `git ls-tree HEAD` after each
+  index run; otherwise the date of the latest recorded deletion, or the HEAD commit date as an
+  upper bound when the deletion happened in a merge commit)
 
 file_changes
 
@@ -51,8 +54,8 @@ file_changes
 - file_id
 - status (added | modified | deleted | renamed)
 - previous_path
-- additions
-- deletions
+- additions (null for binary files — unknown, not zero)
+- deletions (null for binary files)
 - patch_hash
 
 symbols

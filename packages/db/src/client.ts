@@ -1,10 +1,15 @@
 import { fileURLToPath } from 'node:url';
-import Database from 'better-sqlite3';
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import Database, { type RunResult } from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import * as schema from './schema.js';
 
-export type FossilDb = BetterSQLite3Database<typeof schema>;
+/**
+ * A database handle or an open transaction on one. Accepting both lets data
+ * access functions be composed inside a caller's transaction.
+ */
+export type FossilDb = BaseSQLiteDatabase<'sync', RunResult, typeof schema>;
 
 export interface FossilDatabase {
   readonly db: FossilDb;

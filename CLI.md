@@ -1,5 +1,8 @@
 # CLI
 
+Implemented: `init`, `index`, `status`. All commands accept `--repo <path>`;
+`init`, `index` and `status` accept `--json`. The rest of this file is the target surface.
+
 fossil init
 Initialize `.codefossil/`.
 

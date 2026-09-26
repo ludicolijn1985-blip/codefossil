@@ -1,7 +1,8 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { evidenceKindSchema } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
+import { preparedFor } from './prepared.js';
 import { evidence } from './schema.js';
 
 export type EvidenceRow = typeof evidence.$inferSelect;
@@ -19,17 +20,8 @@ export type RecordEvidenceInput = z.input<typeof recordEvidenceInputSchema>;
 /** Store a piece of raw evidence that relations and investigations can cite. */
 export function recordEvidence(db: FossilDb, input: RecordEvidenceInput): EvidenceRow {
   const value = recordEvidenceInputSchema.parse(input);
-  return db
-    .insert(evidence)
-    .values({
-      repositoryId: value.repositoryId,
-      type: value.type,
-      locator: value.locator,
-      excerpt: value.excerpt,
-      metadataJson: value.metadata,
-    })
-    .returning()
-    .get();
+  const row = statements(db).insert.get(value);
+  return row;
 }
 
 /** Of the given evidence IDs, return those that do not exist in this repository. */
@@ -38,14 +30,30 @@ export function missingEvidenceIds(
   repositoryId: number,
   ids: readonly number[],
 ): number[] {
-  if (ids.length === 0) return [];
-  const found = new Set(
-    db
-      .select({ id: evidence.id })
-      .from(evidence)
-      .where(and(eq(evidence.repositoryId, repositoryId), inArray(evidence.id, [...ids])))
-      .all()
-      .map((row) => row.id),
-  );
-  return [...new Set(ids)].filter((id) => !found.has(id));
+  const { exists } = statements(db);
+  return [...new Set(ids)].filter((id) => exists.get({ id, repositoryId }) === undefined);
 }
+
+const statements = preparedFor((db) => ({
+  insert: db
+    .insert(evidence)
+    .values({
+      repositoryId: sql.placeholder('repositoryId'),
+      type: sql.placeholder('type'),
+      locator: sql.placeholder('locator'),
+      excerpt: sql.placeholder('excerpt'),
+      metadataJson: sql.placeholder('metadata'),
+    })
+    .returning()
+    .prepare(),
+  exists: db
+    .select({ id: evidence.id })
+    .from(evidence)
+    .where(
+      and(
+        eq(evidence.id, sql.placeholder('id')),
+        eq(evidence.repositoryId, sql.placeholder('repositoryId')),
+      ),
+    )
+    .prepare(),
+}));

@@ -1,8 +1,9 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { relationInputSchema, type EntityRef, type RelationInput } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import { entityExists } from './entities.js';
 import { missingEvidenceIds } from './evidence.js';
+import { preparedFor } from './prepared.js';
 import { relations } from './schema.js';
 
 export type RelationRow = typeof relations.$inferSelect;
@@ -22,10 +23,19 @@ export class RelationIntegrityError extends Error {
  */
 export function recordRelation(db: FossilDb, input: unknown): RelationRow {
   const value: RelationInput = relationInputSchema.parse(input);
-  return db.transaction((tx) => {
-    assertReferencesExist(tx, value);
-    return upsertRelation(tx, value);
+  assertReferencesExist(db, value);
+  const row = statements(db).upsert.get({
+    repositoryId: value.repositoryId,
+    sourceType: value.source.type,
+    sourceId: value.source.id,
+    relation: value.relation,
+    targetType: value.target.type,
+    targetId: value.target.id,
+    confidence: value.confidence,
+    evidenceType: value.evidenceType,
+    provenance: value.provenance,
   });
+  return row;
 }
 
 function assertReferencesExist(db: FossilDb, value: RelationInput): void {
@@ -47,21 +57,20 @@ function assertReferencesExist(db: FossilDb, value: RelationInput): void {
   }
 }
 
-function upsertRelation(db: FossilDb, value: RelationInput): RelationRow {
-  const row = {
-    repositoryId: value.repositoryId,
-    sourceType: value.source.type,
-    sourceId: value.source.id,
-    relation: value.relation,
-    targetType: value.target.type,
-    targetId: value.target.id,
-    confidence: value.confidence,
-    evidenceType: value.evidenceType,
-    provenanceJson: value.provenance,
-  };
-  return db
+const statements = preparedFor((db) => ({
+  upsert: db
     .insert(relations)
-    .values(row)
+    .values({
+      repositoryId: sql.placeholder('repositoryId'),
+      sourceType: sql.placeholder('sourceType'),
+      sourceId: sql.placeholder('sourceId'),
+      relation: sql.placeholder('relation'),
+      targetType: sql.placeholder('targetType'),
+      targetId: sql.placeholder('targetId'),
+      confidence: sql.placeholder('confidence'),
+      evidenceType: sql.placeholder('evidenceType'),
+      provenanceJson: sql.placeholder('provenance'),
+    })
     .onConflictDoUpdate({
       target: [
         relations.repositoryId,
@@ -72,14 +81,14 @@ function upsertRelation(db: FossilDb, value: RelationInput): RelationRow {
         relations.targetId,
       ],
       set: {
-        confidence: row.confidence,
-        evidenceType: row.evidenceType,
-        provenanceJson: row.provenanceJson,
+        confidence: sql`excluded.confidence`,
+        evidenceType: sql`excluded.evidence_type`,
+        provenanceJson: sql`excluded.provenance_json`,
       },
     })
     .returning()
-    .get();
-}
+    .prepare(),
+}));
 
 /** All relations leaving an entity. */
 export function outgoingRelations(

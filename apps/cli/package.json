@@ -1,0 +1,32 @@
+{
+  "name": "@codefossil/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fossil": "./dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "@codefossil/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@codefossil/core": "workspace:*",
+    "@codefossil/db": "workspace:*",
+    "@codefossil/git": "workspace:*",
+    "commander": "^15.0.0",
+    "zod": "^4.6.5"
+  }
+}

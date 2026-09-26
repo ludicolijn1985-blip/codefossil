@@ -62,3 +62,26 @@ typechecking run against source without a build step.
 | -------------------- | ------------------------------------------------------------------------------------ |
 | `@codefossil/shared` | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod) |
 | `@codefossil/db`     | SQLite + Drizzle schema, migrations, repository and relation access                  |
+| `@codefossil/git`    | Native git access (argument arrays, never a shell) and a streaming history reader    |
+| `@codefossil/core`   | Git indexer: commits, files and changes as FACT relations, each citing evidence      |
+| `@codefossil/cli`    | The `fossil` command                                                                 |
+
+### Using the CLI
+
+```bash
+pnpm build
+cd /path/to/any/git/repo
+node /path/to/codefossil/apps/cli/dist/bin.js init     # creates .codefossil/ (ignores itself)
+node /path/to/codefossil/apps/cli/dist/bin.js index    # incremental; --since 2025-01-01 to limit
+node /path/to/codefossil/apps/cli/dist/bin.js status   # --json for scripts
+```
+
+Inside this repository, `pnpm fossil <command>` does the same.
+
+### Known limitations
+
+- Only history reachable from HEAD is indexed; other branches and tags are not yet.
+- Rewritten history (rebase, force-push) is not detected: commits that are no longer reachable
+  stay in the index.
+- Merge commits are stored without file changes; a file deleted _by_ a merge gets the merge date
+  as an upper bound for `deleted_at`.

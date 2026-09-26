@@ -101,8 +101,9 @@ export const fileChanges = sqliteTable(
       .references(() => files.id, { onDelete: 'cascade' }),
     status: text('status', { enum: ['added', 'modified', 'deleted', 'renamed'] }).notNull(),
     previousPath: text('previous_path'),
-    additions: integer('additions').notNull().default(0),
-    deletions: integer('deletions').notNull().default(0),
+    /** Null when git cannot count lines (binary files) — unknown, not zero. */
+    additions: integer('additions'),
+    deletions: integer('deletions'),
     patchHash: text('patch_hash'),
   },
   (t) => [

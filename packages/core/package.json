@@ -1,0 +1,30 @@
+{
+  "name": "@codefossil/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "@codefossil/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@codefossil/db": "workspace:*",
+    "@codefossil/git": "workspace:*",
+    "@codefossil/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.45.3"
+  }
+}

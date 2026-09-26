@@ -13,7 +13,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "fossil": "node apps/cli/dist/bin.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
