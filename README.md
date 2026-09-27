@@ -1,105 +1,70 @@
 # CODEFOSSIL
 
-> Your code tells you WHAT. Git history tells you WHEN. CODEFOSSIL tells you WHY.
+**Ask your Git history why code exists. Every answer comes with its evidence.**
 
-CODEFOSSIL is a local-first software archaeology and repository intelligence platform. It reconstructs the relationships between requirements, issues, pull requests, commits, files, symbols, tests, dependencies and incidents.
+[![CI](https://github.com/ludicolijn1985-blip/codefossil/actions/workflows/ci.yml/badge.svg)](https://github.com/ludicolijn1985-blip/codefossil/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/codefossil)](https://www.npmjs.com/package/codefossil)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Node](https://img.shields.io/badge/node-%E2%89%A522.12-brightgreen)
 
-## Core principles
+`git blame` tells you who touched a line last. CODEFOSSIL tells you **where a function came from,
+what changed it, which issue or pull request explains it, what depends on it, and where your
+history keeps breaking**. Each statement is labelled as observed, computed or inferred, with
+confidence and a pointer to the commit, issue or line it rests on.
 
-- Evidence first: every inferred relationship has provenance.
-- Local first: a repository can be analyzed without uploading source code.
-- AI is optional: deterministic indexing and graph construction work without an LLM.
-- Explainable: never present an AI inference as a fact.
-- Git-native: history is a first-class data source.
-- Extensible: providers and analyzers are plugins.
+![codefossil why res.sendFile in the Express repository](docs/images/why-res-sendfile.png)
 
-## MVP
-
-1. Clone/open a Git repository.
-2. Index commits, branches, tags and file history.
-3. Parse TypeScript/JavaScript/Python/Go/Rust.
-4. Build symbol and dependency graph.
-5. Connect GitHub issues and pull requests.
-6. Build a causal evidence graph.
-7. Local web UI with repository overview, timeline, graph and investigation view.
-8. CLI queries:
-   - `fossil init`
-   - `fossil index`
-   - `fossil status`
-   - `fossil investigate`
-   - `fossil why <symbol>`
-   - `fossil impact <symbol-or-file>`
-   - `fossil timeline <path>`
-9. JSON API.
-10. GitHub Action for scheduled re-indexing and pull-request reports (see ACTION.md).
-
-## Non-goals for v1
-
-- Cloud-hosted source-code storage.
-- Autonomous code modifications.
-- Claiming certainty about developer intent.
-- Supporting every programming language.
-
-## Development
-
-Requires Node.js 22.12+ and pnpm 10 (`corepack enable` picks up the pinned version).
+## Try it in 30 seconds
 
 ```bash
-pnpm install
-pnpm test        # Vitest across all packages
-pnpm lint        # ESLint (type-aware)
-pnpm typecheck   # tsc --noEmit
-pnpm build       # compile packages to dist/, build the web UI
-pnpm format      # Prettier
-pnpm --filter @codefossil/web e2e   # Playwright against a fixture repository (after pnpm build)
+cd any-git-repository
+npx codefossil why <function-or-file>
 ```
 
-Workspace packages point their `@codefossil/source` export condition at `src/`, so tests and
-typechecking run against source without a build step.
+The first question indexes the history into `.codefossil/` (it ignores itself; your repository is
+untouched). Express, 6,170 commits over 15 years, takes about 20 seconds. Later questions only
+add new commits. No account, no upload, no AI needed.
 
-### Packages
+## What you can ask
 
-| Package                 | Purpose                                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------------------------ |
-| `@codefossil/shared`    | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod)             |
-| `@codefossil/db`        | SQLite + Drizzle schema, migrations, repository and relation access                              |
-| `@codefossil/git`       | Native git access (argument arrays, never a shell) and a streaming history reader                |
-| `@codefossil/parser`    | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust                   |
-| `@codefossil/graph`     | Manifest parsing and deterministic import resolution (files, workspaces, packages)               |
-| `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing        |
-| `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                               |
-| `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export                |
-| `@codefossil/ai`        | Optional AI layer: evidence-grounded answers and summaries (Ollama or Anthropic), off by default |
-| `@codefossil/analyzers` | Historical hotspots, risk components and dead-intent candidates, computed from the index         |
-| `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                           |
-| `@codefossil/cli`       | The `fossil` command                                                                             |
-| `@codefossil/web`       | Local web UI (Next.js) over the API: overview, investigations, files, graph, dependencies        |
+| Command                                 | Answers                                                                         |
+| --------------------------------------- | ------------------------------------------------------------------------------- |
+| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since |
+| `codefossil impact lib/utils.js`        | Everything that depends on it, directly and transitively, and which are tests   |
+| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it      |
+| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components  |
+| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions) |
+| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                    |
+| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests      |
+| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies            |
 
-### Using the CLI
+Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
+`#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
 
-```bash
-pnpm build
-cd /path/to/any/git/repo
-node /path/to/codefossil/apps/cli/dist/bin.js init     # creates .codefossil/ (ignores itself)
-node /path/to/codefossil/apps/cli/dist/bin.js index    # incremental; --since 2025-01-01 to limit
-node /path/to/codefossil/apps/cli/dist/bin.js status   # --json for scripts
-node /path/to/codefossil/apps/cli/dist/bin.js symbols src/app.ts   # symbol tree with origins
-node /path/to/codefossil/apps/cli/dist/bin.js deps src/app.ts      # imports and importers
-node /path/to/codefossil/apps/cli/dist/bin.js deps                 # declared dependencies
-node /path/to/codefossil/apps/cli/dist/bin.js connect github       # link issues and PRs (token from env or gh)
-node /path/to/codefossil/apps/cli/dist/bin.js trace calculateVAT     # evidence chains (--route origin|history|impact)
-node /path/to/codefossil/apps/cli/dist/bin.js export graph.json     # the evidence graph as JSON
-node /path/to/codefossil/apps/cli/dist/bin.js why calculateVAT       # where it comes from, with evidence
-node /path/to/codefossil/apps/cli/dist/bin.js impact src/tax/vat.ts # what depends on it
-node /path/to/codefossil/apps/cli/dist/bin.js timeline src/tax/vat.ts
-node /path/to/codefossil/apps/cli/dist/bin.js query "what depends on calculateVAT?"
-node /path/to/codefossil/apps/cli/dist/bin.js hotspots --since 2025-01-01   # --order risk
-node /path/to/codefossil/apps/cli/dist/bin.js dead-intent                  # workaround candidates
-```
+## Evidence, not guesses
 
-Inside this repository, `pnpm fossil <command>` does the same.
+Every relationship CODEFOSSIL stores has a provenance: what produced it, how, and which evidence
+supports it. Answers are built from statements that carry their own level:
 
-### In GitHub Actions
+- **FACT**: observed directly (this commit exists, this function is defined on these lines).
+- **DERIVED**: computed deterministically from facts (this commit introduced the function).
+- **INFERRED**: a heuristic reading, never certain (this commit looks like a bug fix).
+
+An answer is never more certain than its weakest statement, and gaps are stated as gaps.
+
+![Where history concentrates in Express](docs/images/hotspots-express.png)
+
+## Why not `git blame`, `git log -S` or an AI assistant?
+
+- **`git blame`** shows the last change to a line. Refactors and moves bury the origin.
+  CODEFOSSIL follows symbols and files across renames back to where they were introduced.
+- **`git log`** gives you commits. CODEFOSSIL links them to the functions they changed, the
+  issues and pull requests that explain them, and the files that depend on the result.
+- **AI assistants** give fluent answers without saying what they rest on. CODEFOSSIL works
+  without AI. Its optional AI layer (Ollama locally or Anthropic) may only answer from the
+  evidence it is shown, every claim must cite it, and claims that cite anything else are dropped.
+
+## Pull requests: know what a change touches
 
 ```yaml
 permissions: { contents: read, issues: read, pull-requests: read }
@@ -112,62 +77,83 @@ jobs:
       - uses: ludicolijn1985-blip/codefossil@main
 ```
 
-Each run indexes new commits into a cached index and writes a report to the job summary: the
-history and dependents of every file the pull request changes, historical hotspots and dead-intent
-candidates. `fossil report [--base <rev>]` produces the same report locally. See ACTION.md.
+Each run adds new commits to a cached index and writes a report to the job summary. It shows every
+changed file's history, fix commits, hotspot and risk scores, and dependents, followed by the
+repository's hotspots and dead-intent candidates. See [ACTION.md](ACTION.md).
 
-### Optional AI layer
-
-Everything above works without AI. To let a model answer open questions from the evidence:
+## GitHub issues and pull requests as evidence
 
 ```bash
-fossil ai configure --provider ollama                      # local; needs `ollama serve`
-fossil ai configure --provider anthropic --allow-cloud     # evidence leaves this machine
-fossil ask "Why did we keep the legacy invoice path?"
-fossil why calculateVAT --summarize
+codefossil connect github   # token from GITHUB_TOKEN, GH_TOKEN or `gh auth login`; never stored
+codefossil index            # syncs issues, pull requests and reviews incrementally
 ```
 
-AI answers are always INFERRED, capped at confidence 0.6, and every claim cites evidence the model
-was shown; claims that cite anything else are dropped. See SECURITY.md for what is sent where.
+Now `why` can say "introduced by PR #412, which resolves issue #398", and hotspots count issues
+labelled as bugs instead of relying on commit wording.
 
-### Using the web UI
+## Web UI
 
-The UI reads everything from `fossil serve`; start both from an indexed repository:
+![Investigating a symbol in the web UI](docs/images/web-investigate.png)
+
+`codefossil serve` starts a local, loopback-only JSON API ([API.md](API.md)). The Next.js UI in
+`apps/web` runs from a checkout of this repository: `pnpm install && pnpm build`, then
+`pnpm --filter @codefossil/web start`.
+
+## Optional AI layer
 
 ```bash
-node /path/to/codefossil/apps/cli/dist/bin.js serve          # API on 127.0.0.1:4000
-pnpm --filter @codefossil/web start                          # UI on http://127.0.0.1:3000
+codefossil ai configure --provider ollama                    # runs on this machine
+codefossil ai configure --provider anthropic --allow-cloud   # evidence leaves this machine
+codefossil ask "Why did we keep the legacy invoice path?"
 ```
 
-Set `FOSSIL_API_URL` when the API listens elsewhere on this machine. The browser never talks to
-the API directly: requests go through the UI server, which forwards only read routes and
-investigations, and only for requests addressed to a loopback host. `/` focuses search;
-`g` then `o`/`i`/`f`/`g`/`d` jumps between sections.
+AI is off by default. Evidence is gathered deterministically first. Source code is withheld
+unless you allow it, and every AI claim is INFERRED and capped at confidence 0.6. See
+[SECURITY.md](SECURITY.md).
 
-### Known limitations
+## Local-first and safe on untrusted repositories
 
-- Defect-related commits are read from bug-labelled resolved issues (needs `connect github`),
-  reverts and fix wording in commit subjects; without GitHub the last two are the only signals,
-  and both are INFERRED. Test reach is import reach, not line coverage.
+- **Local.** Everything runs on your machine: no telemetry, no upload.
+- **No code execution.** Repository content is parsed, never executed; git runs with argument
+  arrays, never a shell.
+- **Tokens.** Tokens are read from the environment at use and never stored.
+- **Loopback API.** The API listens on loopback only, with Host-header and CSRF protection.
 
-- `impact` is file-level: call-level edges are not indexed, so a file that imports the defining
-  file counts as a dependent even if it never calls the symbol.
+## Languages
 
-- GitHub links from closing keywords (`Fixes #12`) are DERIVED with confidence 0.9: GitHub closes
-  the issue only when the change reaches the default branch, which is not verified.
-- Only same-repository references are linked; `other/repo#12` is ignored.
-- A closing keyword in a commit that was later reverted (`This reverts commit …`) only counts as
-  a reference. GitHub lists at most 250 commits per pull request; longer PRs link only those.
+Symbols and imports: **TypeScript, JavaScript (ES modules, CommonJS and prototype style), Python,
+Go and Rust**, parsed with Tree-sitter. History, hotspots and timelines work for any file in any
+language. Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`.
 
-- Only history reachable from HEAD is indexed; other branches and tags are not yet.
-- Rewritten history (rebase, force-push) is not detected: commits that are no longer reachable
-  stay in the index.
-- Symbols are identified by kind and qualified name within a file. Renaming a function looks like
-  one symbol removed and another introduced; moving it to another file likewise.
-- Merge commits are stored without file changes; a file deleted _by_ a merge gets the merge date
-  as an upper bound for `deleted_at`.
-- The dependency graph is a snapshot of HEAD. When imports that no longer hold are removed,
-  their edges go too; dependency history is not tracked yet.
-- Import resolution leaves unresolved (and says why) what it cannot decide from files and
-  manifests: TypeScript `paths` aliases, Python imports whose name differs from the distribution
-  (`yaml` from PyYAML) or that are standard library, and Go `replace` directives.
+More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Documentation
+
+- [CLI.md](CLI.md): every command.
+- [API.md](API.md): the local JSON API.
+- [ARCHITECTURE.md](ARCHITECTURE.md): the evidence model and every algorithm.
+- [SCHEMA.md](SCHEMA.md): the database.
+- [ACTION.md](ACTION.md): the GitHub Action.
+- [SECURITY.md](SECURITY.md): the threat model and guarantees.
+
+## Known limitations
+
+- **File-level impact.** `impact` is file-level: call edges are not indexed yet, so a file that
+  imports the defining file counts as a dependent even if it never calls the symbol.
+- **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
+  subjects (INFERRED). Test reach is import reach, not line coverage.
+- **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.
+- **Wrapped modules.** Functions defined inside a wrapper (`(function () { exports.x = … })()`, UMD)
+  are not symbols yet; module-level definitions are.
+- **Symbol identity.** A symbol is identified by kind and qualified name within a file. A rename
+  or a move to another file looks like one symbol removed and another introduced.
+- **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
+  decide from files and manifests: TypeScript `paths` aliases, Python modules whose import name
+  differs from the distribution, and Go `replace` directives.
+- **GitHub links.** Closing keywords (`Fixes #12`) are DERIVED at confidence 0.9, and only
+  same-repository references are linked.
+
+## License
+
+MIT. The npm package bundles Tree-sitter grammars under their own MIT licenses, listed in its
+`THIRD_PARTY_NOTICES.md`.

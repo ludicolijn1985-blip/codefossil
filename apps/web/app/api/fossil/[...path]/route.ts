@@ -38,7 +38,7 @@ async function forward(request: NextRequest, context: Context): Promise<NextResp
       {
         error: {
           code: 'api_unavailable',
-          message: 'The CODEFOSSIL API is not reachable. Is `fossil serve` running?',
+          message: 'The CODEFOSSIL API is not reachable. Is `codefossil serve` running?',
         },
       },
       { status: 502 },

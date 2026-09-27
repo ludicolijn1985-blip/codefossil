@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AnalysisChange, AnalysisCommit, CommitDiscussion } from '@codefossil/db';
 import { classifyDefects, DEFECT_CONFIDENCE } from './defects.js';
 import { fileActivity } from './file-history.js';
-import { isGeneratedPath } from './hotspots.js';
+import { isCodePath, isGeneratedPath } from './hotspots.js';
 import { importReach } from './reach.js';
 import {
   deadlines,
@@ -14,7 +14,26 @@ import {
 describe('workaroundLanguage', () => {
   it('finds the first workaround wording and the line it is on', () => {
     const match = workaroundLanguage('Handle reduced VAT rate\n\nWorkaround for legacy invoices.');
-    expect(match).toEqual({ phrase: 'Workaround', excerpt: 'Workaround for legacy invoices.' });
+    expect(match).toEqual({
+      phrase: 'Workaround',
+      excerpt: 'Workaround for legacy invoices.',
+      inFirstLine: false,
+    });
+  });
+
+  it('does not count wording that removes a workaround, and knows a subject from a body', () => {
+    expect(workaroundLanguage('remove deprecated express.createServer() method')).toBeNull();
+    expect(workaroundLanguage('Drop the legacy shim\n\nNo longer needed.')).toBeNull();
+    expect(workaroundLanguage('Add fetch shim for Node 14')).toMatchObject({
+      phrase: 'shim',
+      inFirstLine: true,
+    });
+    expect(workaroundLanguage('remove old code\n\nKeep a temporary fallback for IE')).toMatchObject(
+      {
+        phrase: 'temporary',
+        inFirstLine: false,
+      },
+    );
   });
 
   it.each([
@@ -243,4 +262,50 @@ describe('isGeneratedPath', () => {
       expect(isGeneratedPath(path)).toBe(false);
     },
   );
+});
+
+describe('isCodePath', () => {
+  it('ranks source code, not documentation or configuration', () => {
+    expect(
+      ['lib/response.js', 'src/app.ts', 'main.go', 'db/schema.sql', 'styles/app.css'].map(
+        isCodePath,
+      ),
+    ).toEqual([true, true, true, true, true]);
+    expect(
+      [
+        'History.md',
+        'package.json',
+        '.github/workflows/ci.yml',
+        'Cargo.toml',
+        'LICENSE',
+        'logo.png',
+      ].map(isCodePath),
+    ).toEqual([false, false, false, false, false, false]);
+  });
+});
+
+describe('defect wording that is not about code', () => {
+  const commit = (id: number, subject: string): AnalysisCommit => ({
+    id,
+    sha: String(id).padStart(40, 'b'),
+    subject,
+    body: '',
+    committedAt: '2026-01-01',
+  });
+  it('ignores dependency bumps and documentation fixes', () => {
+    const result = classifyDefects(
+      [
+        commit(1, 'fix(deps): qs@^6.14.0 (#6374)'),
+        commit(2, 'deps: bump body-parser to fix CVE-2026-1'),
+        commit(3, 'Fix an incorrect @api jsdoc'),
+        commit(4, 'fix(ci): pin the runner'),
+        commit(6, 'fix(refactor): prefix built-in node module imports'),
+        commit(7, 'documentation language fix'),
+        commit(5, 'fix(res.send): preserve ETag generation'),
+      ],
+      [],
+      new Map(),
+    );
+    expect([...result.keys()]).toEqual([5]);
+  });
 });

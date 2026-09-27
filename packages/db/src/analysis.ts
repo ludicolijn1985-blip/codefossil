@@ -210,6 +210,8 @@ export interface ChangedSymbol {
   readonly startLine: number;
   readonly endLine: number;
   readonly current: boolean;
+  /** Signature of the latest version, e.g. the declaration line. */
+  readonly signature: string | null;
 }
 
 /** Symbols that got a new version in any of the given commits. */
@@ -225,6 +227,7 @@ export function symbolsChangedIn(db: FossilDb, commitIds: readonly number[]): Ch
         startLine: symbols.startLine,
         endLine: symbols.endLine,
         current: symbols.current,
+        signature: symbols.signature,
       })
       .from(symbolVersions)
       .innerJoin(symbols, eq(symbolVersions.symbolId, symbols.id))

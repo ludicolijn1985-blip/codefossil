@@ -99,7 +99,7 @@ export function analyzeImpact(
   const tests = all.filter((d) => d.isTest).length;
   const targetLabel = label(target);
   const caveats = [
-    'Only imports that were resolved at HEAD count; see `fossil deps <file>` for unresolved ones.',
+    'Only imports that were resolved at HEAD count; see `codefossil deps <file>` for unresolved ones.',
   ];
   if (target.type === 'symbol' && !definedIn) {
     caveats.unshift(

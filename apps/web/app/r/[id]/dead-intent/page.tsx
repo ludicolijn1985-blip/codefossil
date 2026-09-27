@@ -103,8 +103,8 @@ export default async function DeadIntent({ params }: { params: Promise<{ id: str
 
       {report.candidates.length === 0 ? (
         <Empty>
-          No candidates: no commit that changed current code uses workaround or compatibility
-          wording.
+          No candidates: no workaround or compatibility wording can be tied to code that is still
+          present and has not been reworked since.
         </Empty>
       ) : (
         <ol className="flex flex-col gap-3" aria-label="Candidates">

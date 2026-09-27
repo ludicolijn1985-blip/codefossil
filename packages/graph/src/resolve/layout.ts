@@ -38,8 +38,9 @@ export function dirOf(path: string): string {
 
 /** Join and normalize; returns null when the result escapes the repository root. */
 export function joinPath(...parts: string[]): string | null {
-  const joined = posix.normalize(parts.filter((p) => p !== '').join('/'));
-  if (joined === '.') return '';
+  // A trailing slash (`../../`) names the same directory as none.
+  const joined = posix.normalize(parts.filter((p) => p !== '').join('/')).replace(/\/+$/, '');
+  if (joined === '.' || joined === '') return '';
   if (joined.startsWith('../') || joined === '..' || posix.isAbsolute(joined)) return null;
   return joined;
 }

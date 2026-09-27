@@ -56,6 +56,34 @@ describe('ECMAScript resolution', () => {
     });
   });
 
+  it('resolves directories like Node: package.json main, then index, with or without a trailing slash', () => {
+    const tree = resolverFor(
+      [
+        'index.js',
+        'lib/express.js',
+        'examples/auth/index.js',
+        'vendor/pkg/lib/main.js',
+        'vendor/pkg/index.js',
+      ],
+      {
+        'package.json': JSON.stringify({ name: 'express' }),
+        'vendor/pkg/package.json': JSON.stringify({ main: 'lib/main.js' }),
+      },
+    );
+    for (const specifier of ['../..', '../../', '../../index', '../../index.js']) {
+      expect(tree('examples/auth/index.js', 'javascript', ref(specifier))).toMatchObject({
+        kind: 'files',
+        paths: ['index.js'],
+      });
+    }
+    expect(tree('index.js', 'javascript', ref('./vendor/pkg'))).toMatchObject({
+      paths: ['vendor/pkg/lib/main.js'],
+    });
+    expect(tree('index.js', 'javascript', ref('./vendor/pkg/'))).toMatchObject({
+      paths: ['vendor/pkg/lib/main.js'],
+    });
+  });
+
   it('follows each importer’s toolchain when source and output files share a stem', () => {
     const both = resolverFor(['lib/shim.ts', 'lib/shim.js', 'lib/app.ts', 'lib/app.js']);
     // tsc maps ./shim.js to the TypeScript source…

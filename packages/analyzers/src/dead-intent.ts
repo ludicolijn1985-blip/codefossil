@@ -12,14 +12,17 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import { formatVersion, RUNTIMES, type Runtime, type Version } from '@codefossil/graph';
+import { grammarForPath } from '@codefossil/parser';
+import { isTestPath } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
 import {
   deadlines,
   isBelowMinimum,
   versionReferences,
   workaroundLanguage,
-  type TextMatch,
+  type WorkaroundMatch,
 } from './text-signals.js';
+import { isCodePath } from './hotspots.js';
 
 export type DeadIntentSignalKind =
   'workaround_language' | 'unsupported_version' | 'deadline_passed' | 'unconfirmed';
@@ -74,6 +77,21 @@ export interface DeadIntentOptions {
 }
 
 export const DEFAULT_DEAD_INTENT_LIMIT = 50;
+/** Files a commit may change for its subject's wording to be attributed to each of them. */
+export const BROAD_COMMIT_FILES = 20;
+/** Files a commit may change for one line of its body to be attributed to each of them. */
+export const FOCUSED_COMMIT_FILES = 3;
+/** Changes after the workaround commit after which the code counts as reworked. */
+export const REWORKED_AFTER = 3;
+
+/** Examples, docs, fixtures and benchmarks illustrate code; they are not where workarounds live. */
+const NOT_PRODUCT_CODE =
+  /(^|\/)(examples?|samples?|demos?|docs?|fixtures?|benchmarks?|__mocks__)\//i;
+
+const IMPORT_BINDING = /^[^=]*=\s*(?:await\s+)?(?:require|import)\s*\(/;
+
+const isTargetPath = (path: string) =>
+  isCodePath(path) && !isTestPath(path) && !NOT_PRODUCT_CODE.test(path);
 export const DEFAULT_STALE_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -117,10 +135,17 @@ export function analyzeDeadIntent(
   const runtimes = declaredRuntimes(db, repositoryId);
   const minimums = lowestMinimums(runtimes);
 
+  const changes = analysisChanges(db, repositoryId);
+  const breadth = new Map<number, number>();
+  for (const change of changes)
+    breadth.set(change.commitId, (breadth.get(change.commitId) ?? 0) + 1);
+
   // Commits whose own words, or whose linked discussion's words, speak of a workaround.
+  // The wording must be attributable to what the commit changed: a subject or
+  // title covers a commit of modest size, a line in the body only a focused one.
   const flagged = new Map<
     number,
-    { commit: AnalysisCommit; sources: Source[]; language: TextMatch & Source }
+    { commit: AnalysisCommit; sources: Source[]; language: WorkaroundMatch & Source }
   >();
   for (const commit of commits) {
     const own = commitEvidence.get(commit.sha);
@@ -134,7 +159,8 @@ export function analyzeDeadIntent(
     ];
     for (const source of sources) {
       const match = workaroundLanguage(source.text);
-      if (match) {
+      const files = breadth.get(commit.id) ?? 0;
+      if (match && files <= (match.inFirstLine ? BROAD_COMMIT_FILES : FOCUSED_COMMIT_FILES)) {
         flagged.set(commit.id, { commit, sources, language: { ...match, ...source } });
         break;
       }
@@ -142,7 +168,6 @@ export function analyzeDeadIntent(
   }
 
   const files = new Map(analysisFiles(db, repositoryId).map((f) => [f.id, f]));
-  const changes = analysisChanges(db, repositoryId);
   const commitDate = new Map(commits.map((c) => [c.id, c.committedAt]));
   const changedSymbols = symbolsChangedIn(db, [...flagged.keys()]);
   const symbolFilesByCommit = groupBy(changedSymbols, (s) => s.commitId);
@@ -164,7 +189,9 @@ export function analyzeDeadIntent(
   };
   for (const symbol of changedSymbols) {
     const file = files.get(symbol.fileId);
-    if (!symbol.current || !file || file.deletedAt !== null) continue;
+    if (!symbol.current || !file || file.deletedAt !== null || !isTargetPath(file.path)) continue;
+    // An import line (`const x = require('y')`) is plumbing, not where a workaround lives.
+    if (IMPORT_BINDING.test(symbol.signature ?? '')) continue;
     addTarget(
       `symbol:${symbol.symbolId}`,
       {
@@ -181,7 +208,9 @@ export function analyzeDeadIntent(
   for (const change of changes) {
     if (!flagged.has(change.commitId) || change.status === 'deleted') continue;
     const file = files.get(change.fileId);
-    if (!file || file.deletedAt !== null) continue;
+    // A file whose language is parsed is a target through its symbols only.
+    if (!file || file.deletedAt !== null || !isTargetPath(file.path) || grammarForPath(file.path))
+      continue;
     const withSymbols = (symbolFilesByCommit.get(change.commitId) ?? []).some(
       (s) => s.fileId === file.id,
     );
@@ -200,7 +229,8 @@ export function analyzeDeadIntent(
     [...targets.values()].flatMap((t) => (t.symbolId === null ? [] : [t.symbolId])),
   );
   const fileCommits = groupBy(changes, (c) => c.fileId);
-  const lastChange = (entry: {
+  /** Dates of every recorded change to the target, oldest first. */
+  const changeDates = (entry: {
     target: DeadIntentCandidate['target'];
     symbolId: number | null;
   }) => {
@@ -210,15 +240,26 @@ export function analyzeDeadIntent(
         : (fileCommits.get(Number(entry.target.key.slice('file:'.length))) ?? []).map(
             (c) => c.commitId,
           );
-    return (
-      ids
-        .map((id) => commitDate.get(id) ?? '')
-        .sort()
-        .at(-1) ?? null
-    );
+    return ids.map((id) => commitDate.get(id) ?? '').sort();
   };
 
-  const candidates = [...targets.values()].map((entry): DeadIntentCandidate => {
+  const candidates = [...targets.values()].flatMap((entry): DeadIntentCandidate[] => {
+    const dates = changeDates(entry);
+    const latestFlagged = [...entry.commitIds]
+      .map((id) => commitDate.get(id) ?? '')
+      .sort()
+      .at(-1);
+    // Code reworked several times since the wording no longer carries it reliably.
+    if (latestFlagged && dates.filter((date) => date > latestFlagged).length >= REWORKED_AFTER) {
+      return [];
+    }
+    return [candidateFor(entry, dates.at(-1) ?? null)];
+  });
+
+  function candidateFor(
+    entry: { target: DeadIntentCandidate['target']; commitIds: Set<number> },
+    last: string | null,
+  ): DeadIntentCandidate {
     const reasons = [...entry.commitIds]
       .flatMap((id) => {
         const found = flagged.get(id);
@@ -235,7 +276,6 @@ export function analyzeDeadIntent(
       });
       signals.push(...versionSignals(sources, minimums), ...deadlineSignals(sources, now));
     }
-    const last = lastChange(entry);
     if (last && now.getTime() - Date.parse(last) >= staleDays * DAY_MS) {
       const days = Math.floor((now.getTime() - Date.parse(last)) / DAY_MS);
       signals.push({
@@ -263,7 +303,7 @@ export function analyzeDeadIntent(
       confidence: Math.round(confidence * 100) / 100,
       evidenceIds: [...new Set(unique.flatMap((s) => s.evidenceIds))],
     };
-  });
+  }
 
   candidates.sort(
     (a, b) =>

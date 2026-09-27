@@ -5,8 +5,8 @@ export function formatAiConfig(config: AiConfig | null): string {
   if (!config) {
     return (
       'The AI layer is off. Every answer comes from the deterministic evidence pipeline.\n' +
-      'Turn it on with `fossil ai configure --provider ollama` (local) or\n' +
-      '`fossil ai configure --provider anthropic --allow-cloud` (evidence leaves this machine).\n'
+      'Turn it on with `codefossil ai configure --provider ollama` (local) or\n' +
+      '`codefossil ai configure --provider anthropic --allow-cloud` (evidence leaves this machine).\n'
     );
   }
   const cloud = isCloud(config);

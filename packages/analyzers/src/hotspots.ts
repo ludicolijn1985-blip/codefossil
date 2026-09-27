@@ -8,7 +8,7 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import { isTestPath } from '@codefossil/query';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { detectLanguage, type EvidenceLevel } from '@codefossil/shared';
 import { classifyDefects } from './defects.js';
 import { fileActivity } from './file-history.js';
 import { importReach, REACH_DEPTH } from './reach.js';
@@ -69,6 +69,8 @@ export interface HotspotOptions {
   readonly includeTests?: boolean;
   /** Include lockfiles, build output and other generated files. */
   readonly includeGenerated?: boolean;
+  /** Include documentation and configuration (Markdown, JSON, YAML, TOML) and unknown file types. */
+  readonly includeNonCode?: boolean;
   readonly orderBy?: HotspotOrder;
 }
 
@@ -100,6 +102,15 @@ const GENERATED_PATH = new RegExp(
 );
 
 export const isGeneratedPath = (path: string): boolean => GENERATED_PATH.test(path);
+
+/** Languages that are documentation or configuration rather than code people maintain. */
+const NON_CODE_LANGUAGES: ReadonlySet<string> = new Set(['markdown', 'json', 'yaml', 'toml']);
+
+/** Whether a path is source code in a recognized language. */
+export function isCodePath(path: string): boolean {
+  const language = detectLanguage(path);
+  return language !== null && !NON_CODE_LANGUAGES.has(language);
+}
 /** Defect commits listed per file; the count is always complete. */
 const DEFECTS_SHOWN = 10;
 
@@ -128,7 +139,8 @@ export function analyzeHotspots(
     (file) =>
       file.commitIds.size > 0 &&
       (options.includeTests || !isTestPath(file.path)) &&
-      (options.includeGenerated || !isGeneratedPath(file.path)),
+      (options.includeGenerated || !isGeneratedPath(file.path)) &&
+      (options.includeNonCode || isCodePath(file.path)),
   );
 
   const reach = importReach(
@@ -247,6 +259,11 @@ function reportNotes(hasDiscussions: boolean, options: HotspotOptions): string[]
     ...(options.includeTests
       ? []
       : ['Test files are left out; include them with the tests option.']),
+    ...(options.includeNonCode
+      ? []
+      : [
+          'Only source code is ranked; include documentation, configuration and other files with the all-files option.',
+        ]),
     ...(options.includeGenerated
       ? []
       : [

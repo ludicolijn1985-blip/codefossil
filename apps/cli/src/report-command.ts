@@ -4,7 +4,8 @@ import { changedPaths, GitError, runGitOptional } from '@codefossil/git';
 import { formatReportMarkdown } from './format-report.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { parsePositiveInteger } from './options.js';
-import { openWorkspace, withWorkspace, type Workspace } from './workspace.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import { withWorkspace, type Workspace } from './workspace.js';
 
 interface ReportOptions {
   readonly base?: string;
@@ -59,7 +60,7 @@ export function registerReportCommand(program: Command, io: CliIO, repoPath: () 
     .addOption(new Option('--json', 'print the report as JSON'))
     .action(async (options: ReportOptions) => {
       const limit = parsePositiveInteger(options.limit, '--limit');
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const changed =
           options.base === undefined ? undefined : await changedSince(ws, options.base);
         const report = buildReport(ws.fossil.db, ws.repositoryId, {

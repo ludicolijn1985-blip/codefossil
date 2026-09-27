@@ -16,8 +16,8 @@ function aiOr409(context: ApiContext): NonNullable<ApiContext['ai']> {
     throw new ApiError(
       409,
       'ai_disabled',
-      'The AI layer is off for this server. Configure it with `fossil ai configure` and restart ' +
-        '`fossil serve` (a cloud provider also needs --allow-network).',
+      'The AI layer is off for this server. Configure it with `codefossil ai configure` and restart ' +
+        '`codefossil serve` (a cloud provider also needs --allow-network).',
     );
   }
   return context.ai;

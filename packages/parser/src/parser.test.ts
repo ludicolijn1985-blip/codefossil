@@ -230,6 +230,33 @@ describe('members defined through values', () => {
   });
 });
 
+describe('functions assigned to properties (CommonJS and prototype style)', () => {
+  it('names them by the object they are assigned to', async () => {
+    const source = [
+      'var res = Object.create(http.ServerResponse.prototype);', // 1
+      'res.send = function send(body) {', // 2
+      '  var local = function () {};', // 3 — inside a function: not a symbol
+      '};', // 4
+      'res.contentType = res.type = function contentType(type) {};', // 5
+      'Cart.prototype.total = function () { return 0; };', // 6
+      'exports.compileETag = function (value) {};', // 7
+      'module.exports.handler = async (event) => event;', // 8
+      'app.settings = {};', // 9 — not a function
+      'exports = module.exports = createApplication;', // 10 — not a definition
+      'if (x) { res.hidden = function () {}; }', // 11 — not at module level
+    ].join('\n');
+    expect(await keys('javascript', source)).toEqual([
+      'variable:res L1-1',
+      'method:res.send L2-4',
+      'method:res.contentType L5-5',
+      'method:res.type L5-5',
+      'method:Cart.total L6-6',
+      'function:compileETag L7-7',
+      'function:handler L8-8',
+    ]);
+  });
+});
+
 describe('Rust impl identity', () => {
   it('ignores generic parameter names, so renaming them keeps the key', async () => {
     const before = await keys('rust', 'impl<T> Stack<T> { fn push(&mut self) {} }');

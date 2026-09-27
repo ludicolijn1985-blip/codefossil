@@ -1,7 +1,7 @@
 import 'server-only';
 import type { ApiEnvelope } from './types';
 
-/** Where `fossil serve` listens; the UI server talks to it directly. */
+/** Where `codefossil serve` listens; the UI server talks to it directly. */
 export const API_URL = process.env.FOSSIL_API_URL ?? 'http://127.0.0.1:4000';
 
 export class ApiRequestError extends Error {
@@ -25,7 +25,7 @@ export class ApiUnavailableError extends Error {
 /**
  * Call the API from a server component: GET, or POST when a body is given.
  * Always fresh: the index changes
- * whenever `fossil index` runs.
+ * whenever `codefossil index` runs.
  */
 export async function fossil<T>(path: string, body?: unknown): Promise<T> {
   let response: Response;

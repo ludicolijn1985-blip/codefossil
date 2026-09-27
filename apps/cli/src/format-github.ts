@@ -32,13 +32,13 @@ export function formatGitHubIndex(result: GitHubIndexResult | null): string {
     formatLinks(result),
   ];
   if (sync.stoppedEarly) {
-    lines.push(`Note: ${sync.stoppedEarly}. Run \`fossil index\` again later to continue.\n`);
+    lines.push(`Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`);
   }
   return lines.join('');
 }
 
 export function formatGitHubStatus(github: GitHubStatus | null): string {
-  if (!github) return 'GitHub         not connected — run `fossil connect github`\n';
+  if (!github) return 'GitHub         not connected — run `codefossil connect github`\n';
   const pending =
     github.pendingPullRequestDetails > 0
       ? `, ${plural(github.pendingPullRequestDetails, 'pull request')} awaiting details`

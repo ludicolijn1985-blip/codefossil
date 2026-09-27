@@ -11,7 +11,7 @@ export interface CliIO {
    * GitHub CLI; tests inject their own so they never see real credentials.
    */
   readonly resolveGitHubToken?: (host: string) => Promise<GitHubToken | null>;
-  /** Lines typed or piped in, for `fossil investigate`. */
+  /** Lines typed or piped in, for `codefossil investigate`. */
   readonly readLines?: () => AsyncIterable<string>;
   /** Whether a person is typing (show prompts), as opposed to piped input. */
   readonly interactive?: boolean;

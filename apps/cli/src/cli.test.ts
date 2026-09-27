@@ -88,7 +88,7 @@ describe('fossil CLI', () => {
     await fossil(subdir, 'init');
 
     const before = await fossil(subdir, 'status');
-    expect(before.stdout).toContain('never — run `fossil index`');
+    expect(before.stdout).toContain('never — run `codefossil index`');
 
     const indexed = await fossil(subdir, 'index');
     expect(indexed).toMatchObject({ code: 0, stderr: '' });
@@ -217,11 +217,11 @@ describe('fossil CLI', () => {
   it('asks for init before index or status', async () => {
     const result = await fossil(root(), 'status');
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain('Run `fossil init` first');
+    expect(result.stderr).toContain('Run `codefossil init` first');
   });
 });
 
-describe('fossil deps', () => {
+describe('codefossil deps', () => {
   let repo: FixtureRepo | undefined;
 
   beforeEach(async () => {
@@ -277,7 +277,7 @@ describe('fossil deps', () => {
   });
 });
 
-describe('fossil connect github and GitHub sync', () => {
+describe('codefossil connect github and GitHub sync', () => {
   let repo: FixtureRepo | undefined;
   let server: FakeGitHub | undefined;
 
@@ -417,7 +417,7 @@ describe('fossil connect github and GitHub sync', () => {
   });
 });
 
-describe('fossil trace and export', () => {
+describe('codefossil trace and export', () => {
   let sample: SampleHistory | undefined;
 
   beforeEach(async () => {
@@ -483,7 +483,7 @@ describe('fossil trace and export', () => {
   });
 });
 
-describe('fossil why, impact, timeline, query and investigate', () => {
+describe('codefossil why, impact, timeline, query and investigate', () => {
   let sample: SampleHistory | undefined;
 
   beforeEach(async () => {
@@ -600,7 +600,7 @@ describe('fossil why, impact, timeline, query and investigate', () => {
   });
 });
 
-describe('fossil hotspots and dead-intent', () => {
+describe('codefossil hotspots and dead-intent', () => {
   let sample: SampleHistory | undefined;
 
   beforeEach(async () => {
@@ -658,7 +658,68 @@ describe('fossil hotspots and dead-intent', () => {
   });
 });
 
-describe('fossil report', () => {
+describe('automatic indexing', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+  });
+
+  afterEach(async () => {
+    delete process.env.CODEFOSSIL_AUTO_INDEX;
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  it('answers the first question in a repository without init or index', async () => {
+    const result = await fossil(root(), 'why', 'calculateVAT', '--json', '--no-save');
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('First use in');
+    expect(result.stderr).toContain('Indexed');
+    expect(JSON.parse(result.stdout)).toMatchObject({ kind: 'why' });
+    expect(await sample?.repo.git('status', '--porcelain')).toBe('');
+  });
+
+  it('adds only new commits on later questions, and stays quiet when up to date', async () => {
+    await fossil(root(), 'hotspots');
+    const quiet = await fossil(root(), 'hotspots');
+    expect(quiet.stderr).toBe('');
+    await sample?.repo.write(
+      'src/tax/vat.ts',
+      'export const calculateVAT = (n: number) => n * 0.2;\n',
+    );
+    await sample?.repo.commit('Lower the rate');
+    const later = await fossil(root(), 'timeline', 'src/tax/vat.ts');
+    expect(later.stderr).toContain('Indexing new commits');
+    expect(later.stderr).toContain('Indexed 1 new commit');
+    expect(later.stdout).toContain('Lower the rate');
+  });
+
+  it('doctor checks the toolchain and reports the index state', async () => {
+    const before = await fossil(root(), 'doctor');
+    expect(before.code).toBe(0);
+    expect(before.stdout).toMatch(/✓ Parsers +typescript, tsx, javascript, python, go, rust/);
+    expect(before.stdout).toContain('none yet; the first question creates it');
+    await fossil(root(), 'hotspots');
+    const checks = JSON.parse((await fossil(root(), 'doctor', '--json')).stdout) as {
+      name: string;
+      ok: boolean;
+      detail: string;
+    }[];
+    expect(checks.every((c) => c.ok)).toBe(true);
+    expect(checks.find((c) => c.name === 'Index')?.detail).toMatch(/^\d+ commits/);
+  });
+
+  it('can be turned off to use the index exactly as it is', async () => {
+    process.env.CODEFOSSIL_AUTO_INDEX = '0';
+    const result = await fossil(root(), 'why', 'calculateVAT');
+    expect(result.code).not.toBe(0);
+    expect(result.stderr).toContain('Run `codefossil init` first');
+  });
+});
+
+describe('codefossil report', () => {
   let sample: SampleHistory | undefined;
 
   beforeEach(async () => {
@@ -715,7 +776,7 @@ describe('fossil report', () => {
   });
 });
 
-describe('fossil ai, ask and why --summarize', () => {
+describe('codefossil ai, ask and why --summarize', () => {
   let sample: SampleHistory | undefined;
   const prompts: string[] = [];
 
@@ -776,7 +837,7 @@ describe('fossil ai, ask and why --summarize', () => {
     expect(ask.code).not.toBe(0);
     expect(ask.stderr).toContain('The AI layer is off');
     expect(prompts).toHaveLength(0);
-    expect((await run('query', 'tell me a story')).stderr).toContain('fossil ask');
+    expect((await run('query', 'tell me a story')).stderr).toContain('codefossil ask');
   });
 
   it('refuses a cloud provider without explicit agreement, and never stores a key', async () => {
@@ -835,7 +896,7 @@ describe('fossil ai, ask and why --summarize', () => {
   });
 });
 
-describe('fossil serve', () => {
+describe('codefossil serve', () => {
   let sample: SampleHistory | undefined;
 
   beforeEach(async () => {

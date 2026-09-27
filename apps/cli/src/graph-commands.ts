@@ -16,7 +16,8 @@ import {
 } from '@codefossil/query';
 import { formatTrace } from './format-trace.js';
 import { CliError, writeJson, type CliIO } from './io.js';
-import { openWorkspace, toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import { toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
 
 const ROUTES: Readonly<Record<string, { steps: StepTable; title: string }>> = {
   origin: { steps: ORIGIN_ROUTE, title: 'Origin of' },
@@ -99,7 +100,7 @@ export function registerGraphCommands(program: Command, io: CliIO, repoPath: () 
     .addOption(new Option('--json', 'print the chains as JSON'))
     .action(async (target: string, options: { route: string; depth: string; json?: boolean }) => {
       const depth = parseDepth(options.depth);
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         const match = resolveOne(ws, io, target);
         const { chosen, result, descriptions, evidence } = traceTarget(
           ws.fossil.db,
@@ -130,7 +131,7 @@ export function registerGraphCommands(program: Command, io: CliIO, repoPath: () 
     .option('--depth <n>', 'hops around --root', '2')
     .action(async (file: string, options: { root?: string; depth: string }) => {
       const depth = parseDepth(options.depth);
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const root = options.root ? resolveOne(ws, io, options.root).ref : undefined;
         const document = exportGraph(ws.fossil.db, ws.repositoryId, {
           repository: { name: ws.root.split('/').at(-1) ?? ws.root, path: ws.root },

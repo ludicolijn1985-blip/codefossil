@@ -17,6 +17,8 @@ export interface DefinitionRule {
   readonly scope?: (node: Node) => readonly string[];
   /** Accept only some occurrences (e.g. top-level variables). */
   readonly accept?: (node: Node) => boolean;
+  /** A node to visit next at the same level, e.g. the rest of `a = b = function () {}`. */
+  readonly next?: (node: Node) => Node | null;
 }
 
 /** How a file refers to another module. */

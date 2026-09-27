@@ -1,0 +1,31 @@
+name: Bug report
+description: CODEFOSSIL did something wrong, crashed, or gave a wrong answer.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! A public repository that reproduces the problem makes a fix much faster.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The repository (if public), the commands you ran and their output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `codefossil doctor`
+      render: text
+  - type: input
+    id: os
+    attributes:
+      label: Operating system

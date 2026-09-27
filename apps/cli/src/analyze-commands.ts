@@ -10,13 +10,15 @@ import {
 import { formatDeadIntent, formatHotspots } from './format-analysis.js';
 import { writeJson, type CliIO } from './io.js';
 import { parsePositiveInteger, parseSince } from './options.js';
-import { openWorkspace, withWorkspace } from './workspace.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import { withWorkspace } from './workspace.js';
 
 interface HotspotCommandOptions {
   readonly since?: string;
   readonly limit: string;
   readonly tests?: boolean;
   readonly generated?: boolean;
+  readonly allFiles?: boolean;
   readonly order: HotspotOrder;
   readonly json?: boolean;
 }
@@ -39,6 +41,7 @@ export function registerAnalysisCommands(
     .option('--limit <n>', 'files to show', String(DEFAULT_HOTSPOT_LIMIT))
     .option('--tests', 'include test files')
     .option('--generated', 'include lockfiles, build output and generated files')
+    .option('--all-files', 'also rank documentation, configuration and other non-code files')
     .addOption(
       new Option('--order <by>', 'rank by hotspot score or by risk')
         .choices(['hotspot', 'risk'])
@@ -48,12 +51,13 @@ export function registerAnalysisCommands(
     .action(async (options: HotspotCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
       const limit = parsePositiveInteger(options.limit, '--limit');
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         const report = analyzeHotspots(ws.fossil.db, ws.repositoryId, {
           ...(since ? { since: since.toISOString() } : {}),
           limit,
           includeTests: options.tests === true,
           includeGenerated: options.generated === true,
+          includeNonCode: options.allFiles === true,
           orderBy: options.order,
         });
         if (options.json) writeJson(io, report);
@@ -76,7 +80,7 @@ export function registerAnalysisCommands(
     .action(async (options: DeadIntentCommandOptions) => {
       const limit = parsePositiveInteger(options.limit, '--limit');
       const staleDays = parsePositiveInteger(options.staleDays, '--stale-days');
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         const report = analyzeDeadIntent(ws.fossil.db, ws.repositoryId, {
           limit,
           staleDays,

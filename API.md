@@ -1,6 +1,6 @@
 # API
 
-`fossil serve` starts the JSON API for a repository's `.codefossil` database on this machine
+`codefossil serve` starts the JSON API for a repository's `.codefossil` database on this machine
 (`127.0.0.1:4000` by default). The implementation is `apps/api` (Fastify).
 
 ## Conventions
@@ -21,7 +21,7 @@
 
 The API has no authentication, so it is built to be reachable only from this machine:
 
-- it listens on a loopback address; `fossil serve` refuses any other `--host`;
+- it listens on a loopback address; `codefossil serve` refuses any other `--host`;
 - the `Host` header must name this machine (`localhost`, `127.0.0.1`, `[::1]`), which defeats DNS
   rebinding;
 - requests that change state must be `application/json`; browsers cannot send that cross-origin
@@ -86,7 +86,7 @@ GET  /api/repositories/:id/dead-intent?limit=50&staleDays=365
 
 Unknown query keys are rejected with `400`. ARCHITECTURE.md defines every number.
 
-Optional AI layer (fixed when `fossil serve` starts; see SECURITY.md):
+Optional AI layer (fixed when `codefossil serve` starts; see SECURITY.md):
 
 ```text
 GET  /api/ai                          { enabled, provider?, model?, cloud?, includeSource? }

@@ -9,7 +9,7 @@ function section(title: string, lines: readonly string[]): string {
 function saved(id: number | null): string {
   return id === null
     ? ''
-    : `\nSaved as investigation #${id} (\`fossil investigate --show ${id}\`).\n`;
+    : `\nSaved as investigation #${id} (\`codefossil investigate --show ${id}\`).\n`;
 }
 
 export function formatWhy(why: WhyInvestigation, savedId: number | null): string {
@@ -94,7 +94,7 @@ export function formatTimeline(timeline: Timeline): string {
 
 export function formatInvestigationList(rows: readonly InvestigationRow[]): string {
   if (rows.length === 0)
-    return 'No investigations saved yet. Ask with `fossil why`, `fossil impact` or `fossil query`.\n';
+    return 'No investigations saved yet. Ask with `codefossil why`, `codefossil impact` or `codefossil query`.\n';
   return `${rows
     .map(
       (row) =>

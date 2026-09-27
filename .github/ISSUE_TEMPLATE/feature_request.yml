@@ -1,0 +1,14 @@
+name: Feature or language request
+description: A new question, analyzer, provider or language.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What question about your code's history do you want answered?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would a good answer look like?

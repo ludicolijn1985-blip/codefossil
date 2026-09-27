@@ -24,7 +24,7 @@ export function formatStatus(status: IndexStatus): string {
     ],
     ['Path', repository.path],
     ['Remote', repository.remoteUrl ?? '—'],
-    ['Indexed', repository.indexedAt ?? 'never — run `fossil index`'],
+    ['Indexed', repository.indexedAt ?? 'never — run `codefossil index`'],
     [
       'Latest commit',
       latestCommit

@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Language, Parser } from 'web-tree-sitter';
 import { extractImports, extractSymbols, type ParsedImport, type ParsedSymbol } from './extract.js';
 import { ecmascript } from './languages/ecmascript.js';
@@ -8,6 +11,16 @@ import { rust } from './languages/rust.js';
 import type { GrammarId, LanguageSpec } from './spec.js';
 
 const require = createRequire(import.meta.url);
+
+/**
+ * Where a grammar's WebAssembly file is. The published package ships the
+ * files in `grammars/` beside its bundle (so installing it compiles nothing);
+ * in the workspace they come from the tree-sitter grammar packages.
+ */
+function grammarFile(moduleFile: string): string {
+  const bundled = fileURLToPath(new URL(`../grammars/${basename(moduleFile)}`, import.meta.url));
+  return existsSync(bundled) ? bundled : require.resolve(moduleFile);
+}
 
 const GRAMMARS: Readonly<
   Record<GrammarId, { readonly wasm: string; readonly spec: LanguageSpec }>
@@ -94,7 +107,7 @@ export class SymbolExtractor {
       parser = (async () => {
         runtime ??= Parser.init();
         await runtime;
-        const language = await Language.load(require.resolve(GRAMMARS[grammar].wasm));
+        const language = await Language.load(grammarFile(GRAMMARS[grammar].wasm));
         const instance = new Parser();
         instance.setLanguage(language);
         return instance;

@@ -44,7 +44,7 @@ function importTarget(item: ImportRow): string {
     case 'unresolved':
       return `✗ unresolved: ${item.resolutionDetail ?? 'unknown reason'}`;
     case null:
-      return '? not resolved yet — run `fossil index`';
+      return '? not resolved yet — run `codefossil index`';
   }
 }
 

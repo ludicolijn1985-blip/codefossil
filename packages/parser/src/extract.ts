@@ -87,6 +87,8 @@ export function extractSymbols(root: Node, spec: LanguageSpec): ParsedSymbol[] {
     if (rule.container) {
       pushChildren(stack, node.childForFieldName('body') ?? node, [...scope, { name, kind }]);
     }
+    const next = rule.next?.(node);
+    if (next) stack.push({ node: next, scope });
   }
   return symbols;
 }

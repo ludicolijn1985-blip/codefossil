@@ -19,6 +19,7 @@ const hotspotsQuery = z
     limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_HOTSPOT_LIMIT),
     tests: flag.default(false),
     generated: flag.default(false),
+    all: flag.default(false),
     order: z.enum(['hotspot', 'risk']).default('hotspot'),
   })
   .strict();
@@ -43,6 +44,7 @@ export function analyzeRoutes(app: FastifyInstance, context: ApiContext): void {
         limit: query.limit,
         includeTests: query.tests,
         includeGenerated: query.generated,
+        includeNonCode: query.all,
         orderBy: query.order,
       }),
     };

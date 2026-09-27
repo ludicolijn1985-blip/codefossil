@@ -1,0 +1,25 @@
+name: Wrong or misleading answer
+description: An answer, hotspot or dead-intent candidate that the evidence does not support.
+labels: [accuracy]
+body:
+  - type: input
+    id: repo
+    attributes:
+      label: Public repository and commit
+      placeholder: https://github.com/owner/repo at abc1234
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      placeholder: codefossil why res.sendFile
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What is wrong about the answer?
+      description: Which statement or candidate, and what the history actually shows.
+    validations:
+      required: true

@@ -17,7 +17,7 @@ export function Problem({ error }: { error: unknown }) {
           repository you want to explore, run:
         </p>
         <pre className="mt-3 rounded-md border border-line bg-ground px-3 py-2 font-mono text-sm">
-          fossil init{'\n'}fossil index{'\n'}fossil serve
+          codefossil init{'\n'}codefossil index{'\n'}codefossil serve
         </pre>
       </div>
     );

@@ -13,9 +13,12 @@ const BUG_LABEL = /\b(bug|defect|regression|crash|incident)\b/i;
 const REVERT = /^Revert "|This reverts commit [0-9a-f]{7,}/im;
 const CONVENTIONAL_FIX = /^(?:fix|hotfix|bugfix)(?:\([^)]*\))?!?:/i;
 const FIX_WORDS = /\b(?:fix(?:es|ed)?|bug(?:fix)?|hotfix|crash(?:es|ed)?|regression|broken)\b/i;
-/** Fixes to prose, formatting or tooling are not defects in the code. */
+/**
+ * Fixes to prose, formatting, tooling or dependency versions are not defects
+ * in the code: `fix(deps): bump qs`, `Fix an incorrect @api jsdoc`.
+ */
 const NOT_A_DEFECT =
-  /\b(?:typos?|spelling|lint(?:ing)?|format(?:ting)?|docs?|readme|changelog|whitespace)\b/i;
+  /\b(?:typos?|spelling|lint(?:ing)?|format(?:ting)?|docs?|documentation|jsdoc|comments?|readme|changelog|whitespace|bump(?:s|ed)?|deps|dev-?deps|dependenc(?:y|ies)|dependabot|renovate)\b|^(?:fix|hotfix|bugfix)\((?:deps|deps-dev|dev-?deps|ci|build|docs?|tests?|lint|release|chore|types|refactor|style|perf)\)/i;
 
 /** Confidence of each heuristic; a label on a resolved issue is the strongest reading. */
 export const DEFECT_CONFIDENCE = {

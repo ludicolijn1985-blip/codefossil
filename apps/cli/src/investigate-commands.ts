@@ -24,7 +24,8 @@ import {
 import { whyWithSummary } from './ai-commands.js';
 import { resolveOne } from './graph-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
-import { openWorkspace, toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import { toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
 
 interface AskOptions {
   readonly json?: boolean;
@@ -90,7 +91,7 @@ function ask(ws: Workspace, io: CliIO, text: string, options: AskOptions): void 
   switch (resolution.status) {
     case 'unsupported':
       throw new CliError(
-        `${SUPPORTED_QUESTIONS}\nOpen-ended questions: \`fossil ask\` (needs the optional AI layer).`,
+        `${SUPPORTED_QUESTIONS}\nOpen-ended questions: \`codefossil ask\` (needs the optional AI layer).`,
       );
     case 'ambiguous':
       throw new CliError(
@@ -198,7 +199,7 @@ export function registerInvestigationCommands(
       'add a summary by the AI layer, citing the same evidence (if configured)',
     )
     .action(async (target: string, options: AskOptions) => {
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const match = resolveOne(ws, io, target);
         if (options.summarize) await whyWithSummary(ws, io, match, options);
         else answer(ws, io, 'why', match, options);
@@ -214,7 +215,7 @@ export function registerInvestigationCommands(
     .addOption(noSave())
     .action(async (target: string, options: AskOptions & { depth: string }) => {
       const depth = parseDepth(options.depth);
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         answer(ws, io, 'impact', resolveOne(ws, io, target), { ...options, depth });
       });
     });
@@ -225,7 +226,7 @@ export function registerInvestigationCommands(
     .argument('<path>', 'file path')
     .addOption(json())
     .action(async (path: string, options: { json?: boolean }) => {
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         answer(ws, io, 'timeline', resolveOne(ws, io, path), { ...options, save: false });
       });
     });
@@ -237,7 +238,7 @@ export function registerInvestigationCommands(
     .addOption(json())
     .addOption(noSave())
     .action(async (question: string, options: AskOptions) => {
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         ask(ws, io, question, options);
       });
     });
@@ -251,7 +252,7 @@ export function registerInvestigationCommands(
     .option('--show <id>', 'show a saved investigation as it was answered')
     .addOption(json())
     .action(async (options: { list?: boolean; show?: string; json?: boolean }) => {
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         if (options.list) {
           const rows = listInvestigations(ws.fossil.db, ws.repositoryId);
           if (options.json) writeJson(io, rows);

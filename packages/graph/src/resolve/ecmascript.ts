@@ -22,18 +22,27 @@ const TYPESCRIPT_FILE = /\.[cm]?tsx?$/;
  * file; Node, which runs JavaScript importers, only knows the literal file.
  * Mixing the two up would claim an edge to the wrong file.
  */
-function fileCandidates(base: string, importerIsTypeScript: boolean): string[] {
+function fileCandidates(index: LayoutIndex, base: string, importerIsTypeScript: boolean): string[] {
   const extension = /\.[cm]?jsx?$/.exec(base)?.[0];
   const stem = extension ? base.slice(0, -extension.length) : base;
   const sourceSwaps =
     extension && importerIsTypeScript
       ? (SOURCE_FOR_OUTPUT[extension] ?? []).map((ext) => stem + ext)
       : [];
+  // A directory resolves like Node does: its package.json entry, then index.*.
+  const directory = base === '' ? '' : `${base}/`;
+  const manifest = index.manifests.find(
+    (m) => m.ecosystem === 'npm' && m.path === `${directory}package.json`,
+  );
+  const packageEntries = (manifest?.entries['.'] ?? []).flatMap((target) => {
+    const path = joinPath(base, target);
+    return path === null ? [] : [path, ...EXTENSIONS.map((ext) => path + ext)];
+  });
   return [
     ...sourceSwaps,
-    base,
-    ...EXTENSIONS.map((ext) => base + ext),
-    ...EXTENSIONS.map((ext) => `${base}/index${ext}`),
+    ...(base === '' ? [] : [base, ...EXTENSIONS.map((ext) => base + ext)]),
+    ...packageEntries,
+    ...EXTENSIONS.map((ext) => `${directory}index${ext}`),
   ];
 }
 
@@ -55,7 +64,7 @@ export function resolveEcmascript(
   if (spec.startsWith('./') || spec.startsWith('../') || spec === '.' || spec === '..') {
     const base = joinPath(dirOf(fromPath), spec);
     if (base === null) return unresolved('path escapes the repository');
-    const found = index.firstExisting(fileCandidates(base, TYPESCRIPT_FILE.test(fromPath)));
+    const found = index.firstExisting(fileCandidates(index, base, TYPESCRIPT_FILE.test(fromPath)));
     return found
       ? { kind: 'files', paths: [found], confidence: 1, method: 'relative-path' }
       : unresolved('no file matches the relative path');

@@ -20,6 +20,7 @@ import { registerInvestigationCommands } from './investigate-commands.js';
 import { registerAiCommands } from './ai-commands.js';
 import { registerAnalysisCommands } from './analyze-commands.js';
 import { parsePositiveInteger, parseSince } from './options.js';
+import { registerDoctorCommand } from './doctor-command.js';
 import { registerReportCommand } from './report-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
@@ -63,11 +64,11 @@ interface JsonOption {
 }
 
 /**
- * Build the `fossil` command. Every command runs headlessly: no prompts, and
+ * Build the `codefossil` command. Every command runs headlessly: no prompts, and
  * `--json` gives machine-readable output on stdout.
  */
 export function createProgram(io: CliIO): Command {
-  const program = new Command('fossil')
+  const program = new Command('codefossil')
     .description('Evidence-first software archaeology for Git repositories.')
     .version(VERSION)
     .option('-r, --repo <path>', 'repository to operate on (default: current directory)')
@@ -89,7 +90,7 @@ export function createProgram(io: CliIO): Command {
     if (!file) {
       throw new CliError(
         `No indexed history for ${relativePath}. CODEFOSSIL only knows committed files; ` +
-          'commit it and run `fossil index`.',
+          'commit it and run `codefossil index`.',
       );
     }
     return file;
@@ -112,7 +113,7 @@ export function createProgram(io: CliIO): Command {
         }
         io.stdout(
           ws.created
-            ? `Initialized CODEFOSSIL in ${ws.databasePath}\nNext: run \`fossil index\`.\n`
+            ? `Initialized CODEFOSSIL in ${ws.databasePath}\nNext: run \`codefossil index\`.\n`
             : `CODEFOSSIL is already initialized in ${ws.databasePath}\n`,
         );
       });
@@ -180,7 +181,7 @@ export function createProgram(io: CliIO): Command {
         }
         io.stdout(
           `Connected to GitHub repository ${owner}/${name}${options.verify ? '' : ' (not verified)'}.\n` +
-            'Next: run `fossil index` to sync issues and pull requests.\n',
+            'Next: run `codefossil index` to sync issues and pull requests.\n',
         );
       });
     });
@@ -241,7 +242,7 @@ export function createProgram(io: CliIO): Command {
     .action(async (options: JsonOption) => {
       await withWorkspace(openWorkspace(repoPath()), (ws) => {
         const status = getIndexStatus(ws.fossil.db, ws.repositoryId);
-        if (!status) throw new CliError('Repository is not registered. Run `fossil init`.');
+        if (!status) throw new CliError('Repository is not registered. Run `codefossil init`.');
         if (options.json) {
           writeJson(io, { ...status, github: gitHubStatus(ws) });
           return;
@@ -255,6 +256,7 @@ export function createProgram(io: CliIO): Command {
   registerAnalysisCommands(program, io, repoPath);
   registerAiCommands(program, io, repoPath);
   registerReportCommand(program, io, repoPath);
+  registerDoctorCommand(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
 
   return program;

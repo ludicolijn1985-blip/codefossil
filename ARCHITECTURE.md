@@ -136,7 +136,7 @@ always match the current index.
 
 ### Optional AI layer
 
-`packages/ai` runs only when configured (`fossil ai configure`). It never replaces the
+`packages/ai` runs only when configured (`codefossil ai configure`). It never replaces the
 deterministic pipeline; it reads from it:
 
 1. **Gather.** Evidence is gathered deterministically: why-investigations of the entities the

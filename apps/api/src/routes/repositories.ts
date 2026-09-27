@@ -45,7 +45,7 @@ function assertTrustedConnection(context: ApiContext, repositoryId: number): voi
     throw new ApiError(
       403,
       'connection_changed',
-      'The GitHub connection is not the one this server was started with; restart `fossil serve --allow-network` to trust it.',
+      'The GitHub connection is not the one this server was started with; restart `codefossil serve --allow-network` to trust it.',
     );
   }
 }

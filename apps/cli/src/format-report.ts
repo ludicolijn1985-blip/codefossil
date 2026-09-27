@@ -118,7 +118,7 @@ export function formatReportMarkdown(report: RepositoryReport): string {
   lines.push('### Dead-intent candidates (INFERRED)', '');
   if (report.deadIntent.length === 0) {
     lines.push(
-      'None: no commit that changed current code uses workaround or compatibility wording.',
+      'None: no workaround or compatibility wording can be tied to code that is still present and has not been reworked since.',
       '',
     );
   } else {

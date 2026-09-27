@@ -22,6 +22,7 @@
   "dependencies": {
     "@codefossil/db": "workspace:*",
     "@codefossil/graph": "workspace:*",
+    "@codefossil/parser": "workspace:*",
     "@codefossil/query": "workspace:*",
     "@codefossil/shared": "workspace:*"
   },

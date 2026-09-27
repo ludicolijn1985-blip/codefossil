@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "fossil": "./dist/bin.js"
+    "codefossil": "./dist/bin.js"
   },
   "exports": {
     ".": {
@@ -25,13 +25,14 @@
   "dependencies": {
     "@codefossil/ai": "workspace:*",
     "@codefossil/analyzers": "workspace:*",
+    "@codefossil/api": "workspace:*",
     "@codefossil/core": "workspace:*",
     "@codefossil/db": "workspace:*",
     "@codefossil/git": "workspace:*",
-    "commander": "^15.0.0",
-    "zod": "^4.6.5",
+    "@codefossil/parser": "workspace:*",
     "@codefossil/providers": "workspace:*",
     "@codefossil/query": "workspace:*",
-    "@codefossil/api": "workspace:*"
+    "commander": "^15.0.0",
+    "zod": "^4.6.5"
   }
 }

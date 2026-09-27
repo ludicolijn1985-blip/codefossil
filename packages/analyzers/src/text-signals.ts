@@ -38,16 +38,41 @@ function lineAround(text: string, index: number): string {
   return line.length > EXCERPT_LENGTH ? `${line.slice(0, EXCERPT_LENGTH - 1)}…` : line;
 }
 
-/** The first workaround or compatibility wording in the text, or null. */
-export function workaroundLanguage(text: string): TextMatch | null {
+/**
+ * Wording that takes a workaround away rather than adding one: "remove
+ * deprecated createServer()", "drop the legacy shim".
+ */
+const REMOVAL =
+  /\b(?:remov(?:e|es|ed|ing)|drop(?:s|ped|ping)?|delet(?:e|es|ed|ing)|clean(?:s|ed)? up|get(?:ting)? rid of|no longer|kill(?:s|ed)?|revert(?:s|ed)?)\b/i;
+
+export interface WorkaroundMatch extends TextMatch {
+  /** Whether the words are on the first line (a commit subject, an issue or PR title). */
+  readonly inFirstLine: boolean;
+}
+
+/**
+ * The first workaround or compatibility wording in the text, or null. A match
+ * on a line that removes something ("remove deprecated …") does not count.
+ */
+export function workaroundLanguage(text: string): WorkaroundMatch | null {
+  const firstLineEnd = text.indexOf('\n') === -1 ? text.length : text.indexOf('\n');
   let first: { index: number; phrase: string } | null = null;
   for (const pattern of WORKAROUND_PATTERNS) {
-    const match = pattern.exec(text);
-    if (match && (!first || match.index < first.index)) {
-      first = { index: match.index, phrase: match[0] };
+    const global = new RegExp(pattern.source, `${pattern.flags}g`);
+    for (const match of text.matchAll(global)) {
+      const lineStart = text.lastIndexOf('\n', match.index - 1) + 1;
+      if (REMOVAL.test(text.slice(lineStart, match.index))) continue;
+      if (!first || match.index < first.index) first = { index: match.index, phrase: match[0] };
+      break;
     }
   }
-  return first ? { phrase: first.phrase, excerpt: lineAround(text, first.index) } : null;
+  return first
+    ? {
+        phrase: first.phrase,
+        excerpt: lineAround(text, first.index),
+        inFirstLine: first.index < firstLineEnd,
+      }
+    : null;
 }
 
 export interface VersionReference {

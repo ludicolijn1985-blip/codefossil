@@ -65,7 +65,7 @@ The Action has one output: `report-path`, the Markdown report of the run.
 - **Historical hotspots.**
 - **Dead-intent candidates.** These are always inferences.
 
-The same report is available locally with `fossil report --base origin/main`.
+The same report is available locally with `codefossil report --base origin/main`.
 
 ## Security
 
@@ -84,4 +84,4 @@ The same report is available locally with `fossil report --base origin/main`.
 - **Runner version.** The pinned actions run on Node.js 24 and need runner 2.327.1 or newer, which
   GitHub-hosted runners have.
 - **GitHub.com only.** On GitHub Enterprise Server, set `github-sync: 'false'` or run the CLI with
-  `fossil connect github --api-url`.
+  `codefossil connect github --api-url`.

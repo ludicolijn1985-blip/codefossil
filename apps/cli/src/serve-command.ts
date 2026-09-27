@@ -4,7 +4,8 @@ import { AiConfigError, createProvider, isCloud, loadAiConfig } from '@codefossi
 import { buildServer } from '@codefossil/api';
 import { planGitHubSync } from './github.js';
 import { CliError, type CliIO } from './io.js';
-import { openWorkspace, type Workspace } from './workspace.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import type { Workspace } from './workspace.js';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 const DEFAULT_PORT = 4000;
@@ -76,7 +77,7 @@ export function registerServeCommand(program: Command, io: CliIO, repoPath: () =
         );
       }
       const port = parsePort(options.port);
-      const ws = await openWorkspace(repoPath());
+      const ws = await openIndexedWorkspace(repoPath(), io);
       try {
         const plan = options.allowNetwork
           ? await planGitHubSync(ws, io, {

@@ -21,6 +21,7 @@ import { investigateWhy, recordInvestigation, type TargetMatch } from '@codefoss
 import { formatAiAnswer, formatAiConfig } from './format-ai.js';
 import { formatWhy } from './format-investigation.js';
 import { CliError, writeJson, type CliIO } from './io.js';
+import { openIndexedWorkspace } from './auto-index.js';
 import { openWorkspace, withWorkspace, type Workspace } from './workspace.js';
 
 const workspaceDir = (ws: Workspace) => dirname(ws.databasePath);
@@ -39,8 +40,8 @@ export function providerFor(ws: Workspace, io: CliIO): { config: AiConfig; provi
   const config = readConfig(ws);
   if (!config) {
     throw new CliError(
-      'The AI layer is off. Configure it with `fossil ai configure` (see `fossil ai status`); ' +
-        'recognized questions work without it through `fossil query`.',
+      'The AI layer is off. Configure it with `codefossil ai configure` (see `codefossil ai status`); ' +
+        'recognized questions work without it through `codefossil query`.',
     );
   }
   return { config, provider: (io.createAiProvider ?? createProvider)(config) };
@@ -55,7 +56,7 @@ async function runAi<T>(action: () => Promise<T>): Promise<T> {
   }
 }
 
-/** `fossil why --summarize`: the deterministic answer, then an AI summary citing its evidence. */
+/** `codefossil why --summarize`: the deterministic answer, then an AI summary citing its evidence. */
 export async function whyWithSummary(
   ws: Workspace,
   io: CliIO,
@@ -157,7 +158,7 @@ export function registerAiCommands(program: Command, io: CliIO, repoPath: () => 
     .argument('<question>', 'the question, quoted')
     .addOption(new Option('--json', 'print the answer as JSON'))
     .action(async (question: string, options: { json?: boolean }) => {
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const { config, provider } = providerFor(ws, io);
         const answer = await runAi(() =>
           askWithEvidence(provider, ws.fossil.db, ws.repositoryId, question, {

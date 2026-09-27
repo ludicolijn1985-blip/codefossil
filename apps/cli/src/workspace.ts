@@ -140,14 +140,14 @@ export async function openWorkspace(cwd: string): Promise<Workspace> {
   const databasePath = join(root, WORKSPACE_DIR, DATABASE_FILE);
   await assertSafeWorkspace(root);
   if (!existsSync(databasePath)) {
-    throw new CliError(`CODEFOSSIL is not initialized in ${root}. Run \`fossil init\` first.`);
+    throw new CliError(`CODEFOSSIL is not initialized in ${root}. Run \`codefossil init\` first.`);
   }
   const fossil = openDatabase(databasePath);
   const repository = findRepositoryByPath(fossil.db, root);
   if (!repository) {
     fossil.close();
     throw new CliError(
-      `The database in ${databasePath} does not describe ${root}. Run \`fossil init\` again.`,
+      `The database in ${databasePath} does not describe ${root}. Run \`codefossil init\` again.`,
     );
   }
   return { root, databasePath, repositoryId: repository.id, fossil };

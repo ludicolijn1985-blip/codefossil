@@ -60,7 +60,7 @@ export async function connectGitHub(
     throw new CliError(
       slug
         ? `"${slug}" is not an owner/name slug.`
-        : 'The origin remote is not a GitHub URL. Pass the repository as `fossil connect github owner/name`.',
+        : 'The origin remote is not a GitHub URL. Pass the repository as `codefossil connect github owner/name`.',
     );
   }
   // A remote is repository content: never let it choose where a token is sent.
@@ -115,7 +115,7 @@ export interface SyncPlan {
   readonly notes: readonly string[];
 }
 
-/** Decide how `fossil index` talks to GitHub: not at all, unauthenticated, or with a token. */
+/** Decide how `codefossil index` talks to GitHub: not at all, unauthenticated, or with a token. */
 export async function planGitHubSync(
   ws: Workspace,
   io: CliIO,

@@ -25,8 +25,8 @@ export default async function Home() {
       <h1 className="mt-2 text-3xl font-semibold tracking-tight">Indexed repositories</h1>
       {repositories.length === 0 ? (
         <p className="mt-6 text-sm text-muted">
-          Nothing is indexed yet. Run <code className="font-mono text-ink">fossil init</code> and{' '}
-          <code className="font-mono text-ink">fossil index</code> in a repository.
+          Nothing is indexed yet. Run <code className="font-mono text-ink">codefossil init</code>{' '}
+          and <code className="font-mono text-ink">codefossil index</code> in a repository.
         </p>
       ) : (
         <ul className="mt-8 divide-y divide-line rounded-[var(--radius-panel)] border border-line bg-surface/90">

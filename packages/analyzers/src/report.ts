@@ -81,6 +81,7 @@ export function buildReport(
 
   const ranking = analyzeHotspots(db, repositoryId, {
     includeTests: true,
+    includeNonCode: true,
     limit: Number.MAX_SAFE_INTEGER,
   });
   const rankByPath = new Map(

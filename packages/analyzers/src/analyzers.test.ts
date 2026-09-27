@@ -49,6 +49,17 @@ async function buildHistory(): Promise<SampleHistory> {
   );
   await repo.commit('Add handling fee');
   await repo.git('revert', '--no-edit', 'HEAD');
+  // A broad commit whose body mentions a shim once: that line cannot be pinned on every file.
+  for (const name of ['a', 'b', 'c', 'd']) {
+    await repo.write(`src/broad/${name}.ts`, `export function ${name}() {\n  return 1;\n}\n`);
+  }
+  await repo.commit('Split helpers into modules\n\n- keep the old shim in place for now');
+  // A test that speaks of a workaround is not where workarounds live.
+  await repo.write(
+    'src/tax/vat.test.ts',
+    "import { calculateVAT } from './vat.js';\n\nexport function check() {\n  return calculateVAT(100);\n}\n",
+  );
+  await repo.commit('Workaround: check VAT through a helper');
   return sample;
 }
 
@@ -225,6 +236,14 @@ describe('risk analyzers on an indexed history', () => {
         (c) => c.target.label,
       );
       expect(labels.some((label) => label.includes('total'))).toBe(false);
+    });
+
+    it('does not pin one line of a broad commit on every file, nor flag tests', () => {
+      const paths = analyzeDeadIntent(fossil.db, repositoryId, { now: now() }).candidates.map(
+        (c) => c.target.path,
+      );
+      expect(paths.some((path) => path.startsWith('src/broad/'))).toBe(false);
+      expect(paths).not.toContain('src/tax/vat.test.ts');
     });
   });
 });
