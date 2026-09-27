@@ -1,11 +1,8 @@
 {
-  "name": "@codefossil/cli",
+  "name": "@codefossil/analyzers",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "fossil": "./dist/bin.js"
-  },
   "exports": {
     ".": {
       "@codefossil/source": "./src/index.ts",
@@ -23,14 +20,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@codefossil/analyzers": "workspace:*",
-    "@codefossil/core": "workspace:*",
     "@codefossil/db": "workspace:*",
-    "@codefossil/git": "workspace:*",
-    "commander": "^15.0.0",
-    "zod": "^4.6.5",
-    "@codefossil/providers": "workspace:*",
+    "@codefossil/graph": "workspace:*",
     "@codefossil/query": "workspace:*",
-    "@codefossil/api": "workspace:*"
+    "@codefossil/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@codefossil/core": "workspace:*",
+    "@codefossil/git": "workspace:*"
   }
 }

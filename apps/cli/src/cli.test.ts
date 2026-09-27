@@ -600,6 +600,64 @@ describe('fossil why, impact, timeline, query and investigate', () => {
   });
 });
 
+describe('fossil hotspots and dead-intent', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+    await sample.repo.write(
+      'src/tax/vat.ts',
+      'export const calculateVAT = (n: number) => n * 0.21;\n',
+    );
+    await sample.repo.commit('fix: drop the reduced rate');
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  it('shows hotspots with both scores and their components', async () => {
+    const result = await fossil(root(), 'hotspots', '--limit', '1');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toContain('1. src/tax/vat.ts');
+    expect(result.stdout).toMatch(/hotspot \d\.\d\d = change 1\.00 × churn/);
+    expect(result.stdout).toContain('× untested');
+    expect(result.stdout).toContain('fix: drop the reduced rate  — subject is marked as a fix');
+
+    const json = await fossil(root(), 'hotspots', '--order', 'risk', '--json');
+    expect(JSON.parse(json.stdout)).toMatchObject({ orderBy: 'risk' });
+  });
+
+  it('validates hotspot options', async () => {
+    expect((await fossil(root(), 'hotspots', '--limit', '0')).stderr).toContain(
+      '--limit must be a positive whole number',
+    );
+    expect((await fossil(root(), 'hotspots', '--since', 'soon')).stderr).toContain(
+      '--since must be an ISO date',
+    );
+    expect((await fossil(root(), 'hotspots', '--order', 'size')).code).not.toBe(0);
+  });
+
+  it('lists dead-intent candidates as inferences with their signals', async () => {
+    const result = await fossil(root(), 'dead-intent');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toMatch(
+      /1\. \w+ calculateVAT \(src\/tax\/vat\.ts:1\) {3}INFERRED 0\.\d\d/,
+    );
+    expect(result.stdout).toContain('changed by');
+    expect(result.stdout).toContain('says "Workaround": Workaround for legacy invoices.');
+
+    const json = JSON.parse((await fossil(root(), 'dead-intent', '--json')).stdout) as {
+      candidates: { classification: string }[];
+    };
+    expect(json.candidates.every((c) => c.classification === 'INFERRED')).toBe(true);
+  });
+});
+
 describe('fossil serve', () => {
   let sample: SampleHistory | undefined;
 

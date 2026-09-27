@@ -69,6 +69,7 @@ typechecking run against source without a build step.
 | `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing |
 | `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                        |
 | `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export         |
+| `@codefossil/analyzers` | Historical hotspots, risk components and dead-intent candidates, computed from the index  |
 | `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                    |
 | `@codefossil/cli`       | The `fossil` command                                                                      |
 | `@codefossil/web`       | Local web UI (Next.js) over the API: overview, investigations, files, graph, dependencies |
@@ -91,6 +92,8 @@ node /path/to/codefossil/apps/cli/dist/bin.js why calculateVAT       # where it 
 node /path/to/codefossil/apps/cli/dist/bin.js impact src/tax/vat.ts # what depends on it
 node /path/to/codefossil/apps/cli/dist/bin.js timeline src/tax/vat.ts
 node /path/to/codefossil/apps/cli/dist/bin.js query "what depends on calculateVAT?"
+node /path/to/codefossil/apps/cli/dist/bin.js hotspots --since 2025-01-01   # --order risk
+node /path/to/codefossil/apps/cli/dist/bin.js dead-intent                  # workaround candidates
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
@@ -110,6 +113,10 @@ investigations, and only for requests addressed to a loopback host. `/` focuses 
 `g` then `o`/`i`/`f`/`g`/`d` jumps between sections.
 
 ### Known limitations
+
+- Defect-related commits are read from bug-labelled resolved issues (needs `connect github`),
+  reverts and fix wording in commit subjects; without GitHub the last two are the only signals,
+  and both are INFERRED. Test reach is import reach, not line coverage.
 
 - `impact` is file-level: call-level edges are not indexed, so a file that imports the defining
   file counts as a dependent even if it never calls the symbol.

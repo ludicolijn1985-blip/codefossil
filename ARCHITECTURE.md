@@ -99,6 +99,41 @@ Flag when:
 
 This is a CANDIDATE, never a fact.
 
+### How the risk analyzers apply these definitions
+
+`packages/analyzers` computes all three on demand from the index; nothing is stored, so the numbers
+always match the current index.
+
+- **Files ranked.** Files at HEAD with at least one change, followed back across renames. A pure
+  rename is not a change. Tests, lockfiles, build output and generated files are left out unless
+  asked for. `normalized(x)` is `x / max(x)` over the files ranked.
+- **Defect links.** A commit counts as defect-related when:
+  - it resolves an issue labelled as a bug (DERIVED, with the link's confidence),
+  - it is a revert (INFERRED, 0.7), or
+  - its subject marks a fix (`fix:`, INFERRED 0.6) or uses fix wording (INFERRED 0.5).
+
+  Fixes to typos, docs or formatting do not count. A hotspot is DERIVED when it rests on counts
+  alone, and INFERRED as soon as an inferred defect reading contributes.
+
+- **Dependency centrality.** Files that import the file within 5 hops, divided by the maximum.
+- **Historical bug density.** Defect-related commits divided by all commits to the file.
+- **Test coverage inverse.** `1 / (1 + test files that import the file within 5 hops)`. This is
+  import reach, not line coverage, and is labelled that way.
+- **Dead intent.** A candidate needs workaround or compatibility wording (for example workaround,
+  hack, temporary, compat, polyfill, shim, legacy, deprecated, "remove once …"). The wording must
+  appear in a commit that changed code still present at HEAD, or in an issue or pull request
+  linked to that commit. The target is each current symbol the commit changed; a file is the
+  target when the commit changed no symbol in it. These signals add to the confidence:
+
+  | Signal              | Level    | Adds | Meaning                                                                                                                                    |
+  | ------------------- | -------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Workaround wording  | INFERRED | 0.3  | The commit or its linked discussion uses the wording.                                                                                      |
+  | Unsupported version | DERIVED  | 0.25 | The text names a runtime version below the lowest minimum the manifests declare (`engines.node`, `requires-python`, `go`, `rust-version`). |
+  | Deadline passed     | DERIVED  | 0.2  | The text sets a deadline ("until 2024-06") that has passed.                                                                                |
+  | No confirmation     | DERIVED  | 0.1  | The target has not changed for a year.                                                                                                     |
+
+  The confidence is capped at 0.8, and the candidate is always INFERRED.
+
 ### Impact analysis
 
 Build reverse dependency traversal from:

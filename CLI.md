@@ -40,11 +40,16 @@ fossil impact calculateVAT [--depth n]
 Show direct and transitive dependents with distances, routes and which are tests (file-level:
 dependents import the file that defines a symbol).
 
-fossil hotspots
-Show historical change hotspots.
+fossil hotspots [--since date] [--limit n] [--order hotspot|risk] [--tests] [--generated] [--json]
+Rank files by historical change: hotspot score (change frequency × churn × defect commits) and
+risk (change frequency × import centrality × bug density × test reach inverse), each shown with
+its components and the defect commits behind it. Tests and lockfiles/generated files are left out
+unless `--tests` / `--generated` is given.
 
-fossil dead-intent
-Show compatibility/workaround candidates.
+fossil dead-intent [--limit n] [--stale-days n] [--json]
+List code changed by commits (or linked issues and pull requests) that speak of workarounds,
+compatibility or legacy support, with the signals that strengthen each candidate: runtime versions
+below the declared minimum, passed deadlines, and long silence. Always INFERRED candidates.
 
 fossil investigate [--list] [--show <id>]
 Interactive investigation (why/impact/timeline/questions), also scriptable through standard

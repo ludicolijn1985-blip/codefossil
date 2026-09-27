@@ -1,8 +1,8 @@
 # UI specification
 
-> **Implementation status.** `apps/web` implements Overview, Investigations (as "Investigate"),
-> file detail with its timeline, Graph and Dependencies. Hotspots and Dead Intent arrive with the
-> phase 9 analyzers; Architecture, Issues & PRs and Settings are not built yet and are left out of
+> **Implementation status.** `apps/web` implements Overview (with historical hotspots),
+> Investigations (as "Investigate"), file detail with its timeline, Graph, Hotspots, Dead Intent
+> and Dependencies. Architecture, Issues & PRs and Settings are not built yet and are left out of
 > the navigation rather than shown as placeholders.
 
 Design language:

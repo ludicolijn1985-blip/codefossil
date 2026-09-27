@@ -16,6 +16,8 @@ export interface CliIO {
   readonly interactive?: boolean;
   /** Receives a started API server instead of wiring process signals (tests). */
   readonly onServe?: (server: { url: string; close: () => Promise<void> }) => void;
+  /** The current time, for analyses that measure age; tests pin it. */
+  readonly now?: () => Date;
 }
 
 /** An error meant for the user: printed without a stack trace. */

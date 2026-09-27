@@ -260,6 +260,41 @@ describe('CODEFOSSIL API', () => {
     });
   });
 
+  describe('risk analysis', () => {
+    it('serves hotspots with their components, validating the options', async () => {
+      const report = await call({ method: 'GET', url: repo('/hotspots?limit=1&order=risk') });
+      expect(report.status).toBe(200);
+      expect(report.body.data).toMatchObject({ orderBy: 'risk', since: null });
+      const [hotspot] = (report.body.data as { hotspots: { risk: { components: object } }[] })
+        .hotspots;
+      expect(Object.keys(hotspot?.risk.components ?? {})).toEqual([
+        'changeFrequency',
+        'dependencyCentrality',
+        'bugDensity',
+        'testReachInverse',
+      ]);
+      const since = await call({ method: 'GET', url: repo('/hotspots?since=2999-01-01') });
+      expect(since.body.data).toMatchObject({ since: '2999-01-01T00:00:00.000Z', hotspots: [] });
+      for (const bad of ['limit=0', 'order=size', 'tests=yes', 'since=soon', 'extra=1']) {
+        expect((await call({ method: 'GET', url: repo(`/hotspots?${bad}`) })).status).toBe(400);
+      }
+    });
+
+    it('serves dead-intent candidates, always as inferences', async () => {
+      const report = await call({ method: 'GET', url: repo('/dead-intent') });
+      const { candidates } = report.body.data as {
+        candidates: { target: { label: string }; classification: string }[];
+      };
+      expect(candidates.map((c) => c.target.label)).toEqual([
+        expect.stringMatching(/^\w+ calculateVAT \(src\/tax\/vat\.ts:1\)$/),
+      ]);
+      expect(new Set(candidates.map((c) => c.classification))).toEqual(new Set(['INFERRED']));
+      expect((await call({ method: 'GET', url: repo('/dead-intent?staleDays=0') })).status).toBe(
+        400,
+      );
+    });
+  });
+
   describe('investigations', () => {
     it('answers questions and targets, saving unless told not to', async () => {
       const byQuestion = await call({

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { entityHref } from './format';
 import { layoutGraph } from './graph-layout';
 import { decideProxy, isLocalHost } from './proxy';
 
@@ -124,5 +125,14 @@ describe('isLocalHost', () => {
     ]) {
       expect(isLocalHost(host)).toBe(false);
     }
+  });
+});
+
+describe('entityHref', () => {
+  it('links files and symbols, and nothing else', () => {
+    expect(entityHref(1, 'file:12')).toBe('/r/1/files/12');
+    expect(entityHref(1, 'symbol:7')).toBe('/r/1/symbols/7');
+    expect(entityHref(1, 'commit:3')).toBeNull();
+    expect(entityHref(1, 'file:../x')).toBeNull();
   });
 });

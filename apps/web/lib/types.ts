@@ -33,6 +33,13 @@ export type {
   TimelineEntry,
   WhyInvestigation,
 } from '@codefossil/query';
+export type {
+  DeadIntentCandidate,
+  DeadIntentReport,
+  DeadIntentSignal,
+  Hotspot,
+  HotspotReport,
+} from '@codefossil/analyzers';
 export type { EvidenceLevel } from '@codefossil/shared';
 
 export interface ApiEnvelope<T> {

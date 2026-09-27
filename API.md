@@ -63,12 +63,28 @@ POST /api/repositories/:id/providers/github/connect  { owner, name, apiUrl? }
 resolved like the CLI: a symbol, a path, `path:Symbol`, a commit sha prefix, `#123` or
 `npm:package`; an ambiguous target is a `409` listing the candidates, never a guess.
 
-Planned with the risk analyzers (phase 9), and not served until they exist:
+Risk analysis, computed from the index on each request:
 
 ```text
-GET  /api/repositories/:id/hotspots
-GET  /api/repositories/:id/dead-intent
+GET  /api/repositories/:id/hotspots?since=&limit=25&tests=false&generated=false&order=hotspot|risk
+GET  /api/repositories/:id/dead-intent?limit=50&staleDays=365
 ```
+
+- **`hotspots`** returns `{ since, orderBy, filesConsidered, hotspots, notes }`. Each hotspot
+  carries:
+  - `commits`, `churn` and `defectCount`, plus the most recent `defects`, each with its reason,
+    level, confidence and evidence IDs;
+  - `score` and its `components` (`changeFrequency`, `churn`, `defects`);
+  - `risk.score` and its components (`changeFrequency`, `dependencyCentrality`, `bugDensity`,
+    `testReachInverse`), with `dependents` and `testsReaching`;
+  - `classification` and `evidenceIds`.
+- **`dead-intent`** returns `{ candidates, runtimes, notes }`. Each candidate has:
+  - a `target` (a symbol or file),
+  - the `commits` whose wording flagged it,
+  - `signals`, each with a kind, text, level and evidence IDs,
+  - `classification: "INFERRED"`, `confidence` and `evidenceIds`.
+
+Unknown query keys are rejected with `400`. ARCHITECTURE.md defines every number.
 
 ## Investigation response
 

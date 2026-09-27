@@ -13,6 +13,22 @@
       "runtimeArgs": ["pnpm@10.34.5", "--filter", "@codefossil/web", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "api-check",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/cli/dist/bin.js", "serve", "--port", "4010"],
+      "port": 4010
+    },
+    {
+      "name": "web-check",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["pnpm@10.34.5", "--filter", "@codefossil/web", "dev"],
+      "port": 3010,
+      "autoPort": true,
+      "env": {
+        "FOSSIL_API_URL": "http://127.0.0.1:4010"
+      }
     }
   ]
 }

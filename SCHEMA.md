@@ -223,6 +223,15 @@ evidence
 - metadata_json
 - created_at
 
+Manifest evidence (`type = manifest`) is rebuilt with each graph snapshot at HEAD. Two locators
+are used:
+
+- `path@sha#scope:name`, for each declared dependency.
+- `path@sha#runtime:<node|python|go|rust>`, for declared runtime support. Its `metadata_json`
+  holds `{ runtime, constraint, minimum: { major, minor } | null }`. Migration `0006` clears
+  `graph_indexed_sha`, so the next `fossil index` rebuilds the snapshot and records this evidence
+  for repositories indexed before it existed.
+
 Indexes (unique where marked):
 
 - commits(repository_id, sha) unique

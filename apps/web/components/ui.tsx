@@ -100,8 +100,24 @@ export function PageHeader({
   return (
     <header className="mb-6 flex flex-col gap-1">
       <span className="font-mono text-2xs uppercase tracking-[0.18em] text-accent">{eyebrow}</span>
-      <h1 className="break-all text-2xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="[overflow-wrap:anywhere] text-2xl font-semibold tracking-tight">{title}</h1>
       {children ? <div className="text-sm text-muted">{children}</div> : null}
     </header>
+  );
+}
+
+/** A 0–1 component as a thin bar with its value; the number carries the meaning. */
+export function ComponentBar({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="grid grid-cols-[7.5rem_1fr_2.75rem] items-center gap-2 text-xs">
+      <span className="text-muted">{label}</span>
+      <div className="h-1 overflow-hidden rounded-full bg-raised" aria-hidden>
+        <div
+          className="h-full rounded-full bg-accent/80"
+          style={{ width: `${Math.round(value * 100)}%` }}
+        />
+      </div>
+      <span className="text-right font-mono tabular-nums">{value.toFixed(2)}</span>
+    </div>
   );
 }

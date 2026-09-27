@@ -25,6 +25,7 @@ import {
   parseManifest,
   type Manifest,
   type Resolution,
+  minimumVersion,
 } from '@codefossil/graph';
 import { grammarForPath, SymbolExtractor, type ParsedImport } from '@codefossil/parser';
 import { detectLanguage } from '@codefossil/shared';
@@ -232,6 +233,16 @@ function writeManifests(
         },
       });
       count++;
+    }
+    // Declared runtime support; dead-intent analysis compares version references against it.
+    for (const runtime of manifest.runtimes) {
+      recordEvidence(db, {
+        repositoryId,
+        type: 'manifest',
+        locator: `${manifest.path}@${headSha}#runtime:${runtime.runtime}`,
+        excerpt: `${runtime.runtime} ${runtime.constraint}`,
+        metadata: { ...runtime, minimum: minimumVersion(runtime.constraint) },
+      });
     }
   }
   return count;

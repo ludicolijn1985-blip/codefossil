@@ -1,6 +1,5 @@
 import { resolve } from 'node:path';
 import { Command, Option } from 'commander';
-import { z } from 'zod';
 import { runIndex } from '@codefossil/core';
 import {
   fileImports,
@@ -18,6 +17,8 @@ import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './form
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
 import { registerInvestigationCommands } from './investigate-commands.js';
+import { registerAnalysisCommands } from './analyze-commands.js';
+import { parsePositiveInteger, parseSince } from './options.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -29,16 +30,6 @@ import {
   type Workspace,
 } from './workspace.js';
 
-const sinceSchema = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
-
-function parseSince(value: string): Date {
-  const result = sinceSchema.safeParse(value);
-  if (!result.success) {
-    throw new CliError(`--since must be an ISO date such as 2025-01-01, got "${value}".`);
-  }
-  return new Date(result.data);
-}
-
 const DEFAULT_GITHUB_MAX_REQUESTS = 1000;
 
 function gitHubStatus(ws: Workspace): GitHubStatus | null {
@@ -46,14 +37,6 @@ function gitHubStatus(ws: Workspace): GitHubStatus | null {
   if (!connection) return null;
   const { owner, name, apiUrl, lastSyncedAt } = connection;
   return { owner, name, apiUrl, lastSyncedAt, ...providerCounts(ws.fossil.db, ws.repositoryId) };
-}
-
-function parsePositiveInteger(value: string, flag: string): number {
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    throw new CliError(`${flag} must be a positive whole number, got "${value}".`);
-  }
-  return parsed;
 }
 
 interface IndexCommandOptions {
@@ -267,6 +250,7 @@ export function createProgram(io: CliIO): Command {
 
   registerGraphCommands(program, io, repoPath);
   registerInvestigationCommands(program, io, repoPath);
+  registerAnalysisCommands(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
 
   return program;

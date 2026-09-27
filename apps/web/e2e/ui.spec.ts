@@ -91,3 +91,27 @@ test('pages refuse requests addressed to another host name', async ({ request })
   const page = await request.get('/r/1', { headers: { host: 'rebound.example:3100' } });
   expect(page.status()).toBe(403);
 });
+
+test('hotspots rank files and open to their components', async ({ page }) => {
+  await page.goto('/r/1/hotspots');
+  const first = page.locator('details').first();
+  await expect(first.locator('summary')).toContainText('src/');
+  await first.locator('summary').click();
+  await expect(first).toContainText('Risk = product of');
+  await expect(first).toContainText('untested');
+
+  await page.getByLabel('Order by').selectOption('risk');
+  await page.getByRole('button', { name: 'Apply' }).click();
+  await expect(page).toHaveURL(/order=risk/);
+  await expect(page.getByRole('heading', { name: /Ranked by risk/i })).toBeVisible();
+});
+
+test('dead intent lists candidates as inferences with their signals', async ({ page }) => {
+  await page.goto('/r/1/dead-intent');
+  const candidate = page.getByRole('list', { name: 'Candidates' }).getByRole('listitem').first();
+  await expect(candidate).toContainText('calculateVAT');
+  await expect(candidate).toContainText('workaround wording');
+  await expect(candidate).toContainText('INFERRED');
+  await candidate.getByRole('link', { name: /calculateVAT/ }).click();
+  await expect(page).toHaveURL(/\/r\/1\/symbols\/\d+$/);
+});

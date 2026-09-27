@@ -2,23 +2,29 @@ import Link from 'next/link';
 import { Problem } from '@/components/problem';
 import { Empty, LevelBadge, Metric, PageHeader, Panel } from '@/components/ui';
 import { fossil } from '@/lib/api';
-import { day, shortSha, when } from '@/lib/format';
+import { day, entityHref, plural, shortSha, when } from '@/lib/format';
 import { idParam } from '@/lib/route';
-import type { CommitListItem, InvestigationRow, RepositoryDetail } from '@/lib/types';
+import type {
+  CommitListItem,
+  HotspotReport,
+  InvestigationRow,
+  RepositoryDetail,
+} from '@/lib/types';
 
 export default async function Overview({ params }: { params: Promise<{ id: string }> }) {
   const id = idParam((await params).id);
-  let data: [RepositoryDetail, CommitListItem[], InvestigationRow[]];
+  let data: [RepositoryDetail, CommitListItem[], InvestigationRow[], HotspotReport];
   try {
     data = await Promise.all([
       fossil<RepositoryDetail>(`/api/repositories/${id}`),
       fossil<CommitListItem[]>(`/api/repositories/${id}/commits?limit=12`),
       fossil<InvestigationRow[]>(`/api/repositories/${id}/investigations?limit=8`),
+      fossil<HotspotReport>(`/api/repositories/${id}/hotspots?limit=6`),
     ]);
   } catch (error) {
     return <Problem error={error} />;
   }
-  const [repository, commits, investigations] = data;
+  const [repository, commits, investigations, hotspots] = data;
   const { counts } = repository.status;
   const relations = counts.relations.FACT + counts.relations.DERIVED + counts.relations.INFERRED;
 
@@ -77,6 +83,52 @@ export default async function Overview({ params }: { params: Promise<{ id: strin
             No GitHub connection: issue and pull-request evidence is absent, so answers rest on git
             history alone.
           </p>
+        )}
+      </Panel>
+
+      <Panel
+        title="Historical hotspots"
+        aside={
+          <Link href={`/r/${id}/hotspots`} className="hover:text-accent">
+            all hotspots →
+          </Link>
+        }
+      >
+        {hotspots.hotspots.length === 0 ? (
+          <Empty>No file has recorded changes yet.</Empty>
+        ) : (
+          <ol className="grid gap-x-8 gap-y-2 md:grid-cols-2">
+            {hotspots.hotspots.map((hotspot) => {
+              const href = entityHref(id, hotspot.file.key);
+              return (
+                <li
+                  key={hotspot.file.key}
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3"
+                >
+                  <span className="min-w-0">
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="block truncate font-mono text-xs hover:text-accent"
+                        title={hotspot.file.path}
+                      >
+                        {hotspot.file.path}
+                      </Link>
+                    ) : (
+                      <span className="block truncate font-mono text-xs">{hotspot.file.path}</span>
+                    )}
+                    <span className="text-2xs text-faint">
+                      {plural(hotspot.commits, 'commit')} · {plural(hotspot.churn, 'line')} ·{' '}
+                      {plural(hotspot.defectCount, 'defect commit')}
+                    </span>
+                  </span>
+                  <span className="font-mono text-xs tabular-nums text-accent">
+                    {hotspot.score.toFixed(2)}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </Panel>
 

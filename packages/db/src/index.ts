@@ -1,3 +1,4 @@
+export * from './analysis.js';
 export * from './client.js';
 export * from './entities.js';
 export * from './entity-records.js';

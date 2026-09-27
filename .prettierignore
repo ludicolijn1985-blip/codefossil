@@ -3,3 +3,4 @@ coverage
 node_modules
 pnpm-lock.yaml
 **/drizzle/meta
+.claude/worktrees

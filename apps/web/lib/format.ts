@@ -28,3 +28,12 @@ export const LEVEL_EXPLANATION: Readonly<Record<EvidenceLevel, string>> = {
   DERIVED: 'Computed deterministically from facts',
   INFERRED: 'Concluded by a heuristic; never certain',
 };
+
+/** Where the UI shows an entity given as `type:id`, or null when it has no page. */
+export function entityHref(repositoryId: number, key: string): string | null {
+  const [type, id] = key.split(':');
+  if (!id || !/^\d+$/.test(id)) return null;
+  if (type === 'file') return `/r/${repositoryId}/files/${id}`;
+  if (type === 'symbol') return `/r/${repositoryId}/symbols/${id}`;
+  return null;
+}

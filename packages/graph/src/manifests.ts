@@ -1,4 +1,5 @@
 import { parse as parseToml } from 'smol-toml';
+import type { RuntimeConstraint } from './runtime.js';
 
 export type Ecosystem = 'npm' | 'go' | 'cargo' | 'pypi';
 export type DependencyScope = 'runtime' | 'dev' | 'peer' | 'optional' | 'build';
@@ -23,6 +24,8 @@ export interface Manifest {
    * relative to the manifest's directory, in resolution order.
    */
   readonly entries: Readonly<Record<string, readonly string[]>>;
+  /** Runtime versions the manifest declares support for (`engines.node`, `requires-python`, …). */
+  readonly runtimes: readonly RuntimeConstraint[];
 }
 
 export class ManifestParseError extends Error {
@@ -122,6 +125,10 @@ function parsePackageJson(path: string, content: string): Manifest {
     packageName: typeof json.name === 'string' ? json.name : null,
     dependencies,
     entries: packageEntries(json),
+    runtimes:
+      isRecord(json.engines) && typeof json.engines.node === 'string'
+        ? [{ runtime: 'node', constraint: json.engines.node }]
+        : [],
   };
 }
 
@@ -132,6 +139,7 @@ function parseGoMod(path: string, content: string): Manifest {
   const lines = content.split('\n').map((line) => line.replace(/\/\/.*$/, '').trim());
   let packageName: string | null = null;
   const dependencies: ManifestDependency[] = [];
+  const runtimes: RuntimeConstraint[] = [];
   let inRequireBlock = false;
   const addRequire = (spec: string) => {
     const [name, version] = spec.split(/\s+/);
@@ -147,10 +155,13 @@ function parseGoMod(path: string, content: string): Manifest {
     }
     const module = /^module\s+(\S+)/.exec(line);
     if (module?.[1]) packageName = module[1].replace(/^"|"$/g, '');
+    // The `go` directive is the minimum Go version the module supports.
+    const go = /^go\s+(\d+\.\d+(?:\.\d+)?)$/.exec(line);
+    if (go?.[1]) runtimes.push({ runtime: 'go', constraint: `>=${go[1]}` });
     if (/^require\s*\($/.test(line)) inRequireBlock = true;
     else if (line.startsWith('require ')) addRequire(line.slice('require '.length).trim());
   }
-  return { path, ecosystem: 'go', packageName, dependencies, entries: {} };
+  return { path, ecosystem: 'go', packageName, dependencies, entries: {}, runtimes };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +202,10 @@ function parseCargoToml(path: string, content: string): Manifest {
     packageName: isRecord(pkg) && typeof pkg.name === 'string' ? pkg.name : null,
     dependencies,
     entries: {},
+    runtimes:
+      isRecord(pkg) && typeof pkg['rust-version'] === 'string'
+        ? [{ runtime: 'rust', constraint: `>=${pkg['rust-version']}` }]
+        : [],
   };
 }
 
@@ -259,7 +274,21 @@ function parsePyproject(path: string, content: string): Manifest {
       : typeof poetry.name === 'string'
         ? poetry.name
         : null;
-  return { path, ecosystem: 'pypi', packageName: name, dependencies, entries: {} };
+  const poetryPython = isRecord(poetry.dependencies) ? poetry.dependencies.python : undefined;
+  const python =
+    typeof project['requires-python'] === 'string'
+      ? project['requires-python']
+      : typeof poetryPython === 'string'
+        ? poetryPython
+        : null;
+  return {
+    path,
+    ecosystem: 'pypi',
+    packageName: name,
+    dependencies,
+    entries: {},
+    runtimes: python ? [{ runtime: 'python', constraint: python }] : [],
+  };
 }
 
 function parseRequirements(path: string, content: string): Manifest {
@@ -273,5 +302,5 @@ function parseRequirements(path: string, content: string): Manifest {
       const dep = requirement(line, scope);
       return dep ? [dep] : [];
     });
-  return { path, ecosystem: 'pypi', packageName: null, dependencies, entries: {} };
+  return { path, ecosystem: 'pypi', packageName: null, dependencies, entries: {}, runtimes: [] };
 }
