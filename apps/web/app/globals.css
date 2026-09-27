@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens. Dark-first by design (UI.md): near-black ground, one
+ * restrained phosphor accent, and evidence levels carried by colour *and*
+ * line style so they never rely on colour alone.
+ */
+@theme {
+  --color-ground: #0a0b0d;
+  --color-surface: #111317;
+  --color-raised: #171a1f;
+  --color-line: #23272e;
+  --color-line-strong: #323843;
+  --color-ink: #e7e9ec;
+  --color-muted: #9aa2ae;
+  --color-faint: #6b7380;
+  --color-accent: #6ee7c5;
+  --color-accent-dim: #1d3b33;
+  --color-fact: #6ee7c5;
+  --color-derived: #8ab4ff;
+  --color-inferred: #f2b857;
+  --color-danger: #ff8a8a;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SFMono-Regular', monospace;
+
+  --text-2xs: 0.6875rem;
+  --radius-panel: 10px;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ground);
+    /* A faint survey grid: texture without noise. */
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.025) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+    background-size: 32px 32px;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-accent-dim);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

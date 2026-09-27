@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { runIndex } from '@codefossil/core';
 import {
   getIndexStatus,
+  getInvestigation,
   getProviderConnection,
   listInvestigations,
   listRepositories,
@@ -25,6 +26,8 @@ const indexBody = z
     github: z.boolean().default(false),
   })
   .strict();
+
+const investigationParams = z.object({ investigationId: z.coerce.number().int().positive() });
 
 const listQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(20) });
 
@@ -126,6 +129,16 @@ export function repositoryRoutes(app: FastifyInstance, context: ApiContext): voi
     } finally {
       indexing = false;
     }
+  });
+
+  app.get('/api/repositories/:id/investigations/:investigationId', (request) => {
+    const repository = repositoryOr404(context, request.params);
+    const { investigationId } = investigationParams.parse(request.params);
+    const investigation = getInvestigation(db, repository.id, investigationId);
+    if (!investigation) {
+      throw new ApiError(404, 'investigation_not_found', `No investigation ${investigationId}.`);
+    }
+    return { data: investigation };
   });
 
   app.get('/api/repositories/:id/investigations', (request) => {

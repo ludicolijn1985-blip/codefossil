@@ -49,8 +49,9 @@ pnpm install
 pnpm test        # Vitest across all packages
 pnpm lint        # ESLint (type-aware)
 pnpm typecheck   # tsc --noEmit
-pnpm build       # compile packages to dist/
+pnpm build       # compile packages to dist/, build the web UI
 pnpm format      # Prettier
+pnpm --filter @codefossil/web e2e   # Playwright against a fixture repository (after pnpm build)
 ```
 
 Workspace packages point their `@codefossil/source` export condition at `src/`, so tests and
@@ -70,6 +71,7 @@ typechecking run against source without a build step.
 | `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export         |
 | `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                    |
 | `@codefossil/cli`       | The `fossil` command                                                                      |
+| `@codefossil/web`       | Local web UI (Next.js) over the API: overview, investigations, files, graph, dependencies |
 
 ### Using the CLI
 
@@ -92,6 +94,20 @@ node /path/to/codefossil/apps/cli/dist/bin.js query "what depends on calculateVA
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
+
+### Using the web UI
+
+The UI reads everything from `fossil serve`; start both from an indexed repository:
+
+```bash
+node /path/to/codefossil/apps/cli/dist/bin.js serve          # API on 127.0.0.1:4000
+pnpm --filter @codefossil/web start                          # UI on http://127.0.0.1:3000
+```
+
+Set `FOSSIL_API_URL` when the API listens elsewhere on this machine. The browser never talks to
+the API directly: requests go through the UI server, which forwards only read routes and
+investigations, and only for requests addressed to a loopback host. `/` focuses search;
+`g` then `o`/`i`/`f`/`g`/`d` jumps between sections.
 
 ### Known limitations
 

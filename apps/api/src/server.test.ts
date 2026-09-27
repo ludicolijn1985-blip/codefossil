@@ -230,6 +230,26 @@ describe('CODEFOSSIL API', () => {
       expect(graphDocumentSchema.parse(whole.body.data).scope.root).toBeNull();
     });
 
+    it('searches files and lists recent commits and dependencies', async () => {
+      const files = await call({ method: 'GET', url: repo('/files?query=vat') });
+      expect((files.body.data as { path: string }[]).map((f) => f.path)).toEqual([
+        'src/tax/vat.ts',
+        'src/payment/vat.ts',
+      ]);
+      const commits = await call({ method: 'GET', url: repo('/commits?limit=2') });
+      expect((commits.body.data as { subject: string }[]).map((c) => c.subject)).toEqual([
+        'Second calculateVAT',
+        'Merge branch feature/logo',
+      ]);
+      expect(await call({ method: 'GET', url: repo('/dependencies') })).toMatchObject({
+        status: 200,
+        body: { data: [] },
+      });
+      expect(await call({ method: 'GET', url: repo('/commits?limit=0') })).toMatchObject({
+        status: 400,
+      });
+    });
+
     it('serves impact reports', async () => {
       const impact = await call({ method: 'GET', url: repo('/impact?target=src/tax/vat.ts') });
       expect(impact.body.data).toMatchObject({ kind: 'impact', direct: [], transitive: [] });
@@ -264,6 +284,14 @@ describe('CODEFOSSIL API', () => {
 
       const saved = await call({ method: 'GET', url: repo('/investigations') });
       expect(saved.body.data).toHaveLength(1);
+      const id = (byQuestion.body.data as { investigationId: number }).investigationId;
+      expect(await call({ method: 'GET', url: repo(`/investigations/${id}`) })).toMatchObject({
+        status: 200,
+        body: { data: { id, kind: 'why' } },
+      });
+      expect(await call({ method: 'GET', url: repo('/investigations/9999') })).toMatchObject({
+        status: 404,
+      });
     });
 
     it('declines unsupported questions and reports ambiguous subjects', async () => {

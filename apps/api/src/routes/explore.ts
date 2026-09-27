@@ -6,8 +6,11 @@ import {
   findFileById,
   findFileByPath,
   importedBy,
+  listDependencies,
   listFileSymbols,
   loadEntityRecords,
+  recentCommits,
+  searchFiles,
 } from '@codefossil/db';
 import { analyzeImpact, buildTimeline, exportGraph, investigateWhy } from '@codefossil/query';
 import { repositoryOr404, targetOr4xx, TEXT, type ApiContext } from '../context.js';
@@ -27,9 +30,31 @@ const impactQuery = z.object({
 });
 const fileParams = z.object({ fileId: z.coerce.number().int().positive() });
 const symbolParams = z.object({ symbolId: z.coerce.number().int().positive() });
+const filesQuery = z.object({
+  query: z.string().max(512).default(''),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+const commitsQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(20) });
 
 export function exploreRoutes(app: FastifyInstance, context: ApiContext): void {
   const db = context.fossil.db;
+
+  app.get('/api/repositories/:id/files', (request) => {
+    const repository = repositoryOr404(context, request.params);
+    const query = filesQuery.parse(request.query);
+    return { data: searchFiles(db, repository.id, query.query.trim(), query.limit) };
+  });
+
+  app.get('/api/repositories/:id/commits', (request) => {
+    const repository = repositoryOr404(context, request.params);
+    const { limit } = commitsQuery.parse(request.query);
+    return { data: recentCommits(db, repository.id, limit) };
+  });
+
+  app.get('/api/repositories/:id/dependencies', (request) => {
+    const repository = repositoryOr404(context, request.params);
+    return { data: listDependencies(db, repository.id) };
+  });
 
   app.get('/api/repositories/:id/timeline', (request) => {
     const repository = repositoryOr404(context, request.params);

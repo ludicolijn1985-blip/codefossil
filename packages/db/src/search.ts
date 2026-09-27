@@ -120,3 +120,50 @@ export function dependenciesByName(
     .limit(SEARCH_LIMIT)
     .all();
 }
+
+/** Files whose path contains `text` (case-insensitive), current ones first. */
+export function searchFiles(
+  db: FossilDb,
+  repositoryId: number,
+  text: string,
+  limit = SEARCH_LIMIT,
+): { id: number; path: string; language: string | null; deletedAt: string | null }[] {
+  return db
+    .select({
+      id: files.id,
+      path: files.path,
+      language: files.language,
+      deletedAt: files.deletedAt,
+    })
+    .from(files)
+    .where(
+      and(
+        eq(files.repositoryId, repositoryId),
+        text === '' ? undefined : like(files.path, sql`${`%${literal(text)}%`} ESCAPE '\\'`),
+      ),
+    )
+    .orderBy(sql`${files.deletedAt} IS NOT NULL`, files.path)
+    .limit(limit)
+    .all();
+}
+
+/** The most recent commits, newest first. */
+export function recentCommits(
+  db: FossilDb,
+  repositoryId: number,
+  limit = SEARCH_LIMIT,
+): { id: number; sha: string; subject: string; authorName: string; committedAt: string }[] {
+  return db
+    .select({
+      id: commits.id,
+      sha: commits.sha,
+      subject: commits.subject,
+      authorName: commits.authorName,
+      committedAt: commits.committedAt,
+    })
+    .from(commits)
+    .where(eq(commits.repositoryId, repositoryId))
+    .orderBy(desc(commits.committedAt), desc(commits.id))
+    .limit(limit)
+    .all();
+}

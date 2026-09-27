@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/cli/dist/bin.js", "serve", "--port", "4000"],
+      "port": 4000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["pnpm@10.34.5", "--filter", "@codefossil/web", "dev"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}
