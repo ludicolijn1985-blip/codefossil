@@ -1,0 +1,25 @@
+name: CODEFOSSIL report
+
+# CODEFOSSIL on its own history: a report on every pull request, and a weekly
+# re-index that keeps the cached index warm.
+on:
+  pull_request:
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: ./
+        with:
+          comment: 'false'

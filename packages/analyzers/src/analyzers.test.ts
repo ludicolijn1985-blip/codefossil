@@ -5,6 +5,7 @@ import { createSampleHistory, type SampleHistory } from '@codefossil/git/testing
 import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
+import { buildReport } from './report.js';
 
 const now = () => new Date('2026-09-26T12:00:00.000Z');
 
@@ -123,6 +124,51 @@ describe('risk analyzers on an indexed history', () => {
       const report = analyzeHotspots(fossil.db, repositoryId, { since: '2999-01-01' });
       expect(report.hotspots).toEqual([]);
       expect(report.since).toBe('2999-01-01');
+    });
+  });
+
+  describe('report', () => {
+    it('summarizes the index, hotspots and dead intent', () => {
+      const report = buildReport(fossil.db, repositoryId, { now: now(), hotspotLimit: 2 });
+      expect(report.counts.commits).toBeGreaterThan(5);
+      expect(report.hotspots).toHaveLength(2);
+      expect(report.deadIntent.map((c) => c.target.path)).toContain('src/compat.ts');
+      expect(report).toMatchObject({ base: null, changed: null, changedTotal: 0 });
+    });
+
+    it('reports each changed file with its history and dependents, most depended-on first', () => {
+      const report = buildReport(fossil.db, repositoryId, {
+        now: now(),
+        base: 'main~3',
+        changedPaths: [
+          'src/tax/vat.ts',
+          'src/compat.ts',
+          'README.md',
+          'pnpm-lock.yaml',
+          'src/new.ts',
+        ],
+      });
+      expect(report.changedTotal).toBe(5);
+      const byPath = new Map(report.changed?.map((f) => [f.path, f]));
+      expect(report.changed?.[0]?.path).toBe('src/tax/vat.ts');
+      expect(byPath.get('src/tax/vat.ts')).toMatchObject({
+        status: 'changed',
+        history: { commits: 3, defectCount: 1, classification: 'INFERRED' },
+        impact: { direct: 2, tests: 1, examples: ['src/checkout.ts', 'src/tax/vat.test.ts'] },
+      });
+      expect(byPath.get('README.md')?.status).toBe('deleted');
+      expect(byPath.get('pnpm-lock.yaml')?.status).toBe('generated');
+      expect(byPath.get('src/new.ts')?.status).toBe('unindexed');
+      expect(byPath.get('src/compat.ts')?.impact?.direct).toBe(0);
+    });
+
+    it('examines at most the requested number of changed files but counts them all', () => {
+      const report = buildReport(fossil.db, repositoryId, {
+        changedPaths: ['src/tax/vat.ts', 'src/compat.ts', 'src/checkout.ts'],
+        changedLimit: 1,
+      });
+      expect(report.changed).toHaveLength(1);
+      expect(report.changedTotal).toBe(3);
     });
   });
 

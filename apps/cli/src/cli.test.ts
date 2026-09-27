@@ -658,6 +658,63 @@ describe('fossil hotspots and dead-intent', () => {
   });
 });
 
+describe('fossil report', () => {
+  let sample: SampleHistory | undefined;
+
+  beforeEach(async () => {
+    sample = await createSampleHistory();
+    await sample.repo.write(
+      'src/tax/vat.ts',
+      'export const calculateVAT = (n: number) => n * 0.21;\n',
+    );
+    await sample.repo.write('src/checkout.ts', "import { calculateVAT } from './tax/vat.js';\n");
+    await sample.repo.commit('fix: | injected <b>row</b> for @someone');
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  it('writes a markdown report a CI job can post', async () => {
+    const result = await fossil(root(), 'report', '--limit', '3');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout.startsWith('<!-- codefossil-report -->\n## CODEFOSSIL report')).toBe(true);
+    expect(result.stdout).toContain('### Historical hotspots');
+    expect(result.stdout).toContain('| 1 | `src/tax/vat.ts` |');
+    expect(result.stdout).toContain('### Dead-intent candidates (INFERRED)');
+    expect(result.stdout).not.toContain('Files changed since');
+  });
+
+  it('reports the files changed since a base, with their dependents', async () => {
+    const result = await fossil(root(), 'report', '--base', 'HEAD~1');
+    expect(result.stdout).toContain('### Files changed since `HEAD~1` (2)');
+    expect(result.stdout).toMatch(/\| `src\/tax\/vat\.ts` \| #\d+ · \d+ commits, 1 defect \|/);
+    expect(result.stdout).toContain('1 direct, 0 transitive e.g. `src/checkout.ts`');
+    const json = JSON.parse(
+      (await fossil(root(), 'report', '--base', 'HEAD~1', '--json')).stdout,
+    ) as {
+      changedTotal: number;
+    };
+    expect(json.changedTotal).toBe(2);
+  });
+
+  it('refuses bases that are options or not commits', async () => {
+    expect((await fossil(root(), 'report', '--base=--output=/tmp/x')).stderr).toContain(
+      '--base must be a revision',
+    );
+    expect((await fossil(root(), 'report', '--base', 'no-such-branch')).stderr).toContain(
+      'is not a commit in this repository',
+    );
+    expect((await fossil(root(), 'report', '--base', 'a..b')).stderr).toContain(
+      'is not a commit in this repository',
+    );
+  });
+});
+
 describe('fossil ai, ask and why --summarize', () => {
   let sample: SampleHistory | undefined;
   const prompts: string[] = [];

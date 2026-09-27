@@ -20,6 +20,7 @@ import { registerInvestigationCommands } from './investigate-commands.js';
 import { registerAiCommands } from './ai-commands.js';
 import { registerAnalysisCommands } from './analyze-commands.js';
 import { parsePositiveInteger, parseSince } from './options.js';
+import { registerReportCommand } from './report-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -253,6 +254,7 @@ export function createProgram(io: CliIO): Command {
   registerInvestigationCommands(program, io, repoPath);
   registerAnalysisCommands(program, io, repoPath);
   registerAiCommands(program, io, repoPath);
+  registerReportCommand(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
 
   return program;

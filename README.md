@@ -31,7 +31,7 @@ CODEFOSSIL is a local-first software archaeology and repository intelligence pla
    - `fossil impact <symbol-or-file>`
    - `fossil timeline <path>`
 9. JSON API.
-10. GitHub Action for scheduled re-indexing.
+10. GitHub Action for scheduled re-indexing and pull-request reports (see ACTION.md).
 
 ## Non-goals for v1
 
@@ -98,6 +98,23 @@ node /path/to/codefossil/apps/cli/dist/bin.js dead-intent                  # wor
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
+
+### In GitHub Actions
+
+```yaml
+permissions: { contents: read, issues: read, pull-requests: read }
+jobs:
+  codefossil:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with: { fetch-depth: 0 }
+      - uses: ludicolijn1985-blip/codefossil@main
+```
+
+Each run indexes new commits into a cached index and writes a report to the job summary: the
+history and dependents of every file the pull request changes, historical hotspots and dead-intent
+candidates. `fossil report [--base <rev>]` produces the same report locally. See ACTION.md.
 
 ### Optional AI layer
 

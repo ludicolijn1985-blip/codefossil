@@ -1,0 +1,140 @@
+name: CODEFOSSIL
+description: >-
+  Evidence-first software archaeology in CI: index the repository's history (incrementally, with
+  a cached index) and report historical hotspots, dead-intent candidates and, for a pull request,
+  the history and dependents of every changed file.
+author: CODEFOSSIL contributors
+branding:
+  icon: layers
+  color: green
+
+inputs:
+  base:
+    description: >-
+      Revision to report changes against. Defaults to the pull request's base on pull_request
+      events; empty elsewhere (no changed-files section).
+    required: false
+    default: ''
+  github-sync:
+    description: Sync issues and pull requests with github-token so answers can cite them ('true' or 'false').
+    required: false
+    default: 'true'
+  github-token:
+    description: Token for the GitHub sync and the optional comment. Needs issues and pull-requests read (write to comment).
+    required: false
+    default: ${{ github.token }}
+  github-max-requests:
+    description: GitHub API requests allowed per run; a larger sync continues on the next run.
+    required: false
+    default: '1000'
+  hotspots:
+    description: Number of historical hotspots to list.
+    required: false
+    default: '10'
+  comment:
+    description: Post the report as a pull request comment, updated in place on later runs ('true' or 'false').
+    required: false
+    default: 'false'
+  cache:
+    description: Keep the index in the Actions cache so each run only indexes new commits ('true' or 'false').
+    required: false
+    default: 'true'
+  working-directory:
+    description: The checked-out repository to analyse.
+    required: false
+    default: '.'
+
+outputs:
+  report-path:
+    description: Path of the Markdown report written by this run.
+    value: ${{ steps.report.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: 22
+
+    - name: Build CODEFOSSIL
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npx --yes pnpm@10.34.5 install --frozen-lockfile --filter "@codefossil/cli..."
+        npx --yes pnpm@10.34.5 --filter "@codefossil/cli..." build
+
+    - name: Restore the index
+      if: inputs.cache == 'true'
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: ${{ inputs.working-directory }}/.codefossil
+        key: codefossil-v1-${{ runner.os }}-${{ github.sha }}
+        restore-keys: codefossil-v1-${{ runner.os }}-
+
+    # Inputs reach scripts only through environment variables, never through ${{ }} in `run`.
+    - name: Index the history
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FOSSIL: ${{ github.action_path }}/apps/cli/dist/bin.js
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SYNC: ${{ inputs.github-sync }}
+        MAX_REQUESTS: ${{ inputs.github-max-requests }}
+      run: |
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          echo "::warning::Shallow clone: only the fetched history is indexed. Check out with fetch-depth: 0."
+        fi
+        node "$FOSSIL" init
+        if [ "$SYNC" = "true" ]; then
+          if node "$FOSSIL" connect github; then
+            node "$FOSSIL" index --github-max-requests "$MAX_REQUESTS"
+          else
+            echo "::warning::GitHub sync unavailable; indexing the git history only."
+            node "$FOSSIL" index --offline
+          fi
+        else
+          node "$FOSSIL" index --offline
+        fi
+
+    - name: Write the report
+      id: report
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        FOSSIL: ${{ github.action_path }}/apps/cli/dist/bin.js
+        BASE_INPUT: ${{ inputs.base }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        LIMIT: ${{ inputs.hotspots }}
+      run: |
+        base="${BASE_INPUT:-$PR_BASE}"
+        out="$RUNNER_TEMP/codefossil-report.md"
+        args=(report --limit "$LIMIT")
+        if [ -n "$base" ]; then args+=(--base "$base"); fi
+        node "$FOSSIL" "${args[@]}" > "$out"
+        cat "$out" >> "$GITHUB_STEP_SUMMARY"
+        echo "path=$out" >> "$GITHUB_OUTPUT"
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPORT: ${{ steps.report.outputs.path }}
+        PR: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        # Only the Actions bot's comment that starts with the report marker is ours to update.
+        post() {
+          existing="$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- codefossil-report -->"))) | .id' | head -n 1)"
+          if [ -n "$existing" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$REPORT" > /dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@"$REPORT" > /dev/null
+          fi
+        }
+        if ! post; then
+          echo "::warning::Could not comment on the pull request (a fork's token is read-only, or pull-requests: write is missing). The report is in the job summary."
+        fi

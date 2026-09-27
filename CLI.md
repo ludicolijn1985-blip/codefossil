@@ -51,6 +51,12 @@ List code changed by commits (or linked issues and pull requests) that speak of 
 compatibility or legacy support, with the signals that strengthen each candidate: runtime versions
 below the declared minimum, passed deadlines, and long silence. Always INFERRED candidates.
 
+fossil report [--base <revision>] [--limit n] [--json]
+Write a Markdown report (for CI summaries and pull-request comments): index size, historical
+hotspots, dead-intent candidates and, with `--base`, every file changed since the merge base with
+its history, hotspot and risk scores, dependents and the tests that reach it. Repository text is
+escaped, and `@mentions` are defused.
+
 fossil ai configure --provider ollama|anthropic [--model m] [--base-url url] [--allow-cloud] [--include-source]
 fossil ai status [--json]
 fossil ai off
