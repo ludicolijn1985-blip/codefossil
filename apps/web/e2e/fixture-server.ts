@@ -4,6 +4,7 @@
  * Playwright as a web server; runs on Node's built-in type stripping against
  * the built workspace packages.
  */
+import type { AiProvider } from '@codefossil/ai';
 import { buildServer } from '@codefossil/api';
 import { runIndex } from '@codefossil/core';
 import { IN_MEMORY, openDatabase } from '@codefossil/db';
@@ -22,7 +23,38 @@ await repo.commit('Add checkout total\n\nUses the VAT calculation. Refs #12');
 
 const fossil = openDatabase(IN_MEMORY);
 await runIndex(fossil.db, repo.root, { now: () => new Date('2026-09-26T12:00:00.000Z') });
-const app = await buildServer({ fossil, allowNetwork: false, rateLimitPerMinute: 10_000 });
+/** A stand-in model on this machine: cites the first evidence item it is shown. */
+const fakeModel: AiProvider = {
+  name: 'ollama',
+  model: 'fixture-model',
+  cloud: false,
+  complete(request) {
+    const id = Number(/"id": (\d+)/.exec(request.prompt)?.[1]);
+    const output = request.schema.parse({
+      answer: 'The evidence ties the reduced rate to legacy invoices.',
+      unanswerable: false,
+      claims: [
+        {
+          text: 'The reduced rate exists for legacy invoices.',
+          evidenceIds: [id],
+          confidence: 0.9,
+        },
+      ],
+      caveats: [],
+    });
+    return Promise.resolve({ output, model: 'fixture-model' });
+  },
+};
+const ai = {
+  config: {
+    provider: 'ollama' as const,
+    model: 'fixture-model',
+    allowCloud: false,
+    includeSource: false,
+  },
+  provider: fakeModel,
+};
+const app = await buildServer({ fossil, allowNetwork: false, rateLimitPerMinute: 10_000, ai });
 await app.listen({ host: '127.0.0.1', port: FIXTURE_API_PORT });
 
 const stop = async () => {

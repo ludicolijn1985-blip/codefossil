@@ -1,8 +1,10 @@
+import { dirname } from 'node:path';
 import type { Command } from 'commander';
+import { AiConfigError, createProvider, isCloud, loadAiConfig } from '@codefossil/ai';
 import { buildServer } from '@codefossil/api';
 import { planGitHubSync } from './github.js';
 import { CliError, type CliIO } from './io.js';
-import { openWorkspace } from './workspace.js';
+import { openWorkspace, type Workspace } from './workspace.js';
 
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 const DEFAULT_PORT = 4000;
@@ -30,6 +32,29 @@ function parseCount(value: string): number {
   return count;
 }
 
+/**
+ * The AI layer the server offers, fixed at startup. A cloud provider is only
+ * offered when network access is allowed: API clients must not be able to
+ * send evidence off the machine otherwise.
+ */
+function aiForServer(ws: Workspace, io: CliIO, allowNetwork: boolean) {
+  let config;
+  try {
+    config = loadAiConfig(dirname(ws.databasePath));
+  } catch (error) {
+    if (error instanceof AiConfigError) throw new CliError(error.message);
+    throw error;
+  }
+  if (!config) return undefined;
+  if (isCloud(config) && !allowNetwork) {
+    io.stderr(
+      `Note: the AI layer (${config.provider}) sends evidence off this machine; start with --allow-network to offer it.\n`,
+    );
+    return undefined;
+  }
+  return { config, provider: (io.createAiProvider ?? createProvider)(config) };
+}
+
 export function registerServeCommand(program: Command, io: CliIO, repoPath: () => string): void {
   program
     .command('serve')
@@ -39,7 +64,10 @@ export function registerServeCommand(program: Command, io: CliIO, repoPath: () =
     )
     .option('--port <port>', 'port to listen on', String(DEFAULT_PORT))
     .option('--host <host>', 'loopback address to listen on', '127.0.0.1')
-    .option('--allow-network', 'let API clients trigger GitHub syncs (uses your GitHub token)')
+    .option(
+      '--allow-network',
+      'let API clients trigger GitHub syncs (uses your GitHub token) and use a cloud AI provider',
+    )
     .option('--github-max-requests <n>', 'GitHub requests allowed per sync', '1000')
     .action(async (options: ServeOptions) => {
       if (!LOOPBACK.has(options.host)) {
@@ -57,12 +85,14 @@ export function registerServeCommand(program: Command, io: CliIO, repoPath: () =
             })
           : undefined;
         for (const note of plan?.notes ?? []) io.stderr(`Note: ${note}\n`);
+        const ai = aiForServer(ws, io, options.allowNetwork === true);
         const app = await buildServer({
           fossil: ws.fossil,
           allowNetwork: options.allowNetwork === true,
           ...(plan?.factory && plan.apiUrl
             ? { github: { apiUrl: plan.apiUrl, client: plan.factory } }
             : {}),
+          ...(ai ? { ai } : {}),
           logger: { level: 'warn' },
         });
         const url = await app.listen({ port, host: options.host });
@@ -72,7 +102,8 @@ export function registerServeCommand(program: Command, io: CliIO, repoPath: () =
         };
         io.stdout(
           `CODEFOSSIL API for ${ws.root} listening on ${url}` +
-            `${options.allowNetwork ? ' (network sync allowed)' : ''}. Press Ctrl+C to stop.\n`,
+            (options.allowNetwork ? ' (network sync allowed)' : '') +
+            `${ai ? ` (AI: ${ai.config.provider} ${ai.config.model})` : ''}. Press Ctrl+C to stop.\n`,
         );
         if (io.onServe) {
           io.onServe({ url, close });

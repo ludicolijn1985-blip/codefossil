@@ -658,6 +658,126 @@ describe('fossil hotspots and dead-intent', () => {
   });
 });
 
+describe('fossil ai, ask and why --summarize', () => {
+  let sample: SampleHistory | undefined;
+  const prompts: string[] = [];
+
+  /** Cites the first evidence id it is shown; contacts nothing. */
+  const fakeProvider: NonNullable<CliIO['createAiProvider']> = (config) => ({
+    name: config.provider,
+    model: config.model,
+    cloud: false,
+    complete(request) {
+      prompts.push(request.prompt);
+      const id = Number(/"id": (\d+)/.exec(request.prompt)?.[1]);
+      const output = request.schema.parse({
+        answer: 'The evidence ties it to legacy invoices.',
+        unanswerable: false,
+        claims: [
+          { text: 'Legacy invoices needed it.', evidenceIds: [id], confidence: 0.9 },
+          { text: 'Made up.', evidenceIds: [424242], confidence: 0.9 },
+        ],
+        caveats: [],
+      });
+      return Promise.resolve({ output, model: config.model });
+    },
+  });
+
+  async function run(...args: string[]): Promise<Captured> {
+    let stdout = '';
+    let stderr = '';
+    const code = await runCli(args, {
+      cwd: root(),
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: (text) => {
+        stderr += text;
+      },
+      resolveGitHubToken: noToken,
+      createAiProvider: fakeProvider,
+    });
+    return { code, stdout, stderr };
+  }
+
+  beforeEach(async () => {
+    prompts.length = 0;
+    sample = await createSampleHistory();
+    await fossil(sample.repo.root, 'init');
+    await fossil(sample.repo.root, 'index');
+  });
+
+  afterEach(async () => {
+    await sample?.repo.cleanup();
+  });
+
+  const root = (): string => sample?.repo.root ?? '';
+
+  it('is off until configured, and says so instead of guessing', async () => {
+    expect((await run('ai', 'status')).stdout).toContain('The AI layer is off');
+    const ask = await run('ask', 'Why the legacy invoices?');
+    expect(ask.code).not.toBe(0);
+    expect(ask.stderr).toContain('The AI layer is off');
+    expect(prompts).toHaveLength(0);
+    expect((await run('query', 'tell me a story')).stderr).toContain('fossil ask');
+  });
+
+  it('refuses a cloud provider without explicit agreement, and never stores a key', async () => {
+    const refused = await run('ai', 'configure', '--provider', 'anthropic');
+    expect(refused.stderr).toContain('--allow-cloud');
+    expect(existsSync(join(root(), '.codefossil', 'ai.json'))).toBe(false);
+
+    const agreed = await run('ai', 'configure', '--provider', 'anthropic', '--allow-cloud');
+    expect(agreed.stdout).toContain('evidence is sent to the provider');
+    expect(agreed.stdout).toContain('none are stored');
+    expect(JSON.parse(readFileSync(join(root(), '.codefossil', 'ai.json'), 'utf8'))).toEqual({
+      provider: 'anthropic',
+      model: 'claude-opus-5',
+      allowCloud: true,
+      includeSource: false,
+    });
+    expect((await run('ai', 'off')).stdout).toContain('AI layer off');
+    expect((await run('ai', 'status', '--json')).stdout).toContain('"configured": false');
+  });
+
+  it('answers open questions from gathered evidence, dropping claims it cannot tie to it', async () => {
+    await run('ai', 'configure', '--provider', 'ollama');
+    const result = await run('ask', 'Why the legacy invoices workaround?');
+    expect(result).toMatchObject({ code: 0, stderr: '' });
+    expect(result.stdout).toContain('AI answer (ollama llama3.1, local) · INFERRED 0.60');
+    expect(result.stdout).toContain('Legacy invoices needed it.');
+    expect(result.stdout).not.toContain('Made up.');
+    expect(result.stdout).toContain('1 claim dropped');
+    expect(prompts[0]).toContain('<untrusted_evidence>');
+
+    const nothing = await run('ask', 'What about quantum teleportation?');
+    expect(nothing.stderr).toContain('the model was not asked');
+  });
+
+  it('adds a summary to why without changing the deterministic answer', async () => {
+    await run('ai', 'configure', '--provider', 'ollama');
+    const plain = await run('why', 'calculateVAT', '--no-save');
+    const summarized = await run('why', 'calculateVAT', '--no-save', '--summarize');
+    expect(summarized.stdout.startsWith(plain.stdout)).toBe(true);
+    expect(summarized.stdout).toContain('AI answer (ollama');
+    const json = JSON.parse(
+      (await run('why', 'calculateVAT', '--no-save', '--summarize', '--json')).stdout,
+    ) as {
+      kind: string;
+      summary: { classification: string };
+    };
+    expect(json).toMatchObject({ kind: 'why', summary: { classification: 'INFERRED' } });
+    // Source excerpts (symbol signatures) are withheld by default.
+    const shown = prompts.flatMap((prompt) => {
+      const block = /<untrusted_evidence>\n([\s\S]*)\n<\/untrusted_evidence>/.exec(prompt)?.[1];
+      return JSON.parse(block ?? '[]') as { type: string; excerpt: string | null }[];
+    });
+    const ast = shown.filter((e) => e.type === 'ast_node');
+    expect(ast.length).toBeGreaterThan(0);
+    expect(ast.every((e) => e.excerpt === null)).toBe(true);
+  });
+});
+
 describe('fossil serve', () => {
   let sample: SampleHistory | undefined;
 
@@ -692,6 +812,37 @@ describe('fossil serve', () => {
       expect(await health.json()).toEqual({ data: { status: 'ok', version: '0.1.0' } });
       const repositories = await fetch(`${server?.url ?? ''}/api/repositories`);
       expect(((await repositories.json()) as { data: unknown[] }).data).toHaveLength(1);
+    } finally {
+      await server?.close();
+    }
+  });
+
+  it('offers a cloud AI provider only when network access is allowed', async () => {
+    await fossil(
+      sample?.repo.root ?? '',
+      'ai',
+      'configure',
+      '--provider',
+      'anthropic',
+      '--allow-cloud',
+    );
+    let server: { url: string; close: () => Promise<void> } | undefined;
+    let stderr = '';
+    await runCli(['serve', '--port', '0'], {
+      cwd: sample?.repo.root ?? '',
+      stdout: () => undefined,
+      stderr: (text) => {
+        stderr += text;
+      },
+      resolveGitHubToken: noToken,
+      onServe: (started) => {
+        server = started;
+      },
+    });
+    try {
+      expect(stderr).toContain('start with --allow-network to offer it');
+      const status = await fetch(`${server?.url ?? ''}/api/ai`);
+      expect(await status.json()).toEqual({ data: { enabled: false } });
     } finally {
       await server?.close();
     }

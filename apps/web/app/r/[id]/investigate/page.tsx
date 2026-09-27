@@ -6,7 +6,7 @@ import { Empty, LevelBadge, PageHeader, Panel } from '@/components/ui';
 import { fossil, fossilOrNull } from '@/lib/api';
 import { shortSha, when } from '@/lib/format';
 import { idParam, oneParam } from '@/lib/route';
-import type { ImpactReport, InvestigationRow, WhyInvestigation } from '@/lib/types';
+import type { AiStatus, ImpactReport, InvestigationRow, WhyInvestigation } from '@/lib/types';
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -48,12 +48,14 @@ export default async function Investigate({
 
   let history: InvestigationRow[];
   let saved: InvestigationRow | null;
+  let ai: AiStatus;
   try {
-    [history, saved] = await Promise.all([
+    [history, saved, ai] = await Promise.all([
       fossil<InvestigationRow[]>(`/api/repositories/${id}/investigations?limit=30`),
       showId
         ? fossilOrNull<InvestigationRow>(`/api/repositories/${id}/investigations/${showId}`)
         : null,
+      fossil<AiStatus>('/api/ai'),
     ]);
   } catch (error) {
     return <Problem error={error} />;
@@ -66,7 +68,7 @@ export default async function Investigate({
           Every answer is built from stored evidence. Statements carry their own level and
           confidence; select one to see what it rests on.
         </PageHeader>
-        <Ask repositoryId={id} {...(question ? { initial: question } : {})} />
+        <Ask repositoryId={id} ai={ai} {...(question ? { initial: question } : {})} />
         {showId && !saved ? <Empty>Investigation {showId} was not found.</Empty> : null}
         {saved ? <Saved investigation={saved} /> : null}
       </div>

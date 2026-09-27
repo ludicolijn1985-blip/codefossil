@@ -84,3 +84,15 @@ export interface SymbolDetail {
   readonly symbol: Extract<EntityRecord, { type: 'symbol' }>;
   readonly why: WhyInvestigation;
 }
+
+export type { AiAnswer } from '@codefossil/ai';
+
+export type AiStatus =
+  | { readonly enabled: false }
+  | {
+      readonly enabled: true;
+      readonly provider: string;
+      readonly model: string;
+      readonly cloud: boolean;
+      readonly includeSource: boolean;
+    };

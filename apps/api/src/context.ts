@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AiConfig, AiProvider } from '@codefossil/ai';
 import {
   entityKey,
   findRepositoryById,
@@ -25,6 +26,15 @@ export interface ApiContext {
   readonly github?: {
     readonly apiUrl: string;
     readonly client: (connection: ProviderConnectionRow) => GitHubClient | null;
+  };
+  /**
+   * The optional AI layer as configured when the server started. Absent when
+   * it is off — or when it is a cloud provider and network access was not
+   * allowed.
+   */
+  readonly ai?: {
+    readonly config: AiConfig;
+    readonly provider: AiProvider;
   };
   readonly now?: () => Date;
 }

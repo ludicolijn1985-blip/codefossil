@@ -1,8 +1,9 @@
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { FossilDatabase } from './client.js';
 import { registerRepository } from './repositories.js';
 import * as schema from './schema.js';
-import { commitsByShaPrefix, recentCommits, searchFiles } from './search.js';
+import { commitsByShaPrefix, commitsMentioning, recentCommits, searchFiles } from './search.js';
 import { openTestDatabase } from './test-helpers.js';
 
 describe('search', () => {
@@ -65,5 +66,26 @@ describe('search', () => {
       'Commit 1',
     ]);
     expect(commitsByShaPrefix(fossil.db, repositoryId, 'AAA1')).toHaveLength(1);
+  });
+
+  it('finds commits by words in their message, literally', () => {
+    fossil.db
+      .update(schema.commits)
+      .set({ body: 'Workaround for 100% of legacy invoices' })
+      .where(eq(schema.commits.subject, 'Commit 1'))
+      .run();
+    expect(commitsMentioning(fossil.db, repositoryId, ['LEGACY']).map((c) => c.subject)).toEqual([
+      'Commit 1',
+    ]);
+    expect(commitsMentioning(fossil.db, repositoryId, ['commit']).map((c) => c.subject)).toEqual([
+      'Commit 2',
+      'Commit 1',
+    ]);
+    // `%` and `_` match themselves, not any text.
+    expect(commitsMentioning(fossil.db, repositoryId, ['%']).map((c) => c.subject)).toEqual([
+      'Commit 1',
+    ]);
+    expect(commitsMentioning(fossil.db, repositoryId, ['Commit_'])).toHaveLength(0);
+    expect(commitsMentioning(fossil.db, repositoryId, [])).toEqual([]);
   });
 });

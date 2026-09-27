@@ -86,6 +86,23 @@ GET  /api/repositories/:id/dead-intent?limit=50&staleDays=365
 
 Unknown query keys are rejected with `400`. ARCHITECTURE.md defines every number.
 
+Optional AI layer (fixed when `fossil serve` starts; see SECURITY.md):
+
+```text
+GET  /api/ai                          { enabled, provider?, model?, cloud?, includeSource? }
+POST /api/repositories/:id/ask        { "question": "..." }
+POST /api/repositories/:id/summarize  { "target": "calculateVAT" }
+```
+
+- **`ask`** returns an AI answer: `{ kind: "ai", answer, unanswerable, claims, rejectedClaims,
+classification: "INFERRED", confidence, evidence, targets, provider, model, cloud, caveats }`.
+  Each claim has `text`, `evidenceIds`, `confidence` and `level: "INFERRED"`. `evidence` is what
+  the model was shown, each item marked `cited` when a kept claim rests on it.
+- **`summarize`** returns `{ why, summary }`.
+- **Errors:** `409 ai_disabled` when the layer is off, `404 no_related_evidence` when nothing in
+  the index relates (the model is not called), `502 ai_provider_error` when the provider fails or
+  refuses. AI routes allow 10 requests per minute per client.
+
 ## Investigation response
 
 `POST …/investigate` returns `{ kind, result, investigationId }`. For `why`, `result` contains:

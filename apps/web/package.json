@@ -21,6 +21,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@codefossil/ai": "workspace:*",
     "@codefossil/analyzers": "workspace:*",
     "@codefossil/api": "workspace:*",
     "@codefossil/core": "workspace:*",

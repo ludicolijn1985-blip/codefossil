@@ -21,12 +21,14 @@ import {
   formatTimeline,
   formatWhy,
 } from './format-investigation.js';
+import { whyWithSummary } from './ai-commands.js';
 import { resolveOne } from './graph-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { openWorkspace, toRepositoryPath, withWorkspace, type Workspace } from './workspace.js';
 
 interface AskOptions {
   readonly json?: boolean;
+  readonly summarize?: boolean;
   readonly save: boolean;
   readonly depth?: number;
   readonly question?: string;
@@ -87,7 +89,9 @@ function ask(ws: Workspace, io: CliIO, text: string, options: AskOptions): void 
   });
   switch (resolution.status) {
     case 'unsupported':
-      throw new CliError(SUPPORTED_QUESTIONS);
+      throw new CliError(
+        `${SUPPORTED_QUESTIONS}\nOpen-ended questions: \`fossil ask\` (needs the optional AI layer).`,
+      );
     case 'ambiguous':
       throw new CliError(
         `"${resolution.word}" matches ${resolution.matches.length} entities; ask again with a path or path:Symbol.`,
@@ -189,9 +193,15 @@ export function registerInvestigationCommands(
     .argument('<target>', 'symbol, path, path:Symbol, commit sha, #123 or npm:package')
     .addOption(json())
     .addOption(noSave())
+    .option(
+      '--summarize',
+      'add a summary by the AI layer, citing the same evidence (if configured)',
+    )
     .action(async (target: string, options: AskOptions) => {
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
-        answer(ws, io, 'why', resolveOne(ws, io, target), options);
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const match = resolveOne(ws, io, target);
+        if (options.summarize) await whyWithSummary(ws, io, match, options);
+        else answer(ws, io, 'why', match, options);
       });
     });
 

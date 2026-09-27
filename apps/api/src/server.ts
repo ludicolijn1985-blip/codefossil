@@ -2,6 +2,7 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import type { ApiContext } from './context.js';
 import { installErrorHandler } from './errors.js';
+import { aiRoutes } from './routes/ai.js';
 import { analyzeRoutes } from './routes/analyze.js';
 import { exploreRoutes } from './routes/explore.js';
 import { investigateRoutes } from './routes/investigate.js';
@@ -36,5 +37,6 @@ export async function buildServer(options: ServerOptions): Promise<FastifyInstan
   exploreRoutes(app, options);
   investigateRoutes(app, options);
   analyzeRoutes(app, options);
+  aiRoutes(app, options);
   return app;
 }

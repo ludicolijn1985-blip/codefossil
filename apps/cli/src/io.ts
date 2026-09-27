@@ -1,3 +1,4 @@
+import type { AiConfig, AiProvider } from '@codefossil/ai';
 import type { GitHubToken } from '@codefossil/providers';
 
 /** Where CLI output goes. Injected so commands can be tested without a real terminal. */
@@ -18,6 +19,8 @@ export interface CliIO {
   readonly onServe?: (server: { url: string; close: () => Promise<void> }) => void;
   /** The current time, for analyses that measure age; tests pin it. */
   readonly now?: () => Date;
+  /** Builds the AI provider from its configuration; tests inject a fake that contacts nothing. */
+  readonly createAiProvider?: (config: AiConfig) => AiProvider;
 }
 
 /** An error meant for the user: printed without a stack trace. */

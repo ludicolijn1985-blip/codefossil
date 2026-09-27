@@ -10,7 +10,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const ALLOWED: readonly (readonly [string, RegExp])[] = [
   ['GET', /^repositories\/\d+\/(files|commits|dependencies|investigations|timeline|impact|graph)$/],
   ['GET', /^repositories\/\d+\/(files\/\d+|symbols\/\d+|investigations\/\d+)$/],
-  ['POST', /^repositories\/\d+\/(investigate|query)$/],
+  ['POST', /^repositories\/\d+\/(investigate|query|ask)$/],
 ];
 
 export interface ProxyRequest {

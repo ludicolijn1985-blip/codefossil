@@ -115,3 +115,21 @@ test('dead intent lists candidates as inferences with their signals', async ({ p
   await candidate.getByRole('link', { name: /calculateVAT/ }).click();
   await expect(page).toHaveURL(/\/r\/1\/symbols\/\d+$/);
 });
+
+test('an open question can go to the AI layer, whose answer is labelled and cites evidence', async ({
+  page,
+}) => {
+  await page.goto('/r/1/investigate');
+  await page.getByLabel('Ask about this repository').fill('Tell me about the legacy invoices');
+  await page.getByRole('button', { name: 'Investigate' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'unsupported_question' })).toBeVisible();
+  await page.getByRole('button', { name: 'Ask the AI layer' }).click();
+
+  const answer = page.locator('section', { hasText: 'AI-generated answer' });
+  await expect(answer).toContainText('legacy invoices');
+  await expect(answer).toContainText('ollama · fixture-model · this machine');
+  const claim = page.getByRole('button', { name: /reduced rate exists for legacy invoices/ });
+  await claim.click();
+  await expect(claim).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(/1 cited/)).toBeVisible();
+});

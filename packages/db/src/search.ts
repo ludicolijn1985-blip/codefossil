@@ -167,3 +167,33 @@ export function recentCommits(
     .limit(limit)
     .all();
 }
+
+/**
+ * Commits whose message contains any of the words (case-insensitive,
+ * literal), newest first. Used to gather evidence for open questions.
+ */
+export function commitsMentioning(
+  db: FossilDb,
+  repositoryId: number,
+  words: readonly string[],
+  limit = SEARCH_LIMIT,
+): { id: number; sha: string; subject: string; body: string; committedAt: string }[] {
+  if (words.length === 0) return [];
+  const mentions = words.flatMap((word) => {
+    const pattern = sql`${`%${literal(word)}%`} ESCAPE '\\'`;
+    return [like(commits.subject, pattern), like(commits.body, pattern)];
+  });
+  return db
+    .select({
+      id: commits.id,
+      sha: commits.sha,
+      subject: commits.subject,
+      body: commits.body,
+      committedAt: commits.committedAt,
+    })
+    .from(commits)
+    .where(and(eq(commits.repositoryId, repositoryId), or(...mentions)))
+    .orderBy(desc(commits.committedAt), desc(commits.id))
+    .limit(limit)
+    .all();
+}

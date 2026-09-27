@@ -59,20 +59,21 @@ typechecking run against source without a build step.
 
 ### Packages
 
-| Package                 | Purpose                                                                                   |
-| ----------------------- | ----------------------------------------------------------------------------------------- |
-| `@codefossil/shared`    | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod)      |
-| `@codefossil/db`        | SQLite + Drizzle schema, migrations, repository and relation access                       |
-| `@codefossil/git`       | Native git access (argument arrays, never a shell) and a streaming history reader         |
-| `@codefossil/parser`    | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust            |
-| `@codefossil/graph`     | Manifest parsing and deterministic import resolution (files, workspaces, packages)        |
-| `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing |
-| `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                        |
-| `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export         |
-| `@codefossil/analyzers` | Historical hotspots, risk components and dead-intent candidates, computed from the index  |
-| `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                    |
-| `@codefossil/cli`       | The `fossil` command                                                                      |
-| `@codefossil/web`       | Local web UI (Next.js) over the API: overview, investigations, files, graph, dependencies |
+| Package                 | Purpose                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| `@codefossil/shared`    | Evidence model: entity/relation types, FACT/DERIVED/INFERRED rules, provenance (Zod)             |
+| `@codefossil/db`        | SQLite + Drizzle schema, migrations, repository and relation access                              |
+| `@codefossil/git`       | Native git access (argument arrays, never a shell) and a streaming history reader                |
+| `@codefossil/parser`    | Tree-sitter (WebAssembly) symbol extraction for TS/TSX/JS, Python, Go and Rust                   |
+| `@codefossil/graph`     | Manifest parsing and deterministic import resolution (files, workspaces, packages)               |
+| `@codefossil/providers` | GitHub REST client (rate limits, request budget, host-pinned token) and reference parsing        |
+| `@codefossil/core`      | Git, symbol and dependency indexers, each relation citing evidence                               |
+| `@codefossil/query`     | Evidence graph: bounded traversal, chain scoring, target resolution, graph export                |
+| `@codefossil/ai`        | Optional AI layer: evidence-grounded answers and summaries (Ollama or Anthropic), off by default |
+| `@codefossil/analyzers` | Historical hotspots, risk components and dead-intent candidates, computed from the index         |
+| `@codefossil/api`       | Local JSON API (Fastify, Zod-validated, loopback-only)                                           |
+| `@codefossil/cli`       | The `fossil` command                                                                             |
+| `@codefossil/web`       | Local web UI (Next.js) over the API: overview, investigations, files, graph, dependencies        |
 
 ### Using the CLI
 
@@ -97,6 +98,20 @@ node /path/to/codefossil/apps/cli/dist/bin.js dead-intent                  # wor
 ```
 
 Inside this repository, `pnpm fossil <command>` does the same.
+
+### Optional AI layer
+
+Everything above works without AI. To let a model answer open questions from the evidence:
+
+```bash
+fossil ai configure --provider ollama                      # local; needs `ollama serve`
+fossil ai configure --provider anthropic --allow-cloud     # evidence leaves this machine
+fossil ask "Why did we keep the legacy invoice path?"
+fossil why calculateVAT --summarize
+```
+
+AI answers are always INFERRED, capped at confidence 0.6, and every claim cites evidence the model
+was shown; claims that cite anything else are dropped. See SECURITY.md for what is sent where.
 
 ### Using the web UI
 

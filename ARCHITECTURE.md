@@ -134,6 +134,29 @@ always match the current index.
 
   The confidence is capped at 0.8, and the candidate is always INFERRED.
 
+### Optional AI layer
+
+`packages/ai` runs only when configured (`fossil ai configure`). It never replaces the
+deterministic pipeline; it reads from it:
+
+1. **Gather.** Evidence is gathered deterministically: why-investigations of the entities the
+   question names (words matching more than three entities are skipped), plus commits whose
+   messages use its words. At most 40 items, excerpts at most 600 characters. Source excerpts are
+   withheld unless allowed. If nothing is found, the model is not called.
+2. **Ask.** The model gets the question, the established findings (with their levels) and the
+   evidence as inert JSON marked untrusted. It must return `{answer, unanswerable, claims:
+[{text, evidenceIds, confidence}], caveats}`.
+3. **Hold to evidence.** A claim citing no evidence, or any id it was not given, is dropped
+   (counted in `rejectedClaims`). Confidence is clamped to [0, min(0.6, ceiling)], where the
+   ceiling is the investigation's own confidence for summaries. The answer's confidence is its
+   weakest claim, and it is always INFERRED. An answer with no surviving claim is discarded.
+
+Providers:
+
+- **Ollama.** Local by default, JSON-schema `format`, reply validated.
+- **Anthropic.** The official SDK with structured outputs, adaptive thinking and server-side
+  refusal fallbacks. The stop reason is checked before the content.
+
 ### Impact analysis
 
 Build reverse dependency traversal from:

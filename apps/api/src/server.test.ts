@@ -9,6 +9,7 @@ import { createSampleHistory, type SampleHistory } from '@codefossil/git/testing
 import { graphDocumentSchema } from '@codefossil/query';
 import { GitHubClient } from '@codefossil/providers';
 import { startFakeGitHub } from '@codefossil/providers/testing';
+import { AiProviderError, type AiProvider } from '@codefossil/ai';
 import { buildServer } from './server.js';
 
 const now = () => new Date('2026-09-26T12:00:00.000Z');
@@ -256,6 +257,104 @@ describe('CODEFOSSIL API', () => {
       expect(await call({ method: 'GET', url: repo('/impact?target=nothing') })).toMatchObject({
         status: 404,
         body: { error: { code: 'target_not_found' } },
+      });
+    });
+  });
+
+  describe('AI layer', () => {
+    const fakeAi = (fail = false): AiProvider => ({
+      name: 'ollama',
+      model: 'fake-1',
+      cloud: false,
+      complete(request) {
+        if (fail) return Promise.reject(new AiProviderError('Ollama is not reachable.'));
+        const id = Number(/"id": (\d+)/.exec(request.prompt)?.[1]);
+        const output = request.schema.parse({
+          answer: 'Legacy invoices.',
+          unanswerable: false,
+          claims: [{ text: 'Legacy invoices needed it.', evidenceIds: [id], confidence: 0.8 }],
+          caveats: [],
+        });
+        return Promise.resolve({ output, model: 'fake-1' });
+      },
+    });
+    const config = {
+      provider: 'ollama' as const,
+      model: 'fake-1',
+      allowCloud: false,
+      includeSource: false,
+    };
+
+    async function withAi(provider: AiProvider, test: (ai: FastifyInstance) => Promise<void>) {
+      const ai = await buildServer({ fossil, allowNetwork: false, now, ai: { config, provider } });
+      try {
+        await test(ai);
+      } finally {
+        await ai.close();
+      }
+    }
+    const post = (server: FastifyInstance, url: string, body: unknown) =>
+      server.inject({
+        method: 'POST',
+        url,
+        headers: { host: 'localhost:4000', 'content-type': 'application/json' },
+        payload: JSON.stringify(body),
+      });
+
+    it('reports itself off and refuses AI requests when not configured', async () => {
+      expect((await call({ method: 'GET', url: '/api/ai' })).body.data).toEqual({ enabled: false });
+      expect(
+        await call({ method: 'POST', url: repo('/ask'), body: { question: 'Why legacy?' } }),
+      ).toMatchObject({ status: 409, body: { error: { code: 'ai_disabled' } } });
+    });
+
+    it('answers from gathered evidence and summarizes investigations', async () => {
+      await withAi(fakeAi(), async (ai) => {
+        const status = await ai.inject({
+          method: 'GET',
+          url: '/api/ai',
+          headers: { host: 'localhost:4000' },
+        });
+        expect(status.json()).toEqual({
+          data: {
+            enabled: true,
+            provider: 'ollama',
+            model: 'fake-1',
+            cloud: false,
+            includeSource: false,
+          },
+        });
+        const asked = await post(ai, repo('/ask'), {
+          question: 'Why the legacy invoices workaround?',
+        });
+        expect(asked.json()).toMatchObject({
+          data: { kind: 'ai', classification: 'INFERRED', confidence: 0.6, rejectedClaims: 0 },
+        });
+        const nothing = await post(ai, repo('/ask'), { question: 'quantum teleportation?' });
+        expect(nothing.json()).toMatchObject({ error: { code: 'no_related_evidence' } });
+        const summary = await post(ai, repo('/summarize'), { target: 'src/tax/vat.ts' });
+        expect(summary.json()).toMatchObject({
+          data: { why: { kind: 'why' }, summary: { kind: 'ai', classification: 'INFERRED' } },
+        });
+        expect((await post(ai, repo('/ask'), { question: '' })).statusCode).toBe(400);
+        expect((await post(ai, repo('/ask'), { question: 'x', model: 'other' })).statusCode).toBe(
+          400,
+        );
+      });
+    });
+
+    it('reports provider failures as a bad gateway, and limits AI requests per client', async () => {
+      await withAi(fakeAi(true), async (ai) => {
+        const failed = await post(ai, repo('/ask'), { question: 'Why the legacy invoices?' });
+        expect(failed.statusCode).toBe(502);
+        expect(failed.json()).toMatchObject({ error: { code: 'ai_provider_error' } });
+        const statuses: number[] = [];
+        for (let i = 0; i < 12; i++) {
+          statuses.push(
+            (await post(ai, repo('/ask'), { question: 'Why the legacy invoices?' })).statusCode,
+          );
+        }
+        expect(statuses).toContain(429);
       });
     });
   });

@@ -3,14 +3,19 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition, type SubmitEvent } from 'react';
 import { ClientApiError, request } from '@/lib/client';
-import type { ImpactReport, Timeline, WhyInvestigation } from '@/lib/types';
+import type { AiAnswer, AiStatus, ImpactReport, Timeline, WhyInvestigation } from '@/lib/types';
+import { AiAnswerView } from './ai-answer';
 import { ImpactView, WhyView } from './investigation-view';
 import { TimelineList } from './timeline-list';
 
 type Answer =
   | { kind: 'why'; result: WhyInvestigation; investigationId: number | null }
   | { kind: 'impact'; result: ImpactReport; investigationId: number | null }
-  | { kind: 'timeline'; result: Timeline; investigationId: null };
+  | { kind: 'timeline'; result: Timeline; investigationId: null }
+  | { kind: 'ai'; result: AiAnswer; investigationId: null };
+
+/** Questions the deterministic pipeline cannot take, which the AI layer may try. */
+const AI_CANDIDATES = new Set(['unsupported_question', 'target_not_found']);
 
 const EXAMPLES = [
   'Why does calculateVAT exist?',
@@ -19,12 +24,29 @@ const EXAMPLES = [
 ];
 
 /** Ask a question in plain words; the answer comes with its evidence. */
-export function Ask({ repositoryId, initial }: { repositoryId: number; initial?: string }) {
+export function Ask({
+  repositoryId,
+  initial,
+  ai,
+}: {
+  repositoryId: number;
+  initial?: string;
+  ai: AiStatus;
+}) {
   const router = useRouter();
   const [question, setQuestion] = useState(initial ?? '');
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [problem, setProblem] = useState<ClientApiError | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const fail = (error: unknown) => {
+    setAnswer(null);
+    setProblem(
+      error instanceof ClientApiError
+        ? error
+        : new ClientApiError(0, 'error', 'The request failed.'),
+    );
+  };
 
   const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,12 +62,24 @@ export function Ask({ repositoryId, initial }: { repositoryId: number; initial?:
         setProblem(null);
         router.refresh(); // the saved investigation appears in the history
       } catch (error) {
-        setAnswer(null);
-        setProblem(
-          error instanceof ClientApiError
-            ? error
-            : new ClientApiError(0, 'error', 'The request failed.'),
-        );
+        fail(error);
+      }
+    });
+  };
+
+  const askAi = () => {
+    const text = question.trim();
+    if (!text) return;
+    startTransition(async () => {
+      try {
+        const result = await request<AiAnswer>(`/repositories/${repositoryId}/ask`, {
+          method: 'POST',
+          body: { question: text },
+        });
+        setAnswer({ kind: 'ai', result, investigationId: null });
+        setProblem(null);
+      } catch (error) {
+        fail(error);
       }
     });
   };
@@ -125,8 +159,28 @@ export function Ask({ repositoryId, initial }: { repositoryId: number; initial?:
                 ))}
               </ul>
             ) : null}
+            {ai.enabled && AI_CANDIDATES.has(problem.code) ? (
+              <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-line pt-3">
+                <button
+                  type="button"
+                  onClick={askAi}
+                  disabled={pending}
+                  className="rounded-md border border-inferred/60 px-3 py-1.5 text-sm text-inferred transition-colors hover:bg-inferred/10 disabled:opacity-50"
+                >
+                  {pending ? 'Asking…' : 'Ask the AI layer'}
+                </button>
+                <span className="text-xs text-muted">
+                  {ai.provider} {ai.model} ·{' '}
+                  {ai.cloud
+                    ? 'sends the gathered evidence to the provider'
+                    : 'runs on this machine'}
+                  ; answers are inferences held to the evidence.
+                </span>
+              </div>
+            ) : null}
           </div>
         ) : null}
+        {answer?.kind === 'ai' ? <AiAnswerView answer={answer.result} /> : null}
         {answer?.kind === 'why' ? <WhyView why={answer.result} /> : null}
         {answer?.kind === 'impact' ? <ImpactView report={answer.result} /> : null}
         {answer?.kind === 'timeline' ? <TimelineList timeline={answer.result} /> : null}

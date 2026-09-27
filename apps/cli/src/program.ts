@@ -17,6 +17,7 @@ import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './form
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
 import { registerInvestigationCommands } from './investigate-commands.js';
+import { registerAiCommands } from './ai-commands.js';
 import { registerAnalysisCommands } from './analyze-commands.js';
 import { parsePositiveInteger, parseSince } from './options.js';
 import { registerServeCommand } from './serve-command.js';
@@ -251,6 +252,7 @@ export function createProgram(io: CliIO): Command {
   registerGraphCommands(program, io, repoPath);
   registerInvestigationCommands(program, io, repoPath);
   registerAnalysisCommands(program, io, repoPath);
+  registerAiCommands(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
 
   return program;

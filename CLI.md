@@ -51,6 +51,21 @@ List code changed by commits (or linked issues and pull requests) that speak of 
 compatibility or legacy support, with the signals that strengthen each candidate: runtime versions
 below the declared minimum, passed deadlines, and long silence. Always INFERRED candidates.
 
+fossil ai configure --provider ollama|anthropic [--model m] [--base-url url] [--allow-cloud] [--include-source]
+fossil ai status [--json]
+fossil ai off
+Turn the optional AI layer on or off. It is off by default. A provider that runs off this machine
+needs `--allow-cloud`; source excerpts are withheld unless `--include-source`. No key is stored.
+
+fossil ask "Why did we keep the legacy invoice path?" [--json]
+Answer an open question with the AI layer. Evidence is gathered deterministically first (why
+investigations of entities the question names, commits using its words); the model answers only
+from that, and every claim must cite it. If nothing relates, the model is not asked.
+
+fossil why calculateVAT --summarize
+The deterministic answer followed by an AI summary citing the same evidence (INFERRED, never
+more certain than the investigation).
+
 fossil investigate [--list] [--show <id>]
 Interactive investigation (why/impact/timeline/questions), also scriptable through standard
 input. `why`, `impact` and `query` answers are saved and can be shown again later.
