@@ -1,6 +1,7 @@
 import { builtinModules } from 'node:module';
 import type { ImportReference } from '@codefossil/parser';
 import { dirOf, joinPath, unresolved, type LayoutIndex, type Resolution } from './layout.js';
+import { matchPaths, pathsBase, type TsConfigIndex } from './tsconfig-paths.js';
 
 const EXTENSIONS = ['.ts', '.tsx', '.d.ts', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 
@@ -46,8 +47,56 @@ function splitPackage(specifier: string): [string, string] {
   return [name, rest ? `./${rest}` : '.'];
 }
 
+/**
+ * A bare specifier through the governing tsconfig, as `tsc` does before
+ * looking for packages: `paths` first, then `baseUrl`. Returns the resolved
+ * files, or why a matching `paths` pattern found nothing, or null when the
+ * config does not apply. A `paths` key names the specifier on purpose and may
+ * shadow a Node built-in; a broad `baseUrl` lookup may not, since a stray
+ * `src/assert.ts` would otherwise capture `import 'assert'`.
+ */
+function resolveAlias(
+  index: LayoutIndex,
+  tsconfigs: TsConfigIndex,
+  fromPath: string,
+  spec: string,
+  isBuiltin: boolean,
+): Resolution | { readonly aliasMiss: string } | null {
+  const governing = tsconfigs.forFile(fromPath);
+  if (!governing) return null;
+  const { config } = governing;
+  const importerIsTypeScript = TYPESCRIPT_FILE.test(fromPath);
+  let aliasMiss: string | null = null;
+
+  const { paths } = config;
+  const base = pathsBase(config);
+  const match = paths && base !== null ? matchPaths(paths.patterns, spec) : null;
+  if (paths && base !== null && match) {
+    const candidates = match.targets.flatMap((target) => {
+      const joined = joinPath(base, target);
+      return joined === null ? [] : fileCandidates(joined, importerIsTypeScript);
+    });
+    const found = index.firstExisting(candidates);
+    const method = `tsconfig-paths:${paths.definedIn}#${match.pattern}`;
+    if (found) return { kind: 'files', paths: [found], confidence: 1, method };
+    aliasMiss = `tsconfig path ${match.pattern} in ${paths.definedIn} matched but no target file exists`;
+  }
+
+  if (!isBuiltin && config.baseUrlDefinedIn && config.baseUrl !== null) {
+    const joined = joinPath(config.baseUrl, spec);
+    const found =
+      joined === null ? null : index.firstExisting(fileCandidates(joined, importerIsTypeScript));
+    if (found) {
+      const method = `tsconfig-base-url:${config.baseUrlDefinedIn}`;
+      return { kind: 'files', paths: [found], confidence: 1, method };
+    }
+  }
+  return aliasMiss ? { aliasMiss } : null;
+}
+
 export function resolveEcmascript(
   index: LayoutIndex,
+  tsconfigs: TsConfigIndex,
   fromPath: string,
   ref: ImportReference,
 ): Resolution {
@@ -61,9 +110,12 @@ export function resolveEcmascript(
       : unresolved('no file matches the relative path');
   }
   if (spec.startsWith('/')) return unresolved('absolute paths are not portable');
-  if (spec.startsWith('node:') || BUILTINS.has(spec) || BUILTINS.has(spec.split('/')[0] ?? '')) {
-    return { kind: 'builtin' };
-  }
+  if (spec.startsWith('node:')) return { kind: 'builtin' };
+
+  const isBuiltin = BUILTINS.has(spec) || BUILTINS.has(spec.split('/')[0] ?? '');
+  const alias = resolveAlias(index, tsconfigs, fromPath, spec, isBuiltin);
+  if (alias && !('aliasMiss' in alias)) return alias;
+  if (isBuiltin) return { kind: 'builtin' };
 
   const [name, subpath] = splitPackage(spec);
   // A package defined in this repository (a workspace) resolves to its source.
@@ -88,5 +140,7 @@ export function resolveEcmascript(
         manifestPath: declaring.path,
         method: 'declared-package',
       }
-    : unresolved(`package ${name} is not declared in any package.json above the file`);
+    : unresolved(
+        alias?.aliasMiss ?? `package ${name} is not declared in any package.json above the file`,
+      );
 }

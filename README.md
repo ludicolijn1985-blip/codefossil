@@ -130,5 +130,9 @@ investigations, and only for requests addressed to a loopback host. `/` focuses 
 - The dependency graph is a snapshot of HEAD. When imports that no longer hold are removed,
   their edges go too; dependency history is not tracked yet.
 - Import resolution leaves unresolved (and says why) what it cannot decide from files and
-  manifests: TypeScript `paths` aliases, Python imports whose name differs from the distribution
-  (`yaml` from PyYAML) or that are standard library, and Go `replace` directives.
+  manifests: Python imports whose name differs from the distribution (`yaml` from PyYAML) or that
+  are standard library, and Go `replace` directives.
+- TypeScript `paths` and `baseUrl` come from the nearest `tsconfig.json` (or `jsconfig.json`)
+  above the importing file, with `extends` followed only through files in the repository. A base
+  config from a package (`@tsconfig/node22`) is skipped, as are `include`/`exclude`, project
+  references and non-default config names such as `tsconfig.build.json` used via `tsc -p`.

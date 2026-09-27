@@ -20,11 +20,16 @@ import {
 import { changedPaths, listHeadFiles, readBlobs } from '@codefossil/git';
 import {
   createResolver,
+  extendedConfigPaths,
   isManifestPath,
+  isTsConfigPath,
   ManifestParseError,
   parseManifest,
+  parseTsConfig,
+  TsConfigParseError,
   type Manifest,
   type Resolution,
+  type TsConfig,
 } from '@codefossil/graph';
 import { grammarForPath, SymbolExtractor, type ParsedImport } from '@codefossil/parser';
 import { detectLanguage } from '@codefossil/shared';
@@ -37,7 +42,7 @@ export interface DependencyIndexResult {
   readonly mode: 'full' | 'incremental' | 'unchanged';
   readonly filesParsed: number;
   readonly manifests: number;
-  /** Manifests that could not be parsed, with the reason. */
+  /** Manifests and TypeScript configs that could not be parsed, with the reason. */
   readonly manifestErrors: readonly string[];
   /**
    * Source files whose current version could not be parsed. Their earlier
@@ -72,6 +77,8 @@ interface Snapshot {
   /** Paths that changed but no longer exist at HEAD. */
   readonly removed: readonly string[];
   readonly manifests: readonly Manifest[];
+  /** `tsconfig.json` files and the repository configs they extend. */
+  readonly tsconfigs: readonly TsConfig[];
   readonly manifestErrors: readonly string[];
   readonly parseFailures: readonly string[];
 }
@@ -164,8 +171,46 @@ async function readSnapshot(
   } finally {
     await extractor.dispose();
   }
+  const tsconfigs = await readTsConfigs(root, headSha, headFiles, (message) =>
+    manifestErrors.push(message),
+  );
   const removed = changed ? [...changed].filter((path) => !headFiles.has(path)) : [];
-  return { headFiles, parsed, removed, manifests, manifestErrors, parseFailures };
+  return { headFiles, parsed, removed, manifests, tsconfigs, manifestErrors, parseFailures };
+}
+
+/**
+ * Read every `tsconfig*.json`/`jsconfig*.json` at HEAD, then whatever other
+ * repository files their `extends` chains name. Configs outside the
+ * repository (packages in `node_modules`) are never read.
+ */
+async function readTsConfigs(
+  root: string,
+  headSha: string,
+  headFiles: ReadonlySet<string>,
+  onError: (message: string) => void,
+): Promise<TsConfig[]> {
+  const configs: TsConfig[] = [];
+  const requested = new Set<string>();
+  let pending = [...headFiles].filter(isTsConfigPath);
+  while (pending.length > 0) {
+    for (const path of pending) requested.add(path);
+    const requests = pending.map((path) => ({ path, revision: headSha }));
+    const read: TsConfig[] = [];
+    for await (const { request, content } of readBlobs(root, requests)) {
+      if (!content) continue;
+      try {
+        read.push(parseTsConfig(request.path, content.toString('utf8')));
+      } catch (error) {
+        if (!(error instanceof TsConfigParseError)) throw error;
+        onError(error.message);
+      }
+    }
+    configs.push(...read);
+    pending = [
+      ...new Set(read.flatMap((config) => extendedConfigPaths(config, headFiles))),
+    ].filter((path) => !requested.has(path));
+  }
+  return configs;
 }
 
 async function parseImports(
@@ -272,7 +317,11 @@ function rebuildImportEdges(
   'importEdges' | 'dependencyEdges' | 'builtinImports' | 'unresolvedImports'
 > {
   deleteRelationsByProducer(db, repositoryId, IMPORT_RESOLVER_PRODUCER);
-  const resolve = createResolver({ files: snapshot.headFiles, manifests: snapshot.manifests });
+  const resolve = createResolver({
+    files: snapshot.headFiles,
+    manifests: snapshot.manifests,
+    tsconfigs: snapshot.tsconfigs,
+  });
   const edges = new Map<string, Edge>();
   let builtinImports = 0;
   let unresolvedImports = 0;

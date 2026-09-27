@@ -1,5 +1,6 @@
 import { posix } from 'node:path';
 import type { Ecosystem, Manifest } from '../manifests.js';
+import type { TsConfig } from '../tsconfig.js';
 
 /** How an import was resolved. */
 export type Resolution =
@@ -28,6 +29,8 @@ export interface RepositoryLayout {
   /** Every file at the snapshot, repository-relative with forward slashes. */
   readonly files: ReadonlySet<string>;
   readonly manifests: readonly Manifest[];
+  /** Parsed TypeScript configs (`tsconfig.json` and the files they extend). */
+  readonly tsconfigs?: readonly TsConfig[];
 }
 
 /** The directory of a repository path; `''` for the root. */

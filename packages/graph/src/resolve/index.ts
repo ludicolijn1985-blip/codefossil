@@ -4,6 +4,7 @@ import { GoPackages, resolveGo } from './go.js';
 import { LayoutIndex, type RepositoryLayout, type Resolution } from './layout.js';
 import { PythonModules, resolvePython } from './python.js';
 import { resolveRust } from './rust.js';
+import { TsConfigIndex } from './tsconfig-paths.js';
 
 export type ImportResolver = (
   fromPath: string,
@@ -21,12 +22,14 @@ export function createResolver(layout: RepositoryLayout): ImportResolver {
   const index = new LayoutIndex(layout);
   let python: PythonModules | undefined;
   let go: GoPackages | undefined;
+  let tsconfigs: TsConfigIndex | undefined;
   return (fromPath, grammar, ref) => {
     switch (grammar) {
       case 'typescript':
       case 'tsx':
       case 'javascript':
-        return resolveEcmascript(index, fromPath, ref);
+        tsconfigs ??= new TsConfigIndex(layout.files, layout.tsconfigs ?? []);
+        return resolveEcmascript(index, tsconfigs, fromPath, ref);
       case 'python':
         python ??= new PythonModules(layout.files);
         return resolvePython(index, python, fromPath, ref);
@@ -40,3 +43,4 @@ export function createResolver(layout: RepositoryLayout): ImportResolver {
 }
 
 export type { RepositoryLayout, Resolution } from './layout.js';
+export { matchPaths, type PathMatch } from './tsconfig-paths.js';

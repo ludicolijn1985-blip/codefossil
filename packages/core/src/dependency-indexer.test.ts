@@ -175,6 +175,78 @@ describe('indexDependencies', () => {
     ]);
   });
 
+  it('resolves tsconfig path aliases, following extends within the repository', async () => {
+    const r = fixture();
+    await r.write('tsconfig.base.json', '{ "compilerOptions": { "strict": true } }\n');
+    await r.write(
+      'apps/web/tsconfig.json',
+      [
+        '{',
+        '  // Next.js style alias; comments and trailing commas are allowed',
+        '  "extends": "../../tsconfig.base.json",',
+        '  "compilerOptions": { "paths": { "@/*": ["./*"], }, },',
+        '}',
+      ].join('\n'),
+    );
+    await r.write('apps/web/package.json', JSON.stringify({ dependencies: { next: '^16' } }));
+    await r.write(
+      'apps/web/app/page.tsx',
+      "import { api } from '@/lib/api';\nimport { gone } from '@/lib/gone';\n",
+    );
+    await r.write('apps/web/lib/api.ts', 'export const api = 1;\n');
+    // A base outside the tsconfig naming convention is read because it is extended.
+    await r.write(
+      'config/lib.json',
+      JSON.stringify({ compilerOptions: { baseUrl: '../packages/lib/src' } }),
+    );
+    await r.write('packages/lib/tsconfig.json', JSON.stringify({ extends: '../../config/lib' }));
+    await r.write('packages/lib/src/index.ts', "export * from 'internal/core.js';\n");
+    await r.write('packages/lib/src/internal/core.ts', 'export const core = 1;\n');
+    await r.write('packages/broken/tsconfig.json', '{ "compilerOptions": ');
+    await r.commit('Aliases');
+
+    const { repositoryId, dependencies } = await runIndex(fossil.db, r.root, { now });
+
+    expect(dependencies).toMatchObject({ importEdges: 2, unresolvedImports: 1 });
+    expect(dependencies.manifestErrors).toEqual([
+      expect.stringContaining('packages/broken/tsconfig.json'),
+    ]);
+
+    const alias = importsOf(repositoryId, 'apps/web/app/page.tsx').find(
+      (e) => e.relation === 'IMPORTS',
+    );
+    expect(alias).toMatchObject({
+      targetType: 'file',
+      targetId: fileId(repositoryId, 'apps/web/lib/api.ts'),
+      evidenceType: 'DERIVED',
+      confidence: 1,
+    });
+    expect(alias?.provenanceJson).toMatchObject({
+      producer: IMPORT_RESOLVER_PRODUCER,
+      method: 'tsconfig-paths:apps/web/tsconfig.json#@/*',
+    });
+    expect(alias?.provenanceJson.evidenceIds).toHaveLength(1);
+
+    expect(
+      fileImports(fossil.db, fileId(repositoryId, 'apps/web/app/page.tsx')).map(
+        (i) => `${i.specifier} → ${i.resolution}: ${i.resolutionDetail ?? ''}`,
+      ),
+    ).toEqual([
+      '@/lib/api → files: apps/web/lib/api.ts',
+      '@/lib/gone → unresolved: tsconfig path @/* in apps/web/tsconfig.json matched but no target file exists',
+    ]);
+
+    const viaBaseUrl = importsOf(repositoryId, 'packages/lib/src/index.ts').find(
+      (e) => e.relation === 'IMPORTS',
+    );
+    expect(viaBaseUrl).toMatchObject({
+      targetId: fileId(repositoryId, 'packages/lib/src/internal/core.ts'),
+    });
+    expect(viaBaseUrl?.provenanceJson).toMatchObject({
+      method: 'tsconfig-base-url:config/lib.json',
+    });
+  });
+
   it('reports a broken manifest instead of failing', async () => {
     const r = fixture();
     await r.write('package.json', '{ "name": ');
