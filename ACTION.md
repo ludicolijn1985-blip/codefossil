@@ -27,7 +27,7 @@ jobs:
   codefossil:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the whole history; a shallow clone indexes only what was fetched
       - uses: ludicolijn1985-blip/codefossil@main
@@ -81,5 +81,7 @@ The same report is available locally with `fossil report --base origin/main`.
   sees it.
 - **Comment updates.** Only a bot comment that starts with the report marker is updated.
 - **Cache scope.** Caches written by a pull request are only visible to that pull request.
+- **Runner version.** The pinned actions run on Node.js 24 and need runner 2.327.1 or newer, which
+  GitHub-hosted runners have.
 - **GitHub.com only.** On GitHub Enterprise Server, set `github-sync: 'false'` or run the CLI with
   `fossil connect github --api-url`.
