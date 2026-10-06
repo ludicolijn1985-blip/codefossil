@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ImportReference } from '@codefossil/parser';
 import { parseManifest } from '../manifests.js';
-import { createResolver } from './index.js';
+import { parseTsConfig } from '../tsconfig.js';
+import { createResolver, matchPaths } from './index.js';
 
 function resolverFor(files: string[], manifests: Record<string, string> = {}) {
   return createResolver({
@@ -117,6 +118,228 @@ describe('ECMAScript resolution', () => {
     expect(resolve('src/app.ts', 'typescript', ref('../../../outside')).kind).toBe('unresolved');
     expect(resolve('src/app.ts', 'typescript', ref('left-pad')).kind).toBe('unresolved');
     expect(resolve('src/app.ts', 'typescript', ref('@acme/db/nope')).kind).toBe('unresolved');
+  });
+});
+
+describe('matchPaths', () => {
+  const patterns = {
+    '@/*': ['./*'],
+    '@/lib/*': ['./src/lib/*', './vendor/*'],
+    '*.css': ['./styles/*.css'],
+    config: ['./config/index.ts'],
+    'config/*': ['./config/*'],
+  };
+
+  it('prefers an exact key over wildcard patterns', () => {
+    expect(matchPaths(patterns, 'config')).toEqual({
+      pattern: 'config',
+      targets: ['./config/index.ts'],
+    });
+  });
+
+  it('picks the wildcard pattern with the longest prefix and substitutes every target', () => {
+    expect(matchPaths(patterns, '@/lib/api')).toEqual({
+      pattern: '@/lib/*',
+      targets: ['./src/lib/api', './vendor/api'],
+    });
+    expect(matchPaths(patterns, '@/app/page')).toEqual({
+      pattern: '@/*',
+      targets: ['./app/page'],
+    });
+  });
+
+  it('matches suffixes and captures the empty string', () => {
+    expect(matchPaths(patterns, 'theme.css')).toEqual({
+      pattern: '*.css',
+      targets: ['./styles/theme.css'],
+    });
+    expect(matchPaths(patterns, 'config/')).toMatchObject({ targets: ['./config/'] });
+    expect(matchPaths(patterns, 'zod')).toBeNull();
+  });
+
+  it('breaks ties between equally long prefixes by declaration order', () => {
+    expect(matchPaths({ 'a*': ['first/*'], 'a*z': ['second/*'] }, 'abz')).toMatchObject({
+      pattern: 'a*',
+    });
+  });
+});
+
+describe('TypeScript paths and baseUrl', () => {
+  function resolverWithConfigs(
+    files: string[],
+    configs: Record<string, object>,
+    manifests: Record<string, string> = {},
+  ) {
+    return createResolver({
+      files: new Set([...files, ...Object.keys(configs), ...Object.keys(manifests)]),
+      manifests: Object.entries(manifests).map(([path, content]) => parseManifest(path, content)),
+      tsconfigs: Object.entries(configs).map(([path, json]) =>
+        parseTsConfig(path, JSON.stringify(json)),
+      ),
+    });
+  }
+
+  const resolve = resolverWithConfigs(
+    [
+      'apps/web/app/page.tsx',
+      'apps/web/lib/api.ts',
+      'apps/web/lib/format.ts',
+      'apps/web/components/card.tsx',
+      'apps/web/scripts/build.js',
+      'apps/api/src/server.ts',
+    ],
+    {
+      'tsconfig.base.json': { compilerOptions: { strict: true } },
+      'apps/web/tsconfig.json': {
+        extends: '../../tsconfig.base.json',
+        compilerOptions: { paths: { '@/*': ['./*'] } },
+      },
+    },
+    {
+      'apps/web/package.json': JSON.stringify({ dependencies: { next: '^16' } }),
+    },
+  );
+
+  it('resolves an alias to a file relative to the config that declares paths', () => {
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('@/lib/api'))).toEqual({
+      kind: 'files',
+      paths: ['apps/web/lib/api.ts'],
+      confidence: 1,
+      method: 'tsconfig-paths:apps/web/tsconfig.json#@/*',
+    });
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('@/components/card'))).toMatchObject({
+      paths: ['apps/web/components/card.tsx'],
+    });
+  });
+
+  it('keeps the .js → .ts source mapping for TypeScript importers only', () => {
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('@/lib/format.js'))).toMatchObject({
+      paths: ['apps/web/lib/format.ts'],
+    });
+    expect(resolve('apps/web/scripts/build.js', 'javascript', ref('@/lib/format.js')).kind).toBe(
+      'unresolved',
+    );
+  });
+
+  it('explains a matching alias whose targets do not exist', () => {
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('@/lib/missing'))).toEqual({
+      kind: 'unresolved',
+      reason: 'tsconfig path @/* in apps/web/tsconfig.json matched but no target file exists',
+    });
+  });
+
+  it('falls through to packages when no alias matches', () => {
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('next/link'))).toMatchObject({
+      kind: 'dependency',
+      name: 'next',
+    });
+    expect(resolve('apps/web/app/page.tsx', 'tsx', ref('node:fs'))).toEqual({ kind: 'builtin' });
+  });
+
+  it('applies only the nearest tsconfig.json', () => {
+    // apps/api is governed by no config declaring paths.
+    expect(resolve('apps/api/src/server.ts', 'typescript', ref('@/lib/api')).kind).toBe(
+      'unresolved',
+    );
+  });
+
+  it('inherits paths through extends, relative to the base that declares them', () => {
+    const inherited = resolverWithConfigs(['packages/ui/src/button.tsx', 'shared/theme.ts'], {
+      'tsconfig.base.json': { compilerOptions: { paths: { '#shared/*': ['./shared/*'] } } },
+      'configs/tsconfig.lib.json': { extends: '../tsconfig.base.json' },
+      'packages/ui/tsconfig.json': { extends: ['../../configs/tsconfig.lib'] },
+    });
+    expect(inherited('packages/ui/src/button.tsx', 'tsx', ref('#shared/theme'))).toEqual({
+      kind: 'files',
+      paths: ['shared/theme.ts'],
+      confidence: 1,
+      method: 'tsconfig-paths:tsconfig.base.json##shared/*',
+    });
+  });
+
+  it('lets a later extends entry and the config itself override inherited paths', () => {
+    const overridden = resolverWithConfigs(
+      ['app/main.ts', 'app/sub/main.ts', 'a/x.ts', 'b/x.ts', 'c/x.ts'],
+      {
+        'a.json': { compilerOptions: { paths: { '~/*': ['./a/*'] } } },
+        'b.json': { compilerOptions: { paths: { '~/*': ['./b/*'] } } },
+        'app/tsconfig.json': { extends: ['../a.json', '../b.json'] },
+        'app/sub/tsconfig.json': {
+          extends: '../tsconfig.json',
+          compilerOptions: { paths: { '~/*': ['../../c/*'] } },
+        },
+      },
+    );
+    expect(overridden('app/main.ts', 'typescript', ref('~/x'))).toMatchObject({
+      paths: ['b/x.ts'],
+    });
+    expect(overridden('app/sub/main.ts', 'typescript', ref('~/x'))).toMatchObject({
+      paths: ['c/x.ts'],
+      method: 'tsconfig-paths:app/sub/tsconfig.json#~/*',
+    });
+  });
+
+  it('resolves paths from baseUrl, which is relative to the config declaring it', () => {
+    const withBase = resolverWithConfigs(
+      ['svc/src/app.ts', 'svc/src/orders/order.ts', 'svc/src/lib/log.ts'],
+      {
+        'svc/tsconfig.base.json': { compilerOptions: { baseUrl: './src' } },
+        'svc/tsconfig.json': {
+          extends: './tsconfig.base.json',
+          compilerOptions: { paths: { '@lib/*': ['lib/*'] } },
+        },
+      },
+    );
+    expect(withBase('svc/src/app.ts', 'typescript', ref('@lib/log'))).toEqual({
+      kind: 'files',
+      paths: ['svc/src/lib/log.ts'],
+      confidence: 1,
+      method: 'tsconfig-paths:svc/tsconfig.json#@lib/*',
+    });
+    // Bare specifiers are also looked up under baseUrl.
+    expect(withBase('svc/src/app.ts', 'typescript', ref('orders/order.js'))).toEqual({
+      kind: 'files',
+      paths: ['svc/src/orders/order.ts'],
+      confidence: 1,
+      method: 'tsconfig-base-url:svc/tsconfig.base.json',
+    });
+  });
+
+  it('lets an explicit paths key, but not baseUrl, shadow a Node built-in', () => {
+    const shadowing = resolverWithConfigs(['src/app.ts', 'src/assert.ts', 'shims/events.ts'], {
+      'tsconfig.json': {
+        compilerOptions: { baseUrl: './src', paths: { events: ['../shims/events.ts'] } },
+      },
+    });
+    expect(shadowing('src/app.ts', 'typescript', ref('assert'))).toEqual({ kind: 'builtin' });
+    expect(shadowing('src/app.ts', 'typescript', ref('events'))).toMatchObject({
+      paths: ['shims/events.ts'],
+      method: 'tsconfig-paths:tsconfig.json#events',
+    });
+  });
+
+  it('never follows extends or baseUrl outside the repository, and survives cycles', () => {
+    const guarded = resolverWithConfigs(['app/main.ts', 'app/lib/x.ts'], {
+      'app/tsconfig.json': {
+        extends: ['../../outside/tsconfig.json', './loop.json'],
+        compilerOptions: { baseUrl: '../..', paths: { '~/*': ['lib/*'] } },
+      },
+      'app/loop.json': { extends: './tsconfig.json' },
+    });
+    // baseUrl escapes the root, so paths relative to it cannot be resolved.
+    expect(guarded('app/main.ts', 'typescript', ref('~/x')).kind).toBe('unresolved');
+  });
+
+  it('does not apply an unparseable governing config from further up', () => {
+    const shadowed = createResolver({
+      files: new Set(['tsconfig.json', 'pkg/tsconfig.json', 'pkg/src/a.ts', 'pkg/src/b.ts']),
+      manifests: [],
+      // pkg/tsconfig.json exists but could not be parsed: the root config does not govern pkg.
+      tsconfigs: [
+        parseTsConfig('tsconfig.json', JSON.stringify({ compilerOptions: { baseUrl: '.' } })),
+      ],
+    });
+    expect(shadowed('pkg/src/a.ts', 'typescript', ref('pkg/src/b')).kind).toBe('unresolved');
   });
 });
 

@@ -148,8 +148,9 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 - **Symbol identity.** A symbol is identified by kind and qualified name within a file. A rename
   or a move to another file looks like one symbol removed and another introduced.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
-  decide from files and manifests: TypeScript `paths` aliases, Python modules whose import name
-  differs from the distribution, and Go `replace` directives.
+  decide from files and manifests: Python modules whose import name differs from the distribution,
+  and Go `replace` directives. TypeScript `paths` and `baseUrl` come from the nearest
+  `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
 - **GitHub links.** Closing keywords (`Fixes #12`) are DERIVED at confidence 0.9, and only
   same-repository references are linked.
 
