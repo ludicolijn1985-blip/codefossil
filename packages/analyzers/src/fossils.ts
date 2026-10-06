@@ -6,7 +6,7 @@ import {
 } from '@codefossil/db';
 import { isTestPath } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
-import { isCodePath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
+import { isCodePath, isDeclarationPath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
 
 export type FossilOrder = 'introduced' | 'untouched';
 
@@ -85,6 +85,7 @@ export function analyzeFossils(
       origin.kind !== 'property' &&
       isCodePath(origin.path) &&
       !isGeneratedPath(origin.path) &&
+      !isDeclarationPath(origin.path) &&
       (options.includeTests || (!isTestPath(origin.path) && !isIllustrativePath(origin.path))),
   );
   const dated = considered.filter((origin) => origin.introduced !== null);

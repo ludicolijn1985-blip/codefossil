@@ -11,7 +11,7 @@ import {
 import type { EvidenceLevel } from '@codefossil/shared';
 import { isTestPath } from '@codefossil/query';
 import { classifyDefects } from './defects.js';
-import { isCodePath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
+import { isCodePath, isDeclarationPath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
 
 /** An earlier commit that changed the symbol and reads as a defect fix. */
 export interface FragileFix {
@@ -199,6 +199,7 @@ export function analyzeFixedSymbols(
       s.kind !== 'property' &&
       isCodePath(s.path) &&
       !isGeneratedPath(s.path) &&
+      !isDeclarationPath(s.path) &&
       (options.includeTests || (!isTestPath(s.path) && !isIllustrativePath(s.path))),
   );
   const symbols = fixHistories(db, repositoryId, candidates, new Set());

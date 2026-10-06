@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AnalysisChange, AnalysisCommit, CommitDiscussion } from '@codefossil/db';
 import { classifyDefects, DEFECT_CONFIDENCE } from './defects.js';
 import { fileActivity } from './file-history.js';
-import { isCodePath, isGeneratedPath } from './hotspots.js';
+import { isCodePath, isDeclarationPath, isGeneratedPath } from './hotspots.js';
 import { importReach } from './reach.js';
 import {
   deadlines,
@@ -309,5 +309,12 @@ describe('defect wording that is not about code', () => {
       new Map(),
     );
     expect([...result.keys()]).toEqual([5]);
+  });
+});
+
+describe('declaration files', () => {
+  it('recognises TypeScript declaration files only', () => {
+    expect(['index.d.ts', 'types/x.d.mts', 'a/b.d.cts'].every(isDeclarationPath)).toBe(true);
+    expect(['index.ts', 'xd-ts', 'a.d.tsx', 'd.ts.js'].some(isDeclarationPath)).toBe(false);
   });
 });

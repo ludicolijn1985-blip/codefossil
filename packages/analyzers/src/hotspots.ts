@@ -112,6 +112,9 @@ const ILLUSTRATIVE_PATH =
 
 export const isIllustrativePath = (path: string): boolean => ILLUSTRATIVE_PATH.test(path);
 
+/** TypeScript declaration files describe code elsewhere; they hold no behaviour of their own. */
+export const isDeclarationPath = (path: string): boolean => /\.d\.[cm]?ts$/.test(path);
+
 /** Whether a path is source code in a recognized language. */
 export function isCodePath(path: string): boolean {
   const language = detectLanguage(path);
