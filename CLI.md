@@ -41,6 +41,11 @@ statements, each with its evidence level, confidence and cited evidence; its ove
 is that of its weakest statement. Missing evidence is stated, not filled in. `--json` returns the
 API.md investigation shape.
 
+codefossil why res.send --html res-send.html
+Also write a one-page history of a symbol as self-contained HTML (no scripts, no external
+resources, all repository text escaped): its birth followed back through copies, every change on
+a timeline, which changes read as fixes, linked issues and pull requests, and its callers.
+
 codefossil impact calculateVAT [--depth n]
 Show what depends on a target, with distances, routes and which are tests. For a symbol: the
 functions (or files, at module level) that call it, directly and through other calls, then the

@@ -39,6 +39,7 @@ npm from installing the SQLite driver's binary. There, run
 | `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components    |
 | `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)   |
 | `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since     |
+| `codefossil why res.send --html x.html` | A one-page, shareable history of a function: birth, moves, every change, fixes    |
 | `codefossil query "what depends on X?"` | The same answers from a plain-words question                                      |
 | `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests        |
 | `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies              |
@@ -75,6 +76,18 @@ The agent gets eight read-only tools: `why`, `impact`, `timeline`, `symbols`, `h
 `dead_intent`, `fossils` and `change_report` (what a branch's commits touch). They run
 offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
 CLI, so the agent can tell what is known from what is guessed.
+
+## Share a function's life story
+
+```bash
+codefossil why res.send --html res-send.html
+```
+
+One self-contained page, with no scripts or external files: when the function was born (followed
+back through moves), every commit that changed it on a timeline, which of them were fixes, the
+issues behind them and how many places call it.
+
+![The life of res.send in Express](docs/images/story-res-send.png)
 
 ## Evidence, not guesses
 
