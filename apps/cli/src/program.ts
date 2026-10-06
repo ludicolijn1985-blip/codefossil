@@ -138,7 +138,8 @@ export function createProgram(io: CliIO): Command {
     .action(async (options: IndexCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
       const maxRequests = parsePositiveInteger(options.githubMaxRequests, '--github-max-requests');
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      // Indexing a repository for the first time creates its workspace, as `init` would.
+      await withWorkspace(initWorkspace(repoPath()), async (ws) => {
         const plan = await planGitHubSync(ws, io, {
           offline: options.offline === true,
           maxRequests,

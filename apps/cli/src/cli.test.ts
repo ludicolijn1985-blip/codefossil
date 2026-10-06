@@ -214,10 +214,17 @@ describe('fossil CLI', () => {
     expect(result.stderr).toContain('is committed to this repository');
   });
 
-  it('asks for init before index or status', async () => {
+  it('asks for init before status', async () => {
     const result = await fossil(root(), 'status');
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Run `codefossil init` first');
+  });
+
+  it('creates the workspace when index runs first', async () => {
+    const result = await fossil(root(), 'index', '--offline');
+    expect(result.code).toBe(0);
+    expect(existsSync(join(root(), '.codefossil', 'fossil.db'))).toBe(true);
+    expect((await fossil(root(), 'status')).code).toBe(0);
   });
 });
 
