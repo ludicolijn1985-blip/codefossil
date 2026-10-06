@@ -82,6 +82,30 @@ export interface LanguageSpec {
   readonly isSelf: (call: Node, receiver: string) => boolean;
 }
 
+/**
+ * Visit every node of the given types under `root`, in source order. A tree
+ * cursor walks without recursion and only materialises the nodes visited,
+ * which matters for large or deeply nested (possibly hostile) input.
+ */
+export function visitNodes(
+  root: Node,
+  types: ReadonlySet<string>,
+  visit: (node: Node) => void,
+): void {
+  const cursor = root.walk();
+  try {
+    for (;;) {
+      if (types.has(cursor.nodeType)) visit(cursor.currentNode);
+      if (cursor.gotoFirstChild()) continue;
+      while (!cursor.gotoNextSibling()) {
+        if (!cursor.gotoParent()) return;
+      }
+    }
+  } finally {
+    cursor.delete();
+  }
+}
+
 /** The nearest ancestor of one of the given types. */
 export function ancestorOf(node: Node, types: ReadonlySet<string>): Node | null {
   let current = node.parent;

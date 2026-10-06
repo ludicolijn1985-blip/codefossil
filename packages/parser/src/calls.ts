@@ -1,6 +1,6 @@
 import type { Node } from 'web-tree-sitter';
-import type { SymbolRange } from './extract.js';
-import type { LanguageSpec } from './spec.js';
+import type { Collector, SymbolRange } from './extract.js';
+import { visitNodes, type LanguageSpec } from './spec.js';
 
 /** A call as written in source, before resolution. */
 export interface ParsedCall {
@@ -78,76 +78,81 @@ class Enclosing {
 /** Node types that bind a name in a declaration (`{ opt }` in a destructuring pattern). */
 const BINDING_TYPES = new Set(['identifier', 'shorthand_property_identifier_pattern']);
 
-/** Every binding name inside `node`, iteratively (untrusted input may be deeply nested). */
+/** Every binding name inside `node`. */
 function identifiers(node: Node): string[] {
   const names: string[] = [];
-  const stack: Node[] = [node];
-  for (let current = stack.pop(); current; current = stack.pop()) {
-    if (BINDING_TYPES.has(current.type)) names.push(current.text);
-    stack.push(...current.namedChildren);
-  }
+  visitNodes(node, BINDING_TYPES, (found) => names.push(found.text));
   return names;
 }
 
-/**
- * Names declared inside each symbol: its parameters, variables and inner
- * functions. A symbol's own name is not local to it.
- */
-function localNames(
-  root: Node,
-  spec: LanguageSpec,
-  enclosing: Enclosing,
-): Map<string, Set<string>> {
-  const locals = new Map<string, Set<string>>();
-  const stack: Node[] = [root];
-  for (let node = stack.pop(); node; node = stack.pop()) {
-    const field = spec.locals[node.type];
-    if (field !== undefined) {
-      const owner = enclosing.at(node.startIndex);
-      const declared = field === null ? node : node.childForFieldName(field);
-      if (owner && declared && owner.range.start !== node.startIndex) {
-        const names = locals.get(owner.key) ?? new Set<string>();
-        for (const name of identifiers(declared)) names.add(name);
-        locals.set(owner.key, names);
-      }
-    }
-    stack.push(...node.namedChildren);
-  }
-  return locals;
+interface CallSite {
+  readonly callee: string[];
+  readonly caller: string | null;
+  readonly line: number;
+  readonly self: boolean;
 }
 
 /**
  * Every distinct call in the file — per calling symbol and callee — with the
  * line of its first occurrence. Calls inside closures belong to the symbol
- * that contains the closure. Nothing is resolved here.
+ * that contains the closure. One pass collects the calls and the names each
+ * symbol declares (its parameters, variables and inner functions; never its
+ * own name); whether a call's first name is local is decided afterwards,
+ * since a declaration may follow the call. Nothing is resolved here.
  */
 export function extractCalls(
   root: Node,
   spec: LanguageSpec,
   ranges: ReadonlyMap<string, SymbolRange>,
 ): ParsedCall[] {
+  const collector = callCollector(spec, ranges);
+  visitNodes(root, collector.types, collector.visit);
+  return collector.result();
+}
+
+/** The call collector of {@link extractCalls}, for sharing one walk with other collectors. */
+export function callCollector(
+  spec: LanguageSpec,
+  ranges: ReadonlyMap<string, SymbolRange>,
+): Collector<ParsedCall[]> {
   const enclosing = new Enclosing(ranges);
-  const locals = localNames(root, spec, enclosing);
-  const byKey = new Map<string, ParsedCall>();
-  const stack: Node[] = [root];
-  for (let node = stack.pop(); node; node = stack.pop()) {
-    const field = spec.calls[node.type];
-    const callee = field ? calleePath(node.childForFieldName(field), spec) : null;
-    const head = callee?.[0];
-    if (callee && head && !spec.ignoredCallees.has(callee.join('.'))) {
-      const caller = enclosing.at(node.startIndex)?.key ?? null;
-      const self = callee.length > 1 && spec.isSelf(node, head);
-      const local = !self && caller !== null && (locals.get(caller)?.has(head) ?? false);
-      const key = `${caller ?? ''}\0${callee.join('.')}\0${String(self)}\0${String(local)}`;
-      if (!byKey.has(key)) {
-        byKey.set(key, { callee, caller, line: node.startPosition.row + 1, local, self });
+  const locals = new Map<string, Set<string>>();
+  const sites: CallSite[] = [];
+  const types = new Set([...Object.keys(spec.calls), ...Object.keys(spec.locals)]);
+
+  const visit = (node: Node) => {
+    const localField = spec.locals[node.type];
+    if (localField !== undefined) {
+      const owner = enclosing.at(node.startIndex);
+      const declared = localField === null ? node : node.childForFieldName(localField);
+      if (owner && declared && owner.range.start !== node.startIndex) {
+        const names = locals.get(owner.key) ?? new Set<string>();
+        for (const name of identifiers(declared)) names.add(name);
+        locals.set(owner.key, names);
       }
     }
-    const children = node.namedChildren;
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i];
-      if (child) stack.push(child);
+    const calleeField = spec.calls[node.type];
+    const callee = calleeField ? calleePath(node.childForFieldName(calleeField), spec) : null;
+    const head = callee?.[0];
+    if (!callee || !head || spec.ignoredCallees.has(callee.join('.'))) return;
+    sites.push({
+      callee,
+      caller: enclosing.at(node.startIndex)?.key ?? null,
+      line: node.startPosition.row + 1,
+      self: callee.length > 1 && spec.isSelf(node, head),
+    });
+  };
+
+  const result = (): ParsedCall[] => {
+    const byKey = new Map<string, ParsedCall>();
+    for (const site of sites) {
+      const head = site.callee[0] ?? '';
+      const local =
+        !site.self && site.caller !== null && (locals.get(site.caller)?.has(head) ?? false);
+      const key = `${site.caller ?? ''}\0${site.callee.join('.')}\0${String(site.self)}\0${String(local)}`;
+      if (!byKey.has(key)) byKey.set(key, { ...site, local });
     }
-  }
-  return [...byKey.values()];
+    return [...byKey.values()];
+  };
+  return { types, visit, result };
 }

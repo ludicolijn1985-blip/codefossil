@@ -205,7 +205,9 @@ describe('robustness against hostile input', () => {
     const source = `${'['.repeat(depth)}${']'.repeat(depth)};\nfunction after() {}\n`;
     const result = await extractor.extract(source, 'javascript');
     expect(result?.symbols.map((s) => s.stableKey)).toEqual(['function:after']);
-  });
+    // This checks that nothing recurses on the input; parsing 200,000 nested nodes alone takes
+    // seconds on a slow CI runner, so the time limit is generous rather than a speed target.
+  }, 30_000);
 });
 
 describe('members defined through values', () => {

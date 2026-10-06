@@ -4,6 +4,7 @@ import type { Node } from 'web-tree-sitter';
 import {
   METHOD_OWNERS,
   nameField,
+  visitNodes,
   type ImportBinding,
   type ImportReference,
   type LanguageSpec,
@@ -127,12 +128,25 @@ export interface ParsedImport extends ImportReference {
  * merged — `from x import a` and a later `from x import b` both matter.
  */
 export function extractImports(root: Node, spec: LanguageSpec): ParsedImport[] {
+  const collector = importCollector(spec);
+  visitNodes(root, collector.types, collector.visit);
+  return collector.result();
+}
+
+/** A node visitor that collects imports, for sharing one walk with other collectors. */
+export interface Collector<T> {
+  /** Node types the collector wants to see. */
+  readonly types: ReadonlySet<string>;
+  readonly visit: (node: Node) => void;
+  readonly result: () => T;
+}
+
+export function importCollector(spec: LanguageSpec): Collector<ParsedImport[]> {
   const byKey = new Map<
     string,
     { reference: ImportReference; line: number; names: string[]; bindings: ImportBinding[] }
   >();
-  const stack: Node[] = [root];
-  for (let node = stack.pop(); node; node = stack.pop()) {
+  const visit = (node: Node) => {
     const rule = spec.imports[node.type];
     for (const reference of rule ? rule(node) : []) {
       const key = `${reference.kind}\0${reference.specifier}`;
@@ -150,21 +164,16 @@ export function extractImports(root: Node, spec: LanguageSpec): ParsedImport[] {
       }
       byKey.set(key, entry);
     }
-    const children = node.namedChildren;
-    for (let i = children.length - 1; i >= 0; i--) {
-      const child = children[i];
-      if (child) stack.push(child);
-    }
-  }
-  return [...byKey.values()].map(({ reference, line, names, bindings }) => {
-    return {
+  };
+  const result = () =>
+    [...byKey.values()].map(({ reference, line, names, bindings }) => ({
       specifier: reference.specifier,
       kind: reference.kind,
       line,
       ...(reference.names === undefined ? {} : { names }),
       ...(bindings.length > 0 ? { bindings } : {}),
-    };
-  });
+    }));
+  return { types: new Set(Object.keys(spec.imports)), visit, result };
 }
 
 /** The declaration without its body: `function total(items: Item[]): number`. */

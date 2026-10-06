@@ -267,7 +267,8 @@ async function parse(
   // A NUL byte means binary content that happens to have a source extension.
   if (!grammar || !content || content.includes(0)) return null;
   try {
-    return await extractor.extract(content.toString('utf8'), grammar);
+    // History needs symbols only; imports and calls are read at HEAD by the dependency indexer.
+    return await extractor.extract(content.toString('utf8'), grammar, { references: false });
   } catch {
     onFailure();
     return null;

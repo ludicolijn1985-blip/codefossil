@@ -3,10 +3,10 @@ import { createRequire } from 'node:module';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser } from 'web-tree-sitter';
-import { extractCalls, type ParsedCall } from './calls.js';
+import { callCollector, type ParsedCall } from './calls.js';
 import {
-  extractImports,
   extractSymbols,
+  importCollector,
   type ParsedImport,
   type ParsedSymbol,
   type SymbolRange,
@@ -15,7 +15,7 @@ import { ecmascript } from './languages/ecmascript.js';
 import { go } from './languages/go.js';
 import { python } from './languages/python.js';
 import { rust } from './languages/rust.js';
-import type { GrammarId, LanguageSpec } from './spec.js';
+import { visitNodes, type GrammarId, type LanguageSpec } from './spec.js';
 
 const require = createRequire(import.meta.url);
 
@@ -68,11 +68,19 @@ export function grammarForPath(path: string): GrammarId | null {
  */
 export const MAX_SOURCE_LENGTH = 1_000_000;
 
+export interface ExtractOptions {
+  /**
+   * Also collect imports and calls (default true). Reading history only needs
+   * symbols, and skipping the extra walk keeps indexing large histories fast.
+   */
+  readonly references?: boolean;
+}
+
 export interface ExtractResult {
   readonly symbols: readonly ParsedSymbol[];
-  /** Module references in source order, unresolved. */
+  /** Module references in source order, unresolved; empty when references were not asked for. */
   readonly imports: readonly ParsedImport[];
-  /** Distinct calls per calling symbol, unresolved. */
+  /** Distinct calls per calling symbol, unresolved; empty when references were not asked for. */
   readonly calls: readonly ParsedCall[];
   /** True when Tree-sitter had to recover from syntax errors; symbols may be incomplete. */
   readonly hasSyntaxErrors: boolean;
@@ -88,7 +96,11 @@ let runtime: Promise<void> | undefined;
 export class SymbolExtractor {
   private readonly parsers = new Map<GrammarId, Promise<Parser>>();
 
-  async extract(source: string, grammar: GrammarId): Promise<ExtractResult | null> {
+  async extract(
+    source: string,
+    grammar: GrammarId,
+    options: ExtractOptions = {},
+  ): Promise<ExtractResult | null> {
     if (source.length > MAX_SOURCE_LENGTH) return null;
     const parser = await this.parserFor(grammar);
     const tree = parser.parse(source);
@@ -97,10 +109,20 @@ export class SymbolExtractor {
       const { spec } = GRAMMARS[grammar];
       const ranges = new Map<string, SymbolRange>();
       const symbols = extractSymbols(tree.rootNode, spec, ranges);
+      if (options.references === false) {
+        return { symbols, imports: [], calls: [], hasSyntaxErrors: tree.rootNode.hasError };
+      }
+      // Imports and calls share one walk of the tree.
+      const imports = importCollector(spec);
+      const calls = callCollector(spec, ranges);
+      visitNodes(tree.rootNode, new Set([...imports.types, ...calls.types]), (node) => {
+        if (imports.types.has(node.type)) imports.visit(node);
+        if (calls.types.has(node.type)) calls.visit(node);
+      });
       return {
         symbols,
-        imports: extractImports(tree.rootNode, spec),
-        calls: extractCalls(tree.rootNode, spec, ranges),
+        imports: imports.result(),
+        calls: calls.result(),
         hasSyntaxErrors: tree.rootNode.hasError,
       };
     } finally {
