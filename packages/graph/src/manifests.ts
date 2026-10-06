@@ -26,6 +26,17 @@ export interface Manifest {
   readonly entries: Readonly<Record<string, readonly string[]>>;
   /** Runtime versions the manifest declares support for (`engines.node`, `requires-python`, …). */
   readonly runtimes: readonly RuntimeConstraint[];
+  /** go.mod only: `replace` directives, which redirect a module to another module or a directory. */
+  readonly replacements?: readonly ModuleReplacement[];
+}
+
+/** `replace example.com/x [v1] => ../x` (a directory) or `=> example.com/fork v2` (a module). */
+export interface ModuleReplacement {
+  readonly module: string;
+  /** The replacement: a directory relative to the go.mod, or a module path. */
+  readonly target: string;
+  /** Whether `target` is a directory (it starts with `./` or `../`). */
+  readonly local: boolean;
 }
 
 export class ManifestParseError extends Error {
@@ -140,28 +151,39 @@ function parseGoMod(path: string, content: string): Manifest {
   let packageName: string | null = null;
   const dependencies: ManifestDependency[] = [];
   const runtimes: RuntimeConstraint[] = [];
-  let inRequireBlock = false;
+  const replacements: ModuleReplacement[] = [];
+  let block: 'require' | 'replace' | null = null;
   const addRequire = (spec: string) => {
     const [name, version] = spec.split(/\s+/);
     if (name)
       dependencies.push({ ecosystem: 'go', name, version: version ?? null, scope: 'runtime' });
   };
+  const addReplace = (spec: string) => {
+    const [from = '', to = ''] = spec.split('=>').map((side) => side.trim());
+    const module = from.split(/\s+/)[0];
+    const target = to.split(/\s+/)[0];
+    if (module && target) {
+      replacements.push({ module, target, local: /^\.\.?\//.test(target) });
+    }
+  };
 
   for (const line of lines) {
-    if (inRequireBlock) {
-      if (line === ')') inRequireBlock = false;
-      else if (line) addRequire(line);
+    if (block) {
+      if (line === ')') block = null;
+      else if (line) (block === 'require' ? addRequire : addReplace)(line);
       continue;
     }
+    if (/^replace\s*\($/.test(line)) block = 'replace';
+    else if (line.startsWith('replace ')) addReplace(line.slice('replace '.length));
     const module = /^module\s+(\S+)/.exec(line);
     if (module?.[1]) packageName = module[1].replace(/^"|"$/g, '');
     // The `go` directive is the minimum Go version the module supports.
     const go = /^go\s+(\d+\.\d+(?:\.\d+)?)$/.exec(line);
     if (go?.[1]) runtimes.push({ runtime: 'go', constraint: `>=${go[1]}` });
-    if (/^require\s*\($/.test(line)) inRequireBlock = true;
+    if (/^require\s*\($/.test(line)) block = 'require';
     else if (line.startsWith('require ')) addRequire(line.slice('require '.length).trim());
   }
-  return { path, ecosystem: 'go', packageName, dependencies, entries: {}, runtimes };
+  return { path, ecosystem: 'go', packageName, dependencies, entries: {}, runtimes, replacements };
 }
 
 // ---------------------------------------------------------------------------

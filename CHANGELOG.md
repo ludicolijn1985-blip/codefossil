@@ -24,6 +24,11 @@ and the project uses [Semantic Versioning](https://semver.org/).
   introduced; `why` and `fossils` follow it back to the original. A name defined once at HEAD now
   resolves to that definition even when removed copies share the name.
 
+- **Import resolution.** Go `replace` directives that point at a directory of the repository
+  resolve to its packages. Python imports from the standard library are recognised as built-in
+  (including modules removed in 3.12 and 3.13), and well-known import names that differ from their
+  distribution (`yaml`, `PIL`, `sklearn`, `bs4`, …) resolve to the declared distribution.
+
 ### Fixed
 
 - **Symbol history on branchy repositories.** A symbol version is now diffed against the same file

@@ -192,9 +192,10 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   copied or moved to another file with identical content (three lines or more) is followed back to
   its original; a renamed symbol, or one edited while it moved, looks like a new one.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
-  decide from files and manifests: Python modules whose import name differs from the distribution,
-  and Go `replace` directives. TypeScript `paths` and `baseUrl` come from the nearest
-  `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
+  decide from files and manifests. Python import names that differ from their distribution are
+  matched only for a curated list of well-known packages (`yaml` → PyYAML); Go `replace` directives
+  are followed to directories inside the repository. TypeScript `paths` and `baseUrl` come from the
+  nearest `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
 - **GitHub links.** Closing keywords (`Fixes #12`) are DERIVED at confidence 0.9, and only
   same-repository references are linked.
 

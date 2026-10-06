@@ -7,6 +7,7 @@ import {
   type LayoutIndex,
   type Resolution,
 } from './layout.js';
+import { PYTHON_IMPORT_DISTRIBUTIONS, PYTHON_STDLIB } from './python-stdlib.js';
 
 /** Confidence when a module was found by path suffix, i.e. its source root was inferred. */
 const INFERRED_ROOT_CONFIDENCE = 0.9;
@@ -109,21 +110,33 @@ export function resolvePython(
     };
   }
 
-  const top = normalizePythonName(ref.specifier.split('.')[0] ?? '');
-  const declaring = index
-    .manifestsAbove(fromPath, 'pypi')
-    .find((m) => m.dependencies.some((dep) => normalizePythonName(dep.name) === top));
-  const dependency = declaring?.dependencies.find((dep) => normalizePythonName(dep.name) === top);
-  if (declaring && dependency) {
-    return {
-      kind: 'dependency',
-      ecosystem: 'pypi',
-      name: dependency.name,
-      manifestPath: declaring.path,
-      method: 'declared-distribution',
-    };
-  }
-  // Could be the standard library, or a distribution whose import name differs
-  // from its package name (e.g. `yaml` from PyYAML). Neither is guessed.
-  return unresolved('not a repository module or a declared distribution of the same name');
+  const topLevel = ref.specifier.split('.')[0] ?? '';
+  const declared = (names: readonly string[], method: string): Resolution | null => {
+    const wanted = new Set(names.map(normalizePythonName));
+    for (const manifest of index.manifestsAbove(fromPath, 'pypi')) {
+      const dependency = manifest.dependencies.find((dep) =>
+        wanted.has(normalizePythonName(dep.name)),
+      );
+      if (dependency) {
+        return {
+          kind: 'dependency',
+          ecosystem: 'pypi',
+          name: dependency.name,
+          manifestPath: manifest.path,
+          method,
+        };
+      }
+    }
+    return null;
+  };
+
+  const sameName = declared([topLevel], 'declared-distribution');
+  if (sameName) return sameName;
+  const knownName = PYTHON_IMPORT_DISTRIBUTIONS[topLevel];
+  const renamed = knownName ? declared(knownName, 'declared-distribution-import-name') : null;
+  if (renamed) return renamed;
+  if (PYTHON_STDLIB.has(topLevel)) return { kind: 'builtin' };
+  return unresolved(
+    'not a repository module, the standard library or a declared distribution of that import name',
+  );
 }

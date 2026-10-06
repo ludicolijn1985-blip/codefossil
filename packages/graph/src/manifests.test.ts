@@ -81,6 +81,23 @@ describe('go.mod', () => {
       'runtime:github.com/sirupsen/logrus@v1.9.3',
       'runtime:golang.org/x/text@v0.14.0',
     ]);
+    expect(parseManifest('go.mod', content).replacements).toEqual([
+      { module: 'example.com/x', target: '../x', local: true },
+    ]);
+  });
+
+  it('reads replace blocks, versions and module targets', () => {
+    const content = [
+      'module example.com/app',
+      'replace (',
+      '\texample.com/a v1.2.0 => ./a',
+      '\texample.com/b => example.com/b-fork v1.0.1',
+      ')',
+    ].join('\n');
+    expect(parseManifest('go.mod', content).replacements).toEqual([
+      { module: 'example.com/a', target: './a', local: true },
+      { module: 'example.com/b', target: 'example.com/b-fork', local: false },
+    ]);
   });
 });
 
