@@ -1120,3 +1120,42 @@ describe('codefossil impact with callers', () => {
     expect(result.stdout.indexOf('Callers (1)')).toBeLessThan(result.stdout.indexOf('Direct (1)'));
   });
 });
+
+describe('codefossil why --html', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.commit('Add rate');
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.09;\n}\n');
+    await repo.commit('fix: <img src=x onerror=alert(1)> wrong rate for @someone');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('writes a self-contained page with every piece of repository text escaped', async () => {
+    const root = repo?.root ?? '';
+    const result = await fossil(root, 'why', 'rate', '--no-save', '--html', 'rate.html');
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('rate.html');
+
+    const html = readFileSync(join(root, 'rate.html'), 'utf8');
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).toContain('<h1>rate</h1>');
+    expect(html).toContain('fix: &#60;img src=x onerror=alert(1)&#62; wrong rate');
+    expect(html).not.toContain('<img');
+    expect(html).not.toMatch(
+      /<script|<link|https?:\/\/(?!github\.com\/ludicolijn1985-blip\/codefossil)/,
+    );
+    expect(html).toContain('class="badge fix-badge"');
+  });
+
+  it('draws only symbols', async () => {
+    const result = await fossil(repo?.root ?? '', 'why', 'src/tax.ts', '--html', 'tax.html');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('--html draws the history of a symbol');
+  });
+});

@@ -10,6 +10,7 @@ import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
 import { analyzeFossils } from './fossils.js';
+import { buildSymbolStory } from './story.js';
 import { analyzeFixedSymbols, analyzeFragileSymbols } from './fragile.js';
 import { buildReport } from './report.js';
 
@@ -399,6 +400,50 @@ describe('fixed symbols', () => {
           (s) => s.symbol.qualifiedName,
         ),
       ).toContain('check');
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('symbol story', () => {
+  it('tells a symbol’s life: birth, move, changes and fixes, oldest first', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const parse = (body: string) => `export function parse(s: string) {\n  ${body}\n}\n`;
+      const keep = 'export function keep() {\n  return 0;\n}\n';
+      await repo.write('src/old.ts', `${parse('return s;')}\n${keep}`);
+      const born = await repo.commit('Add parser');
+      await repo.write('src/old.ts', keep);
+      await repo.write('src/new.ts', parse('return s;'));
+      const moved = await repo.commit('Move the parser');
+      await repo.write('src/new.ts', parse('return s.trim();'));
+      const fixed = await repo.commit('fix: crash on padded input');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+      const symbol = fossil.sqlite
+        .prepare(
+          "select s.id from symbols s join files f on f.id = s.file_id where f.path = 'src/new.ts' and s.name = 'parse'",
+        )
+        .get() as { id: number };
+
+      const story = buildSymbolStory(fossil.db, repositoryId, symbol.id);
+
+      expect(story?.events.map((e) => [e.kind, e.sha, e.fix !== null])).toEqual([
+        ['introduced', born, false],
+        ['copied', moved, false],
+        ['changed', fixed, true],
+      ]);
+      expect(story).toMatchObject({
+        symbol: { qualifiedName: 'parse', path: 'src/new.ts', current: true },
+        copiedFrom: [{ path: 'src/old.ts', qualifiedName: 'parse' }],
+        introduction: { level: 'DERIVED', confidence: 0.9 },
+        fixes: 1,
+        authors: 1,
+        callers: 0,
+      });
+      expect(buildSymbolStory(fossil.db, repositoryId, 999_999)).toBeNull();
     } finally {
       fossil.close();
       await repo.cleanup();
