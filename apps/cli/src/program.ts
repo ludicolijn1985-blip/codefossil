@@ -23,6 +23,7 @@ import { parsePositiveInteger, parseSince } from './options.js';
 import { registerDoctorCommand } from './doctor-command.js';
 import { registerReportCommand } from './report-command.js';
 import { openIndexedWorkspace } from './auto-index.js';
+import { registerLensCommand } from './lens-command.js';
 import { registerMcpCommand } from './mcp-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
@@ -262,6 +263,7 @@ export function createProgram(io: CliIO): Command {
   registerDoctorCommand(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
   registerMcpCommand(program, io, repoPath);
+  registerLensCommand(program, io, repoPath);
 
   return program;
 }

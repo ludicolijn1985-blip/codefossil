@@ -1,5 +1,7 @@
 import {
   analysisCommits,
+  listFileSymbols,
+  type AnalysisCommit,
   commitDiscussions,
   commitEvidenceIds,
   getIndexStatus,
@@ -11,7 +13,7 @@ import {
 } from '@codefossil/db';
 import { copyChain } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
-import { classifyDefects } from './defects.js';
+import { classifyDefects, type DefectSignal } from './defects.js';
 
 /** One commit in a symbol's life. */
 export interface StoryEvent {
@@ -55,6 +57,53 @@ export interface SymbolStory {
 }
 
 /**
+ * What every story of one repository needs, loaded once: commits, which of
+ * them read as fixes, and the issues and pull requests linked to them.
+ */
+export class StoryContext {
+  readonly commitById: ReadonlyMap<number, AnalysisCommit>;
+  readonly defects: ReadonlyMap<number, DefectSignal>;
+  readonly repository: SymbolStory['repository'];
+  private readonly discussionsByCommit = new Map<number, StoryEvent['discussions'][number][]>();
+
+  constructor(db: FossilDb, repositoryId: number) {
+    const commits = analysisCommits(db, repositoryId);
+    this.commitById = new Map(commits.map((c) => [c.id, c]));
+    const discussions = commitDiscussions(db, repositoryId);
+    this.defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
+    for (const d of discussions) {
+      const list = this.discussionsByCommit.get(d.commitId) ?? [];
+      if (!list.some((x) => x.type === d.type && x.number === d.number)) {
+        list.push({ type: d.type, number: d.number, title: d.title });
+      }
+      this.discussionsByCommit.set(d.commitId, list);
+    }
+    const status = getIndexStatus(db, repositoryId);
+    this.repository = {
+      name: status?.repository.name ?? '',
+      headSha: status?.latestCommit?.sha ?? null,
+    };
+  }
+
+  discussionsOf(commitId: number): StoryEvent['discussions'] {
+    return this.discussionsByCommit.get(commitId) ?? [];
+  }
+}
+
+/** The stories of every current symbol of a file, in source order. */
+export function buildFileStories(
+  db: FossilDb,
+  repositoryId: number,
+  fileId: number,
+): SymbolStory[] {
+  const context = new StoryContext(db, repositoryId);
+  return listFileSymbols(db, fileId).flatMap((symbol) => {
+    const story = buildSymbolStory(db, repositoryId, symbol.id, context);
+    return story ? [story] : [];
+  });
+}
+
+/**
  * The life of one symbol: where it was introduced (following copies back),
  * every commit that changed it, which of those read as fixes, the issues and
  * pull requests behind them, and how many places call it. Returns null when
@@ -64,24 +113,14 @@ export function buildSymbolStory(
   db: FossilDb,
   repositoryId: number,
   symbolId: number,
+  context: StoryContext = new StoryContext(db, repositoryId),
 ): SymbolStory | null {
   const ref = { type: 'symbol', id: symbolId } as const;
   const record = loadEntityRecords(db, [ref]).get(`symbol:${String(symbolId)}`);
   if (record?.type !== 'symbol') return null;
 
-  const commits = analysisCommits(db, repositoryId);
-  const commitById = new Map(commits.map((c) => [c.id, c]));
-  const discussions = commitDiscussions(db, repositoryId);
-  const defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
-  const discussionsOf = (commitId: number) => {
-    const seen = new Set<string>();
-    return discussions.flatMap((d) => {
-      const key = `${d.type}:${d.number}`;
-      if (d.commitId !== commitId || seen.has(key)) return [];
-      seen.add(key);
-      return [{ type: d.type, number: d.number, title: d.title }];
-    });
-  };
+  const { commitById, defects } = context;
+  const discussionsOf = (commitId: number) => context.discussionsOf(commitId);
   const event = (commitId: number, kind: StoryEvent['kind']): StoryEvent | null => {
     const commit = commitById.get(commitId);
     if (!commit) return null;
@@ -117,12 +156,8 @@ export function buildSymbolStory(
     .filter((e): e is StoryEvent => e !== null)
     .sort((a, b) => a.committedAt.localeCompare(b.committedAt));
 
-  const status = getIndexStatus(db, repositoryId);
   return {
-    repository: {
-      name: status?.repository.name ?? '',
-      headSha: status?.latestCommit?.sha ?? null,
-    },
+    repository: context.repository,
     symbol: {
       qualifiedName: record.qualifiedName,
       kind: record.kind,

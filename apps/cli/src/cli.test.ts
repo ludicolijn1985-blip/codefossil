@@ -1159,3 +1159,40 @@ describe('codefossil why --html', () => {
     expect(result.stderr).toContain('--html draws the history of a symbol');
   });
 });
+
+describe('codefossil lens', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write(
+      'src/tax.ts',
+      "import { round } from './round.js';\nexport function rate() {\n  return round(0.21);\n}\n",
+    );
+    await repo.write('src/round.ts', 'export function round(n: number) {\n  return n;\n}\n');
+    await repo.commit('Add tax (#3)');
+    await repo.write(
+      'src/round.ts',
+      'export function round(n: number) {\n  return Math.round(n);\n}\n',
+    );
+    await repo.commit('fix: round properly');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('summarises every function of a file in one line', async () => {
+    const root = repo?.root ?? '';
+    const text = await fossil(root, 'lens', join(root, 'src/round.ts'));
+    expect(text.stdout).toMatch(/^ +1 {2}round {2}born \d{4} · 1 change · 1 fix · 1 caller\n$/);
+
+    const json = JSON.parse((await fossil(root, 'lens', 'src/tax.ts', '--json')).stdout) as {
+      path: string;
+      symbols: { qualifiedName: string; born: { subject: string; issues: string[] } | null }[];
+    };
+    expect(json.path).toBe('src/tax.ts');
+    expect(json.symbols.map((s) => s.qualifiedName)).toEqual(['rate']);
+    expect(json.symbols[0]?.born?.subject).toBe('Add tax (#3)');
+  });
+});
