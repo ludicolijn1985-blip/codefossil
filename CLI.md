@@ -51,6 +51,13 @@ risk (change frequency × import centrality × bug density × test reach inverse
 its components and the defect commits behind it. Tests and lockfiles/generated files are left out
 unless `--tests` / `--generated` is given.
 
+codefossil fossils [--order introduced|untouched] [--limit n] [--tests] [--json]
+The oldest functions, methods and classes still present, with the commit that introduced each one
+and what changed since; `--order untouched` lists the code that has gone longest without a change.
+Code copied or moved to another file with identical content is dated from its original (the copy
+is DERIVED at confidence 0.9). Only origins the indexed history establishes are dated; older code
+is counted, never guessed. Tests, examples and docs are left out unless `--tests` is given.
+
 codefossil dead-intent [--limit n] [--stale-days n] [--json]
 List code changed by commits (or linked issues and pull requests) that speak of workarounds,
 compatibility or legacy support, with the signals that strengthen each candidate: runtime versions
@@ -107,7 +114,7 @@ Serve the JSON API (see API.md) on this machine only.
 
 codefossil mcp
 Serve this repository to AI coding agents over the Model Context Protocol (stdio). Tools: `why`,
-`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent` and `change_report`, each the
+`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`, `fossils` and `change_report`, each the
 command of the same name, read-only and offline. The index is brought up to date before the first
 answer; progress goes to stderr. Use `--repo <path>` when the client cannot set the directory.
 

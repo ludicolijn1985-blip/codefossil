@@ -65,7 +65,11 @@ export function resolveTarget(db: FossilDb, repositoryId: number, input: string)
       }
     }
   } else if (!ISSUE_NUMBER.test(text) && !DEPENDENCY.test(text)) {
-    for (const row of symbolsByName(db, repositoryId, text)) {
+    const named = symbolsByName(db, repositoryId, text);
+    // A name defined once at HEAD means that definition; earlier copies or removed versions
+    // stay reachable as path:Symbol. Several current definitions remain ambiguous.
+    const current = named.filter((row) => row.current);
+    for (const row of current.length === 1 ? current : named) {
       found.push({ ref: { type: 'symbol', id: row.id }, how: 'symbol name' });
     }
   }

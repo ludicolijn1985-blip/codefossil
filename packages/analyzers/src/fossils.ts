@@ -33,9 +33,14 @@ export interface Fossil {
     readonly confidence: number;
     readonly evidenceIds: readonly number[];
   };
-  /** Commits that changed the symbol after it was introduced. */
+  /**
+   * Set when the code was copied or moved here from another file: where from,
+   * and the commit that made the copy. `introduced` is then the original's.
+   */
+  readonly copied: { readonly fromPath: string; readonly commit: FossilCommit | null } | null;
+  /** Commits that changed the symbol after it was introduced (or copied here). */
   readonly changesSince: number;
-  /** The latest change after the introduction; null when it is unchanged since. */
+  /** The latest such change; null when it is unchanged since. */
   readonly lastChange: FossilCommit | null;
 }
 
@@ -103,11 +108,13 @@ export function analyzeFossils(
     const introduction = origin.introduced;
     const born = introduction ? commitOf(introduction.commitId) : null;
     if (!introduction || !born) return [];
-    const later = (history.get(origin.symbolId) ?? [])
-      .filter((id) => id !== introduction.commitId)
+    const own = (history.get(origin.symbolId) ?? [])
       .map(commitOf)
       .filter((commit): commit is FossilCommit => commit !== null)
-      .sort((a, b) => b.committedAt.localeCompare(a.committedAt));
+      .sort((a, b) => a.committedAt.localeCompare(b.committedAt));
+    // A copy's first version is the copy itself; an original's is its introduction.
+    const arrival = origin.copiedFrom ? (own[0] ?? null) : born;
+    const later = own.filter((commit) => commit.sha !== arrival?.sha).reverse();
     return [
       {
         symbol: {
@@ -124,13 +131,16 @@ export function analyzeFossils(
           confidence: introduction.confidence,
           evidenceIds: introduction.evidenceIds,
         },
+        copied: origin.copiedFrom ? { fromPath: origin.copiedFrom.path, commit: arrival } : null,
         changesSince: later.length,
         lastChange: later[0] ?? null,
       },
     ];
   });
 
-  const lastTouched = (fossil: Fossil) => (fossil.lastChange ?? fossil.introduced).committedAt;
+  /** When the code last changed in its current file; a copy counts from the copy. */
+  const lastTouched = (fossil: Fossil) =>
+    (fossil.lastChange ?? fossil.copied?.commit ?? fossil.introduced).committedAt;
   const sorted = [...fossils].sort((a, b) =>
     order === 'introduced'
       ? a.introduced.committedAt.localeCompare(b.introduced.committedAt) ||

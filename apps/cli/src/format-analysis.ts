@@ -84,9 +84,14 @@ export function formatFossils(report: FossilReport): string {
     return [
       `${String(index + 1).padStart(3)}. ${symbol.kind} ${symbol.qualifiedName}  ${symbol.path}:${String(symbol.startLine)}`,
       `     introduced ${day(born.committedAt)} in ${born.sha.slice(0, SHORT_SHA_LENGTH)} "${born.subject}" by ${born.authorName} · ${born.level} ${score(born.confidence)}`,
+      ...(fossil.copied
+        ? [
+            `     copied here from ${fossil.copied.fromPath}${fossil.copied.commit ? ` on ${day(fossil.copied.commit.committedAt)} in ${fossil.copied.commit.sha.slice(0, SHORT_SHA_LENGTH)} "${fossil.copied.commit.subject}"` : ''}`,
+          ]
+        : []),
       lastChange
         ? `     changed ${plural(fossil.changesSince, 'time')} since, last on ${day(lastChange.committedAt)} in ${lastChange.sha.slice(0, SHORT_SHA_LENGTH)} "${lastChange.subject}"`
-        : '     unchanged since',
+        : `     unchanged since${fossil.copied ? ' it was copied here' : ''}`,
     ].join('\n');
   });
   return `${header}\n${blocks.join('\n\n')}\n`;

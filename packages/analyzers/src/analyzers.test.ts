@@ -9,6 +9,7 @@ import {
 import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
+import { analyzeFossils } from './fossils.js';
 import { analyzeFragileSymbols } from './fragile.js';
 import { buildReport } from './report.js';
 
@@ -300,6 +301,63 @@ export function other() {
         fixes: [{ sha: fix, subject: 'fix: crash on padded input (#12)' }],
       });
       expect(later.symbolsTouched).toBe(1);
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('fossils', () => {
+  it('dates code from its origin, follows copies, and orders by age or by silence', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const parse = 'export function parse(s: string) {\n  return s.trim();\n}\n';
+      const helper = (n: number) => `export function helper() {\n  return ${String(n)};\n}\n`;
+      await repo.write('src/old.ts', `${parse}\n${helper(1)}`);
+      const born = await repo.commit('Add parser and helper');
+      await repo.write('src/old.ts', helper(1));
+      await repo.write('src/new.ts', parse);
+      const moved = await repo.commit('Move the parser');
+      await repo.write('src/old.ts', helper(2));
+      const tuned = await repo.commit('Tune helper');
+      await repo.write('src/later.ts', 'export function later() {\n  return 0;\n}\n');
+      await repo.commit('Add later');
+      await repo.write('test/old.test.ts', 'export function check() {\n  return 1;\n}\n');
+      await repo.commit('Add a test');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+
+      const report = analyzeFossils(fossil.db, repositoryId);
+
+      expect(report).toMatchObject({ order: 'introduced', withOrigin: 3, unchanged: 2 });
+      // Same introduction: ties go by path (src/new.ts before src/old.ts), then line.
+      expect(report.fossils.map((f) => f.symbol.qualifiedName)).toEqual([
+        'parse',
+        'helper',
+        'later',
+      ]);
+      const copied = report.fossils.find((f) => f.symbol.qualifiedName === 'parse');
+      expect(copied).toMatchObject({
+        symbol: { path: 'src/new.ts' },
+        introduced: { sha: born, confidence: 0.9 },
+        copied: { fromPath: 'src/old.ts', commit: { sha: moved } },
+        changesSince: 0,
+        lastChange: null,
+      });
+      expect(report.fossils.find((f) => f.symbol.qualifiedName === 'helper')).toMatchObject({
+        changesSince: 1,
+        lastChange: { sha: tuned },
+      });
+
+      // Longest without a change first: parse (copied, then untouched) before helper (tuned later).
+      const silent = analyzeFossils(fossil.db, repositoryId, { order: 'untouched', limit: 2 });
+      expect(silent.fossils.map((f) => f.symbol.qualifiedName)).toEqual(['parse', 'helper']);
+      expect(
+        analyzeFossils(fossil.db, repositoryId, { includeTests: true }).fossils.map(
+          (f) => f.symbol.qualifiedName,
+        ),
+      ).toContain('check');
     } finally {
       fossil.close();
       await repo.cleanup();

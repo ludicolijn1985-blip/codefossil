@@ -166,6 +166,24 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     args: ({ limit }) => ['dead-intent', ...(limit ? ['--limit', String(limit)] : [])],
   }),
   tool({
+    name: 'fossils',
+    title: 'Oldest surviving code',
+    description:
+      'The oldest functions, methods and classes still present, with the commit that introduced ' +
+      'them (followed back through copies and moves) and what changed since; or, with order ' +
+      '`untouched`, the code that has gone longest without a change.' +
+      UNTRUSTED,
+    input: {
+      limit: limit(100),
+      order: z.enum(['introduced', 'untouched']).optional(),
+    },
+    args: ({ limit, order }) => [
+      'fossils',
+      ...(limit ? ['--limit', String(limit)] : []),
+      ...(order ? ['--order', order] : []),
+    ],
+  }),
+  tool({
     name: 'change_report',
     title: 'What a branch touches',
     description:

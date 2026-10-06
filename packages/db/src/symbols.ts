@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { SymbolKind } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import { preparedFor } from './prepared.js';
@@ -274,3 +274,38 @@ const statements = preparedFor((db) => ({
     .limit(1)
     .prepare(),
 }));
+
+/**
+ * A symbol in another file of the repository that had exactly this content
+ * at some version, with the same name and kind; the most recently recorded
+ * one when there are several. Null when there is none.
+ */
+export function findIdenticalSymbol(
+  db: FossilDb,
+  repositoryId: number,
+  target: {
+    readonly fileId: number;
+    readonly qualifiedName: string;
+    readonly kind: string;
+    readonly contentHash: string;
+  },
+): number | null {
+  return (
+    db
+      .select({ id: symbols.id })
+      .from(symbolVersions)
+      .innerJoin(symbols, eq(symbolVersions.symbolId, symbols.id))
+      .innerJoin(files, eq(symbols.fileId, files.id))
+      .where(
+        and(
+          eq(symbolVersions.contentHash, target.contentHash),
+          eq(files.repositoryId, repositoryId),
+          eq(symbols.qualifiedName, target.qualifiedName),
+          eq(symbols.kind, target.kind as SymbolKind),
+          ne(symbols.fileId, target.fileId),
+        ),
+      )
+      .orderBy(desc(symbolVersions.id))
+      .get()?.id ?? null
+  );
+}

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  findCommitBySha,
   findFileByPath,
   getIndexStatus,
   IN_MEMORY,
@@ -234,6 +235,40 @@ describe('indexSymbols at the edges of the evidence', () => {
     const symbols = symbolsOf(repositoryId, 'lib.js');
     expect(symbols.find((s) => s.name === 'a')?.versions).toBe(2);
     expect(symbols.find((s) => s.name === 'b')?.versions).toBe(3);
+  });
+
+  it('records code moved to another file as copied, not introduced, and keeps one-liners apart', async () => {
+    const r = fixture();
+    const body = 'export function parse(s: string) {\n  return s.trim();\n}\n';
+    const helper = 'export function helper() {\n  return 42;\n}\n';
+    await r.write('src/old.ts', `${body}\nexport const one = () => 1;\n\n${helper}`);
+    const born = await r.commit('Add parser');
+    // parse and one move to a new file; old.ts keeps helper, so git sees no rename.
+    await r.write('src/old.ts', helper);
+    await r.write('src/new.ts', `${body}\nexport const one = () => 1;\n`);
+    await r.commit('Move the parser');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsCopied: 1 });
+    const moved = symbolsOf(result.repositoryId, 'src/new.ts');
+    const parse = moved.find((s) => s.name === 'parse');
+    // No introduction is claimed for the copy; it points at the original instead.
+    expect(parse?.introducedBy).toBeNull();
+    const copied = outgoingRelations(fossil.db, result.repositoryId, {
+      type: 'symbol',
+      id: parse?.id ?? 0,
+    }).filter((relation) => relation.relation === 'COPIED_FROM');
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toMatchObject({ evidenceType: 'DERIVED', confidence: 0.9 });
+    const original = outgoingRelations(fossil.db, result.repositoryId, {
+      type: 'symbol',
+      id: copied[0]?.targetId ?? 0,
+    }).find((relation) => relation.relation === 'INTRODUCED_BY');
+    expect(original?.targetId).toBeDefined();
+    expect(findCommitBySha(fossil.db, result.repositoryId, born)?.id).toBe(original?.targetId);
+    // A one-line definition repeats by coincidence too often to be called a copy.
+    expect(moved.find((s) => s.name === 'one')?.introducedBy).not.toBeNull();
   });
 
   it('skips binary content and unsupported languages without failing', async () => {

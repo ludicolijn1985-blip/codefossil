@@ -38,6 +38,7 @@ npm from installing the SQLite driver's binary. There, run
 | `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it      |
 | `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components  |
 | `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions) |
+| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since   |
 | `codefossil query "what depends on X?"` | The same answers from a plain-words question                                    |
 | `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests      |
 | `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies            |
@@ -70,8 +71,8 @@ Cursor, in `.cursor/mcp.json` (VS Code: `.vscode/mcp.json`, with `"servers"` ins
 }
 ```
 
-The agent gets seven read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
-`dead_intent` and `change_report` (what a branch touches, before it is committed). They run
+The agent gets eight read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
+`dead_intent`, `fossils` and `change_report` (what a branch's commits touch). They run
 offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
 CLI, so the agent can tell what is known from what is guessed.
 
@@ -187,8 +188,9 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 - **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.
 - **Wrapped modules.** Functions defined inside a wrapper (`(function () { exports.x = … })()`, UMD)
   are not symbols yet; module-level definitions are.
-- **Symbol identity.** A symbol is identified by kind and qualified name within a file. A rename
-  or a move to another file looks like one symbol removed and another introduced.
+- **Symbol identity.** A symbol is identified by kind and qualified name within a file. Code
+  copied or moved to another file with identical content (three lines or more) is followed back to
+  its original; a renamed symbol, or one edited while it moved, looks like a new one.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
   decide from files and manifests: Python modules whose import name differs from the distribution,
   and Go `replace` directives. TypeScript `paths` and `baseUrl` come from the nearest

@@ -7,13 +7,20 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) seven
-  read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`
-  and `change_report`, with the same evidence and labels as the CLI.
+- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) eight
+  read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`,
+  `fossils` and `change_report`, with the same evidence and labels as the CLI.
 - **Changed code that broke before.** `codefossil report --base` and the pull-request comment
   now lead with the functions a change modifies whose history holds earlier fixes, with those
   fixes, their issues and how many files depend on them. Repository-wide sections fold away on
   pull requests.
+- **Fossils.** `codefossil fossils` lists the oldest functions, methods and classes still present,
+  with the commit that introduced each and what changed since, or (`--order untouched`) the code
+  that has gone longest without a change.
+- **Copied and moved code.** A new function, method or class whose content is identical to one in
+  another file is recorded as copied from it (`COPIED_FROM`, DERIVED, confidence 0.9) instead of
+  introduced; `why` and `fossils` follow it back to the original. A name defined once at HEAD now
+  resolves to that definition even when removed copies share the name.
 
 ### Fixed
 

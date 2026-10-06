@@ -1030,3 +1030,48 @@ describe('fossil CLI outside a repository', () => {
     expect(result).toMatchObject({ code: 0, stdout: '0.1.0\n' });
   });
 });
+
+describe('codefossil fossils and copied code', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    const parse = 'export function parse(s: string) {\n  return s.trim();\n}\n';
+    const helper = 'export function helper() {\n  return 1;\n}\n';
+    await repo.write('src/old.ts', `${parse}\n${helper}`);
+    await repo.commit('Add parser and helper');
+    await repo.write('src/old.ts', helper);
+    await repo.write('src/new.ts', parse);
+    await repo.commit('Move the parser');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  const root = (): string => repo?.root ?? '';
+
+  it('lists the oldest code with its origin and where it was copied', async () => {
+    const result = await fossil(root(), 'fossils');
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('The oldest code still here, oldest introduction first');
+    expect(result.stdout).toMatch(
+      /function parse {2}src\/new\.ts:1\n {5}introduced \d{4}-\d{2}-\d{2} in [0-9a-f]{7} "Add parser and helper"/,
+    );
+    expect(result.stdout).toMatch(
+      /copied here from src\/old\.ts on \d{4}-\d{2}-\d{2} in [0-9a-f]{7} "Move the parser"/,
+    );
+    expect(result.stdout).toContain('unchanged since it was copied here');
+  });
+
+  it('explains copied code through its original, at the copy’s confidence', async () => {
+    // The removed copy in src/old.ts still matches the name; the one defined at HEAD wins.
+    const result = await fossil(root(), 'why', 'parse', '--no-save');
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      'It was copied, with identical content, from function parse in src/old.ts',
+    );
+    expect(result.stdout).toContain('That code was introduced in commit');
+    expect(result.stdout).toContain('Confidence 0.90');
+  });
+});
