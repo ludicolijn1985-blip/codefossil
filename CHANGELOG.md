@@ -10,8 +10,18 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) seven
   read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`
   and `change_report`, with the same evidence and labels as the CLI.
+- **Changed code that broke before.** `codefossil report --base` and the pull-request comment
+  now lead with the functions a change modifies whose history holds earlier fixes, with those
+  fixes, their issues and how many files depend on them. Repository-wide sections fold away on
+  pull requests.
 
 ### Fixed
+
+- **Symbol history on branchy repositories.** A symbol version is now diffed against the same file
+  in the commit's first parent, including versions only a merge produced. Before, it was diffed
+  against the version indexed last, which on repositories with parallel release lines alternated
+  between branches: Express's `res.sendFile` showed 17 changes where git shows 8. Existing indexes
+  rebuild their symbol history once on the next `codefossil index` (or first question).
 
 - **Missing SQLite binary.** When npm skipped install scripts (a repository `.npmrc` with
   `ignore-scripts=true`, as in Express), the CLI and `doctor` now explain the cause and the fix

@@ -53,6 +53,11 @@ The Action has one output: `report-path`, the Markdown report of the run.
 ## The report
 
 - **Size and evidence.** The size of the index and its relations per evidence level.
+- **Changed code that broke before** (pull requests, or with `base`). The functions, methods and
+  classes the change modifies whose earlier history holds fix commits (issue labels, reverts, fix
+  wording; mostly INFERRED), most fixes first, with the latest fixes, linked issue numbers and how
+  many files depend on the file. Issue numbers are not linked, so old issues get no
+  cross-reference from every pull request.
 - **Files changed** (pull requests, or with `base`). For each file:
   - its rank among files with history;
   - commits and defect commits;
@@ -64,6 +69,8 @@ The Action has one output: `report-path`, the Markdown report of the run.
 
 - **Historical hotspots.**
 - **Dead-intent candidates.** These are always inferences.
+
+On a pull request the last two sections are folded under a `<details>` toggle.
 
 The same report is available locally with `codefossil report --base origin/main`.
 

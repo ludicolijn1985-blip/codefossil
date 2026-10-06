@@ -1,6 +1,6 @@
 import { Option, type Command } from 'commander';
 import { buildReport } from '@codefossil/analyzers';
-import { changedPaths, GitError, runGitOptional } from '@codefossil/git';
+import { changedPaths, commitsBetween, GitError, runGitOptional } from '@codefossil/git';
 import { formatReportMarkdown } from './format-report.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { parsePositiveInteger } from './options.js';
@@ -13,11 +13,16 @@ interface ReportOptions {
   readonly json?: boolean;
 }
 
+interface BranchChanges {
+  readonly paths: readonly string[];
+  readonly commits: readonly string[];
+}
+
 /**
- * Paths changed on this branch since it left `base` (like `git diff base...HEAD`).
+ * Paths and commits on this branch since it left `base` (like `git diff base...HEAD`).
  * The base is resolved to a commit first, so it can never be read as an option.
  */
-async function changedSince(ws: Workspace, base: string): Promise<string[]> {
+async function changedSince(ws: Workspace, base: string): Promise<BranchChanges> {
   if (base.startsWith('-')) throw new CliError(`--base must be a revision, got "${base}".`);
   let commit: string | undefined;
   try {
@@ -41,8 +46,9 @@ async function changedSince(ws: Workspace, base: string): Promise<string[]> {
   const mergeBase = (await runGitOptional(ws.root, ['merge-base', commit, 'HEAD']))?.trim();
   if (!mergeBase) throw new CliError(`${base} shares no history with HEAD.`);
   const paths = await changedPaths(ws.root, mergeBase, 'HEAD');
-  if (!paths) throw new CliError(`Could not list the changes since ${base}.`);
-  return [...paths];
+  const commits = await commitsBetween(ws.root, mergeBase, 'HEAD');
+  if (!paths || !commits) throw new CliError(`Could not list the changes since ${base}.`);
+  return { paths: [...paths], commits };
 }
 
 export function registerReportCommand(program: Command, io: CliIO, repoPath: () => string): void {
@@ -66,7 +72,7 @@ export function registerReportCommand(program: Command, io: CliIO, repoPath: () 
         const report = buildReport(ws.fossil.db, ws.repositoryId, {
           hotspotLimit: limit,
           ...(options.base !== undefined && changed
-            ? { base: options.base, changedPaths: changed }
+            ? { base: options.base, changedPaths: changed.paths, changedCommits: changed.commits }
             : {}),
           ...(io.now ? { now: io.now() } : {}),
         });

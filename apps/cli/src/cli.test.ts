@@ -763,6 +763,35 @@ describe('codefossil report', () => {
     expect(json.changedTotal).toBe(2);
   });
 
+  it('warns first about changed code that earlier fixes touched, with their text defused', async () => {
+    await sample?.repo.write(
+      'src/tax/vat.ts',
+      'export const calculateVAT = (n: number) => Math.round(n * 21) / 100;\n',
+    );
+    await sample?.repo.commit('Round VAT');
+
+    const result = await fossil(root(), 'report', '--base', 'HEAD~1');
+
+    const warning = result.stdout.indexOf('### ⚠️ Changed code that broke before');
+    expect(warning).toBeGreaterThan(0);
+    expect(warning).toBeLessThan(result.stdout.indexOf('### Files changed since'));
+    expect(result.stdout).toContain('`calculateVAT` (function) in `src/tax/vat.ts:1`');
+    expect(result.stdout).toContain('**1 earlier fix**');
+    // The fix commit's subject is repository text: no table break, no HTML, no notification.
+    expect(result.stdout).toContain('fix: \\| injected \\<b\\>row\\</b\\> for @​someone');
+    // The repository-wide sections fold away under the change.
+    expect(result.stdout).toContain(
+      '<summary>Repository hotspots and dead-intent candidates</summary>',
+    );
+  });
+
+  it('says so when no changed symbol has earlier fixes', async () => {
+    const result = await fossil(root(), 'report', '--base', 'HEAD~1');
+    expect(result.stdout).toContain(
+      'No changed function or class has earlier fixes in its history',
+    );
+  });
+
   it('refuses bases that are options or not commits', async () => {
     expect((await fossil(root(), 'report', '--base=--output=/tmp/x')).stderr).toContain(
       '--base must be a revision',

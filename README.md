@@ -98,10 +98,11 @@ An answer is never more certain than its weakest statement, and gaps are stated 
   without AI. Its optional AI layer (Ollama locally or Anthropic) may only answer from the
   evidence it is shown, every claim must cite it, and claims that cite anything else are dropped.
 
-## Pull requests: know what a change touches
+## Pull requests: know what broke here before
 
 ```yaml
-permissions: { contents: read, issues: read, pull-requests: read }
+on: pull_request
+permissions: { contents: read, issues: read, pull-requests: write }
 jobs:
   codefossil:
     runs-on: ubuntu-latest
@@ -109,11 +110,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { fetch-depth: 0 }
       - uses: ludicolijn1985-blip/codefossil@main
+        with: { comment: 'true' }
 ```
 
-Each run adds new commits to a cached index and writes a report to the job summary. It shows every
-changed file's history, fix commits, hotspot and risk scores, and dependents, followed by the
-repository's hotspots and dead-intent candidates. See [ACTION.md](ACTION.md).
+The pull request gets one comment, updated on every push, that leads with the functions it
+changes that earlier fixes changed too:
+
+> ⚠️ `res.send` (method) in `lib/response.js:126`: **17 earlier fixes** among 79 earlier changes
+> (INFERRED) · 118 files depend on its file
+
+Below that come every changed file's history, hotspot and risk scores and dependents, with the
+repository's hotspots and dead-intent candidates folded away. The index is cached, so each run only
+adds new commits. Without `comment` the report goes to the job summary. See [ACTION.md](ACTION.md).
 
 ## GitHub issues and pull requests as evidence
 

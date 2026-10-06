@@ -1,6 +1,7 @@
 export * from './dead-intent.js';
 export * from './defects.js';
 export * from './file-history.js';
+export * from './fragile.js';
 export * from './hotspots.js';
 export * from './reach.js';
 export * from './text-signals.js';

@@ -1,4 +1,4 @@
-import type { ChangedFileReport, RepositoryReport } from '@codefossil/analyzers';
+import type { ChangedFileReport, FragileSymbol, RepositoryReport } from '@codefossil/analyzers';
 
 /** Marks a CODEFOSSIL report so a later run can find and update its own pull-request comment. */
 export const REPORT_MARKER = '<!-- codefossil-report -->';
@@ -31,7 +31,8 @@ export function mdCode(text: string): string {
 }
 
 const score = (value: number) => value.toFixed(2);
-const plural = (n: number, noun: string) => `${String(n)} ${noun}${n === 1 ? '' : 's'}`;
+const plural = (n: number, noun: string, many = `${noun}s`) =>
+  `${String(n)} ${n === 1 ? noun : many}`;
 
 function changedRow(file: ChangedFileReport): string {
   if (file.status !== 'changed') {
@@ -65,6 +66,51 @@ function changedRow(file: ChangedFileReport): string {
     .replace(/$/, '|');
 }
 
+const FIXES_SHOWN = 3;
+
+/** `#123` with the `#` escaped: no link, so old issues get no cross-reference from every PR. */
+const issueRef = (d: FragileSymbol['fixes'][number]['discussions'][number]) =>
+  mdText(`#${d.number}`);
+
+function fragileLines(item: FragileSymbol, changed: readonly ChangedFileReport[]): string[] {
+  const { symbol, fixes } = item;
+  const impact = changed.find((file) => file.path === symbol.path)?.impact;
+  const dependents = impact ? impact.direct + impact.transitive : 0;
+  const head =
+    `- ${mdCode(symbol.qualifiedName)} (${mdText(symbol.kind)}) in ${mdCode(`${symbol.path}:${String(symbol.startLine)}`)}: ` +
+    `**${plural(fixes.length, 'earlier fix', 'earlier fixes')}** among ${plural(item.priorChanges, 'earlier change')} (${item.level})` +
+    (dependents > 0 ? ` · ${plural(dependents, 'file')} depend on its file` : '');
+  const shown = fixes.slice(0, FIXES_SHOWN).map((fix) => {
+    const refs = fix.discussions.length ? ` · ${fix.discussions.map(issueRef).join(', ')}` : '';
+    return `  - ${mdCode(fix.sha.slice(0, SHORT_SHA_LENGTH))} ${mdText(fix.subject, 100)} · ${fix.committedAt.slice(0, 10)}${refs}`;
+  });
+  const more =
+    fixes.length > FIXES_SHOWN ? [`  - and ${String(fixes.length - FIXES_SHOWN)} more`] : [];
+  return [head, ...shown, ...more];
+}
+
+function fragileSection(report: RepositoryReport): string[] {
+  const fragile = report.fragile;
+  if (!fragile) return [];
+  if (fragile.symbols.length === 0) {
+    return [
+      `No changed function or class has earlier fixes in its history (${plural(fragile.symbolsTouched, 'symbol')} touched).`,
+      '',
+    ];
+  }
+  const hidden = fragile.total - fragile.symbols.length;
+  return [
+    '### ⚠️ Changed code that broke before',
+    '',
+    `This change touches ${plural(fragile.total, 'function or class', 'functions or classes')} that earlier fixes touched too. ` +
+      'Fix commits are recognised from issue labels, reverts and commit wording, so most are inferences.',
+    '',
+    ...fragile.symbols.flatMap((item) => fragileLines(item, report.changed ?? [])),
+    ...(hidden > 0 ? [`- and ${plural(hidden, 'more symbol')}`] : []),
+    '',
+  ];
+}
+
 export function formatReportMarkdown(report: RepositoryReport): string {
   const { counts, repository } = report;
   const head = repository.headSha
@@ -79,6 +125,8 @@ export function formatReportMarkdown(report: RepositoryReport): string {
       `${String(counts.relations.DERIVED)} DERIVED / ${String(counts.relations.INFERRED)} INFERRED`,
     '',
   ];
+
+  lines.push(...fragileSection(report));
 
   if (report.changed) {
     lines.push(
@@ -99,6 +147,15 @@ export function formatReportMarkdown(report: RepositoryReport): string {
     }
   }
 
+  // On a pull request the repository-wide sections are folded away; the change comes first.
+  const folded = report.changed !== null;
+  if (folded) {
+    lines.push(
+      '<details>',
+      '<summary>Repository hotspots and dead-intent candidates</summary>',
+      '',
+    );
+  }
   lines.push(`### Historical hotspots (of ${plural(report.filesRanked, 'file')} with history)`, '');
   if (report.hotspots.length === 0) {
     lines.push('No file has recorded changes.', '');
@@ -131,6 +188,8 @@ export function formatReportMarkdown(report: RepositoryReport): string {
     }
     lines.push('');
   }
+
+  if (folded) lines.push('</details>', '');
 
   lines.push(
     "<sub>Computed by CODEFOSSIL from this repository's own history on the runner. FACT = observed, " +

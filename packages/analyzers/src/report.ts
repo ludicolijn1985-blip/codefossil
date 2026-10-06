@@ -2,6 +2,7 @@ import { findFileByPath, getIndexStatus, type FossilDb } from '@codefossil/db';
 import { analyzeImpact } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
 import { analyzeDeadIntent, type DeadIntentCandidate } from './dead-intent.js';
+import { analyzeFragileSymbols, type FragileReport } from './fragile.js';
 import { analyzeHotspots, isGeneratedPath, type Hotspot } from './hotspots.js';
 
 /** How one file changed by a pull request (or any base..HEAD range) stands in the history. */
@@ -44,6 +45,8 @@ export interface RepositoryReport {
   /** Null without a base; the changed files (most-depended-on first) otherwise. */
   readonly changed: readonly ChangedFileReport[] | null;
   readonly changedTotal: number;
+  /** Null without the change's commits; symbols it touches that earlier fixes touched otherwise. */
+  readonly fragile: FragileReport | null;
   readonly hotspots: readonly Hotspot[];
   readonly deadIntent: readonly DeadIntentCandidate[];
   readonly filesRanked: number;
@@ -54,6 +57,10 @@ export interface ReportOptions {
   readonly base?: string;
   /** Paths changed since the base (repository-relative). */
   readonly changedPaths?: readonly string[];
+  /** Shas of the commits of the change (base..HEAD), for symbol-level warnings. */
+  readonly changedCommits?: readonly string[];
+  /** Symbols with earlier fixes listed in detail. */
+  readonly fragileLimit?: number;
   readonly hotspotLimit?: number;
   readonly deadIntentLimit?: number;
   /** Changed files examined in detail; the rest are counted. */
@@ -64,6 +71,7 @@ export interface ReportOptions {
 const DEFAULT_REPORT_HOTSPOTS = 10;
 const DEFAULT_REPORT_DEAD_INTENT = 5;
 const DEFAULT_CHANGED_LIMIT = 25;
+const DEFAULT_FRAGILE_LIMIT = 10;
 const IMPACT_EXAMPLES = 3;
 
 /**
@@ -114,6 +122,11 @@ export function buildReport(
     base: options.base ?? null,
     changed: changed ?? null,
     changedTotal: changedPaths?.length ?? 0,
+    fragile: options.changedCommits
+      ? analyzeFragileSymbols(db, repositoryId, options.changedCommits, {
+          limit: options.fragileLimit ?? DEFAULT_FRAGILE_LIMIT,
+        })
+      : null,
     hotspots: analyzeHotspots(db, repositoryId, {
       limit: options.hotspotLimit ?? DEFAULT_REPORT_HOTSPOTS,
     }).hotspots,

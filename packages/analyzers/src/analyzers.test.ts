@@ -1,10 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { runIndex } from '@codefossil/core';
 import { IN_MEMORY, openDatabase, type FossilDatabase } from '@codefossil/db';
-import { createSampleHistory, type SampleHistory } from '@codefossil/git/testing';
+import {
+  createFixtureRepo,
+  createSampleHistory,
+  type SampleHistory,
+} from '@codefossil/git/testing';
 import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
+import { analyzeFragileSymbols } from './fragile.js';
 import { buildReport } from './report.js';
 
 const now = () => new Date('2026-09-26T12:00:00.000Z');
@@ -173,6 +178,15 @@ describe('risk analyzers on an indexed history', () => {
       expect(byPath.get('src/compat.ts')?.impact?.direct).toBe(0);
     });
 
+    it('has no symbol warnings without the change’s commits', () => {
+      expect(buildReport(fossil.db, repositoryId, {}).fragile).toBeNull();
+      expect(buildReport(fossil.db, repositoryId, { changedCommits: [] }).fragile).toEqual({
+        symbols: [],
+        total: 0,
+        symbolsTouched: 0,
+      });
+    });
+
     it('examines at most the requested number of changed files but counts them all', () => {
       const report = buildReport(fossil.db, repositoryId, {
         changedPaths: ['src/tax/vat.ts', 'src/compat.ts', 'src/checkout.ts'],
@@ -245,5 +259,50 @@ describe('risk analyzers on an indexed history', () => {
       expect(paths.some((path) => path.startsWith('src/broad/'))).toBe(false);
       expect(paths).not.toContain('src/tax/vat.test.ts');
     });
+  });
+});
+
+describe('fragile symbols', () => {
+  it('lists changed symbols with earlier fixes, never counting the change itself', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const parse = (body: string, other = 'return 0;') =>
+        `export function parse(s: string) {
+  ${body}
+}
+
+export function other() {
+  ${other}
+}
+`;
+      await repo.write('src/parse.ts', parse('return s;'));
+      await repo.commit('Add parser');
+      await repo.write('src/parse.ts', parse('return s.trim();'));
+      const fix = await repo.commit('fix: crash on padded input (#12)');
+      await repo.write('src/parse.ts', parse('return s.trim();', 'return 1;'));
+      await repo.commit('Tune other');
+      await repo.write('src/parse.ts', parse('return s.trim().toLowerCase();', 'return 1;'));
+      const change = await repo.commit('Normalise case');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+
+      const report = analyzeFragileSymbols(fossil.db, repositoryId, [change, fix]);
+
+      // The fix is part of the change here, so it is not an earlier fix: nothing to warn about.
+      expect(report).toMatchObject({ symbols: [], symbolsTouched: 1 });
+
+      const later = analyzeFragileSymbols(fossil.db, repositoryId, [change]);
+      expect(later.symbols).toHaveLength(1);
+      expect(later.symbols[0]).toMatchObject({
+        symbol: { qualifiedName: 'parse', path: 'src/parse.ts' },
+        priorChanges: 2,
+        level: 'INFERRED',
+        fixes: [{ sha: fix, subject: 'fix: crash on padded input (#12)' }],
+      });
+      expect(later.symbolsTouched).toBe(1);
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
   });
 });
