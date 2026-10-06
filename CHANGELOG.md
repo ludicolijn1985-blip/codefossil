@@ -17,6 +17,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Fossils.** `codefossil fossils` lists the oldest functions, methods and classes still present,
   with the commit that introduced each and what changed since, or (`--order untouched`) the code
   that has gone longest without a change.
+- **Functions fixed most often.** `codefossil hotspots --symbols` ranks functions, methods and
+  classes by the fix commits that changed them; on Express, `res.send` leads with 17.
 - **Copied and moved code.** A new function, method or class whose content is identical to one in
   another file is recorded as copied from it (`COPIED_FROM`, DERIVED, confidence 0.9) instead of
   introduced; `why` and `fossils` follow it back to the original. A name defined once at HEAD now

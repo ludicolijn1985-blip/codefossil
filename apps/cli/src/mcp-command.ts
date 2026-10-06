@@ -140,7 +140,8 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     title: 'Historical hotspots',
     description:
       'Code files where history concentrates: change frequency × churn × fix commits, with risk ' +
-      'components. Useful before touching a fragile area.' +
+      'components. Useful before touching a fragile area. With `symbols`, the functions, methods ' +
+      'and classes fixed most often instead (`since` does not apply then).' +
       UNTRUSTED,
     input: {
       limit: limit(100),
@@ -148,11 +149,13 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/, 'an ISO date such as 2025-01-01')
         .optional(),
+      symbols: z.boolean().optional(),
     },
-    args: ({ limit, since }) => [
+    args: ({ limit, since, symbols }) => [
       'hotspots',
       ...(limit ? ['--limit', String(limit)] : []),
       ...(since ? ['--since', since] : []),
+      ...(symbols ? ['--symbols'] : []),
     ],
   }),
   tool({

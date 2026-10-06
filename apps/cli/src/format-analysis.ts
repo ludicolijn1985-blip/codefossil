@@ -1,4 +1,9 @@
-import type { DeadIntentReport, FossilReport, HotspotReport } from '@codefossil/analyzers';
+import type {
+  DeadIntentReport,
+  FixedSymbolsReport,
+  FossilReport,
+  HotspotReport,
+} from '@codefossil/analyzers';
 import { plural } from './format.js';
 
 const SHORT_SHA_LENGTH = 7;
@@ -92,6 +97,31 @@ export function formatFossils(report: FossilReport): string {
       lastChange
         ? `     changed ${plural(fossil.changesSince, 'time')} since, last on ${day(lastChange.committedAt)} in ${lastChange.sha.slice(0, SHORT_SHA_LENGTH)} "${lastChange.subject}"`
         : `     unchanged since${fossil.copied ? ' it was copied here' : ''}`,
+    ].join('\n');
+  });
+  return `${header}\n${blocks.join('\n\n')}\n`;
+}
+
+export function formatFixedSymbols(report: FixedSymbolsReport): string {
+  const header =
+    `Functions, methods and classes fixed most often (${plural(report.total, 'symbol')} with fix commits, ` +
+    `of ${String(report.considered)} considered). Fix commits are recognised from issue labels, reverts ` +
+    'and commit wording, so most are inferences.\n';
+  if (report.symbols.length === 0) return `${header}\nNo current symbol has a recorded fix.\n`;
+  const blocks = report.symbols.map((item, index) => {
+    const { symbol, fixes } = item;
+    return [
+      `${String(index + 1).padStart(3)}. ${symbol.kind} ${symbol.qualifiedName}  ${symbol.path}:${String(symbol.startLine)}`,
+      `     ${plural(fixes.length, 'fix', 'fixes')} among ${plural(item.priorChanges, 'change')} · ${item.level}`,
+      ...fixes
+        .slice(0, DEFECTS_LISTED)
+        .map(
+          (fix) =>
+            `      ${fix.sha.slice(0, SHORT_SHA_LENGTH)} ${day(fix.committedAt)} ${fix.subject}  — ${fix.reason}`,
+        ),
+      ...(fixes.length > DEFECTS_LISTED
+        ? [`      … ${String(fixes.length - DEFECTS_LISTED)} more (--json lists them all)`]
+        : []),
     ].join('\n');
   });
   return `${header}\n${blocks.join('\n\n')}\n`;

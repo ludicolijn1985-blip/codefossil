@@ -51,6 +51,11 @@ risk (change frequency × import centrality × bug density × test reach inverse
 its components and the defect commits behind it. Tests and lockfiles/generated files are left out
 unless `--tests` / `--generated` is given.
 
+codefossil hotspots --symbols [--limit n] [--tests] [--json]
+Rank functions, methods and classes instead: by the fix commits that changed them, then by all
+their changes, with the latest fixes. Fix commits are inferences unless an issue labelled as a bug
+links them.
+
 codefossil fossils [--order introduced|untouched] [--limit n] [--tests] [--json]
 The oldest functions, methods and classes still present, with the commit that introduced each one
 and what changed since; `--order untouched` lists the code that has gone longest without a change.

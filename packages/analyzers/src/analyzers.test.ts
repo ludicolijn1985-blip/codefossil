@@ -10,7 +10,7 @@ import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
 import { analyzeFossils } from './fossils.js';
-import { analyzeFragileSymbols } from './fragile.js';
+import { analyzeFixedSymbols, analyzeFragileSymbols } from './fragile.js';
 import { buildReport } from './report.js';
 
 const now = () => new Date('2026-09-26T12:00:00.000Z');
@@ -356,6 +356,47 @@ describe('fossils', () => {
       expect(
         analyzeFossils(fossil.db, repositoryId, { includeTests: true }).fossils.map(
           (f) => f.symbol.qualifiedName,
+        ),
+      ).toContain('check');
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('fixed symbols', () => {
+  it('ranks current functions by the fix commits that changed them, leaving tests out', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const fn = (name: string, body: string) =>
+        `export function ${name}() {\n  return ${body};\n}\n`;
+      await repo.write('src/a.ts', fn('fragile', '1') + fn('steady', '1'));
+      await repo.commit('Add functions');
+      await repo.write('src/a.ts', fn('fragile', '2') + fn('steady', '1'));
+      await repo.commit('fix: fragile returned the wrong value');
+      await repo.write('src/a.ts', fn('fragile', '3') + fn('steady', '2'));
+      await repo.commit('fix: fragile again, and touch steady');
+      await repo.write('src/a.ts', fn('fragile', '3') + fn('steady', '3'));
+      await repo.commit('Tune steady');
+      await repo.write('test/a.test.ts', fn('check', '1'));
+      await repo.commit('Add test');
+      await repo.write('test/a.test.ts', fn('check', '2'));
+      await repo.commit('fix: test');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+
+      const report = analyzeFixedSymbols(fossil.db, repositoryId);
+
+      expect(report.considered).toBe(2);
+      expect(report.symbols.map((s) => [s.symbol.qualifiedName, s.fixes.length])).toEqual([
+        ['fragile', 2],
+        ['steady', 1],
+      ]);
+      expect(report.symbols[0]).toMatchObject({ priorChanges: 3, level: 'INFERRED' });
+      expect(
+        analyzeFixedSymbols(fossil.db, repositoryId, { includeTests: true }).symbols.map(
+          (s) => s.symbol.qualifiedName,
         ),
       ).toContain('check');
     } finally {
