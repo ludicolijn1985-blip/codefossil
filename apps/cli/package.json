@@ -32,7 +32,11 @@
     "@codefossil/parser": "workspace:*",
     "@codefossil/providers": "workspace:*",
     "@codefossil/query": "workspace:*",
+    "@modelcontextprotocol/server": "^2.3.1",
     "commander": "^15.0.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.3.1"
   }
 }

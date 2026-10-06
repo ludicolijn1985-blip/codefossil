@@ -22,6 +22,8 @@ import { registerAnalysisCommands } from './analyze-commands.js';
 import { parsePositiveInteger, parseSince } from './options.js';
 import { registerDoctorCommand } from './doctor-command.js';
 import { registerReportCommand } from './report-command.js';
+import { openIndexedWorkspace } from './auto-index.js';
+import { registerMcpCommand } from './mcp-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -192,7 +194,7 @@ export function createProgram(io: CliIO): Command {
     .argument('<path>', 'file path, relative to the current directory')
     .addOption(new Option('--json', 'print the symbols as JSON'))
     .action(async (path: string, options: JsonOption) => {
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
         const file = indexedFile(ws, path);
         const symbols = listFileSymbols(ws.fossil.db, file.id);
         if (options.json) {
@@ -258,6 +260,7 @@ export function createProgram(io: CliIO): Command {
   registerReportCommand(program, io, repoPath);
   registerDoctorCommand(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
+  registerMcpCommand(program, io, repoPath);
 
   return program;
 }

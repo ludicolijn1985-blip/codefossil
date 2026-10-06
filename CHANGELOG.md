@@ -3,6 +3,20 @@
 All notable changes to CODEFOSSIL. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) seven
+  read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`
+  and `change_report`, with the same evidence and labels as the CLI.
+
+### Fixed
+
+- **Missing SQLite binary.** When npm skipped install scripts (a repository `.npmrc` with
+  `ignore-scripts=true`, as in Express), the CLI and `doctor` now explain the cause and the fix
+  instead of printing the driver's list of tried paths.
+
 ## [0.1.0] - 2026-10-06
 
 First public release.

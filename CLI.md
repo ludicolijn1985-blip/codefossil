@@ -105,5 +105,11 @@ an ambiguous target lists the candidates instead of picking one.
 codefossil serve [--port 4000] [--allow-network]
 Serve the JSON API (see API.md) on this machine only.
 
+codefossil mcp
+Serve this repository to AI coding agents over the Model Context Protocol (stdio). Tools: `why`,
+`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent` and `change_report`, each the
+command of the same name, read-only and offline. The index is brought up to date before the first
+answer; progress goes to stderr. Use `--repo <path>` when the client cannot set the directory.
+
 codefossil doctor
 Check Git, Node, database and parser health.

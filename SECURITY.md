@@ -57,3 +57,20 @@ Optional AI layer:
   its caveats) is shown only next to claims that survived; an ungrounded reply, including "cannot
   answer", is replaced by a fixed message, so injected text cannot reach the reader that way.
 - **AI requests are rate-limited** per client (10 per minute) on the API.
+
+MCP server (`codefossil mcp`):
+
+- **Read-only and offline.** Every tool runs a read-only query command; none syncs GitHub, calls a
+  model or changes the repository. The only write is the local index in `.codefossil/`: the server
+  indexes the repository when it starts (a full index on first use) and adds new commits later.
+- **Arguments stay arguments.** Tool input is validated with Zod. Targets and paths may not start
+  with `-` and are passed after `--`; option values (`--base`, `--depth`, `--limit`, `--since`)
+  are bounded by their schemas. An agent cannot set CLI options such as `--repo`.
+- **Inside the repository.** Absolute paths and `..` segments are refused, so tools cannot be used
+  to probe whether files exist elsewhere on the machine.
+- **Stdout is the protocol.** Library output through `console` goes to stderr while the server
+  runs. Results are capped at 60,000 characters.
+- **Results quote untrusted text.** Answers contain commit messages, issue text and paths written
+  by others, verbatim. The server's instructions and the tool descriptions tell the agent that
+  this is data, never instructions, but that is advice to the agent, not a guarantee: indirect
+  prompt injection through repository content remains a risk agents and their users must weigh.

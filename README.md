@@ -41,9 +41,39 @@ npm from installing the SQLite driver's binary. There, run
 | `codefossil query "what depends on X?"` | The same answers from a plain-words question                                    |
 | `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests      |
 | `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies            |
+| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)            |
 
 Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
 `#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
+
+## Give your AI coding agent the history it is missing
+
+Agents read the code as it is today. They do not know that the odd `if` was the fix for a
+production incident, or that a "dead" function is still imported by tests. `codefossil mcp` lets
+Claude Code, Cursor, VS Code and any other MCP client ask before they change something:
+
+```bash
+claude mcp add codefossil -- npx -y codefossil mcp
+```
+
+Cursor, in `.cursor/mcp.json` (VS Code: `.vscode/mcp.json`, with `"servers"` instead of
+`"mcpServers"` and `"type": "stdio"` added):
+
+```json
+{
+  "mcpServers": {
+    "codefossil": {
+      "command": "npx",
+      "args": ["-y", "codefossil", "mcp", "--repo", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+The agent gets seven read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
+`dead_intent` and `change_report` (what a branch touches, before it is committed). They run
+offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
+CLI, so the agent can tell what is known from what is guessed.
 
 ## Evidence, not guesses
 

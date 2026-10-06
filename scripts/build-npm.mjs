@@ -17,6 +17,7 @@ const read = (path) => JSON.parse(readFileSync(join(root, path), 'utf8'));
 const EXTERNAL = [
   '@anthropic-ai/sdk',
   '@fastify/rate-limit',
+  '@modelcontextprotocol/server',
   'better-sqlite3',
   'commander',
   'drizzle-orm',
