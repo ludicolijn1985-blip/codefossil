@@ -16,6 +16,8 @@ export interface BlobResult<R extends BlobRequest> {
    * expressed in cat-file's line-based protocol.
    */
   readonly content: Buffer | null;
+  /** The blob's object id, or null when there is no blob at that path. */
+  readonly oid: string | null;
 }
 
 export interface ReadBlobsOptions {
@@ -38,7 +40,7 @@ export async function* readBlobs<R extends BlobRequest>(
   // cat-file reads one request per line, so paths containing newlines cannot be requested.
   const sendable = requests.map((r) => !/[\n\r]/.test(r.path) && !/[\n\r]/.test(r.revision));
   if (!sendable.some(Boolean)) {
-    for (const request of requests) yield { request, content: null };
+    for (const request of requests) yield { request, content: null, oid: null };
     return;
   }
 
@@ -67,27 +69,80 @@ export async function* readBlobs<R extends BlobRequest>(
   try {
     for (const [i, request] of requests.entries()) {
       if (!sendable[i]) {
-        yield { request, content: null };
+        yield { request, content: null, oid: null };
         continue;
       }
       const header = await reader.readLine();
       if (header === null)
         throw new GitError(`git cat-file ended early: ${stderr.trim()}`, args, null, stderr);
-      const match = /^[0-9a-f]+ (\S+) (\d+)$/.exec(header);
+      const match = /^([0-9a-f]+) (\S+) (\d+)$/.exec(header);
       if (!match) {
         // "<spec> missing" or "<spec> ambiguous": no content follows.
-        yield { request, content: null };
+        yield { request, content: null, oid: null };
         continue;
       }
-      const type = match[1] ?? '';
-      const size = Number(match[2]);
+      const type = match[2] ?? '';
+      const size = Number(match[3]);
       const keep = type === 'blob' && size <= maxBytes;
       const content = keep ? await reader.readBytes(size) : (await reader.skipBytes(size), null);
       await reader.skipBytes(1); // trailing newline
-      yield { request, content };
+      yield { request, content, oid: type === 'blob' ? (match[1] ?? null) : null };
     }
     const code = await exited;
     if (code !== 0) throw new GitError(`git cat-file failed: ${stderr.trim()}`, args, code, stderr);
+  } finally {
+    if (child.exitCode === null) child.kill();
+  }
+}
+
+/**
+ * The blob object id at each `revision:path`, or null where there is none,
+ * through one `git cat-file --batch-check` process, in request order. Reads
+ * no content: this is how a file version is matched to its parent's version.
+ */
+export async function readBlobIds(
+  root: string,
+  requests: readonly BlobRequest[],
+): Promise<(string | null)[]> {
+  const sendable = requests.map((r) => !/[\n\r]/.test(r.path) && !/[\n\r]/.test(r.revision));
+  if (!sendable.some(Boolean)) return requests.map(() => null);
+
+  const args = [...BASE_ARGS, 'cat-file', '--batch-check', '--buffer'];
+  const child = spawn('git', args, {
+    cwd: root,
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (chunk: string) => {
+    stderr += chunk;
+  });
+  const exited = waitForExit(child);
+  child.stdin.on('error', () => undefined);
+  child.stdin.end(
+    requests
+      .filter((_, i) => sendable[i])
+      .map((r) => `${r.revision}:${r.path}\n`)
+      .join(''),
+  );
+
+  const reader = new ByteReader(child.stdout);
+  try {
+    const ids: (string | null)[] = [];
+    for (const isSendable of sendable) {
+      if (!isSendable) {
+        ids.push(null);
+        continue;
+      }
+      const line = await reader.readLine();
+      if (line === null)
+        throw new GitError(`git cat-file ended early: ${stderr.trim()}`, args, null, stderr);
+      ids.push(/^([0-9a-f]+) blob \d+$/.exec(line)?.[1] ?? null);
+    }
+    const code = await exited;
+    if (code !== 0) throw new GitError(`git cat-file failed: ${stderr.trim()}`, args, code, stderr);
+    return ids;
   } finally {
     if (child.exitCode === null) child.kill();
   }

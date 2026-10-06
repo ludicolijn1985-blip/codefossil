@@ -50,6 +50,13 @@
       "when": 1790504597541,
       "tag": "0006_runtime_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791291370728,
+      "tag": "0007_symbol_parent_diff",
+      "breakpoints": true
     }
   ]
 }

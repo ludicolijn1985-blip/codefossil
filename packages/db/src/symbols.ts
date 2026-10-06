@@ -2,7 +2,15 @@ import { and, asc, count, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { SymbolKind } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import { preparedFor } from './prepared.js';
-import { commits, fileChanges, files, relations, symbols, symbolVersions } from './schema.js';
+import {
+  commitParents,
+  commits,
+  fileChanges,
+  files,
+  relations,
+  symbols,
+  symbolVersions,
+} from './schema.js';
 
 export type SymbolRow = typeof symbols.$inferSelect;
 
@@ -76,6 +84,8 @@ export interface PendingSymbolChange {
   readonly path: string;
   readonly status: 'added' | 'modified' | 'deleted' | 'renamed';
   readonly previousPath: string | null;
+  /** The commit's first parent: the version a change is diffed against. Null for a root commit. */
+  readonly firstParentSha: string | null;
 }
 
 /** File changes whose symbols have not been extracted yet, oldest commit first. */
@@ -90,10 +100,15 @@ export function pendingSymbolChanges(db: FossilDb, repositoryId: number): Pendin
       path: files.path,
       status: fileChanges.status,
       previousPath: fileChanges.previousPath,
+      firstParentSha: commitParents.parentSha,
     })
     .from(fileChanges)
     .innerJoin(commits, eq(fileChanges.commitId, commits.id))
     .innerJoin(files, eq(fileChanges.fileId, files.id))
+    .leftJoin(
+      commitParents,
+      and(eq(commitParents.commitId, commits.id), eq(commitParents.ordinal, 0)),
+    )
     .where(and(eq(files.repositoryId, repositoryId), isNull(fileChanges.symbolsIndexedAt)))
     .orderBy(asc(commits.committedAt), asc(commits.id), asc(fileChanges.id))
     .all();

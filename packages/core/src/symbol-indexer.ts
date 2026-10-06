@@ -13,7 +13,7 @@ import {
   type FossilDb,
   type PendingSymbolChange,
 } from '@codefossil/db';
-import { readBlobs } from '@codefossil/git';
+import { readBlobIds, readBlobs } from '@codefossil/git';
 import { grammarForPath, SymbolExtractor, type ExtractResult } from '@codefossil/parser';
 import type { ProvenanceInput } from '@codefossil/shared';
 
@@ -21,6 +21,9 @@ export const SYMBOL_INDEXER_PRODUCER = 'symbol-indexer@0.1.0';
 
 /** Parsed file versions written per database transaction. */
 const DEFAULT_BATCH_SIZE = 200;
+
+/** Parsed versions whose symbol hashes are kept to diff their children against. */
+const MAX_CACHED_VERSIONS = 20_000;
 
 /** Confidence for relations derived from a tree Tree-sitter had to error-recover. */
 const RECOVERED_PARSE_CONFIDENCE = 0.8;
@@ -48,6 +51,12 @@ interface ParsedChange {
   readonly change: PendingSymbolChange;
   /** Null for deletions and for versions that could not be parsed. */
   readonly result: ExtractResult | null;
+  /**
+   * Symbol content hashes of the same file in the commit's first parent, when
+   * known: a symbol changed only if it differs from there. Null falls back to
+   * the stored version (an incremental run whose parent was parsed earlier).
+   */
+  readonly previous: ReadonlyMap<string, string> | null;
 }
 
 interface Totals {
@@ -97,8 +106,13 @@ export async function indexSymbols(
     root,
     parseable.map((change) => ({ ...change, revision: change.sha })),
   )[Symbol.asyncIterator]();
+  // Symbol hashes per parsed blob: a change is diffed against its parent's version of the file,
+  // not against whichever branch was indexed last.
+  const hashesByBlob = new Map<string, ReadonlyMap<string, string>>();
 
   try {
+    const parents = await parentVersions(root, parseable);
+    const parentHashes = await parseOutsideParents(root, extractor, parseable, parents);
     let batch: ParsedChange[] = [];
     let processed = 0;
     const flush = () => {
@@ -111,16 +125,34 @@ export async function indexSymbols(
       options.onProgress?.(processed, pending.length);
     };
 
+    let parsedIndex = 0;
     for (const change of pending) {
       if (change.status === 'deleted') {
-        batch.push({ change, result: null });
+        batch.push({ change, result: null, previous: null });
       } else {
         const next = await blobs.next();
         if (next.done) throw new Error(`Missing blob result for ${change.path}@${change.sha}`);
         const result = await parse(extractor, change.path, next.value.content, () => {
           totals.parseFailures++;
         });
-        batch.push({ change, result });
+        const parentBlob = parents[parsedIndex++]?.oid ?? null;
+        const previous =
+          change.status === 'added'
+            ? new Map<string, string>()
+            : parentBlob === null
+              ? null
+              : (hashesByBlob.get(parentBlob) ?? parentHashes.get(parentBlob) ?? null);
+        if (result && next.value.oid) {
+          if (hashesByBlob.size >= MAX_CACHED_VERSIONS) {
+            const oldest = hashesByBlob.keys().next().value;
+            if (oldest !== undefined) hashesByBlob.delete(oldest);
+          }
+          hashesByBlob.set(
+            next.value.oid,
+            new Map(result.symbols.map((symbol) => [symbol.stableKey, symbol.contentHash])),
+          );
+        }
+        batch.push({ change, result, previous });
       }
       if (batch.length >= batchSize) flush();
     }
@@ -135,6 +167,68 @@ export async function indexSymbols(
     await extractor.dispose();
   }
   return totals;
+}
+
+interface ParentVersion {
+  readonly oid: string;
+  readonly revision: string;
+  readonly path: string;
+}
+
+/**
+ * The version of each change's file in its commit's first parent (the old
+ * path for a rename), or null: an added file or a root commit has none.
+ */
+async function parentVersions(
+  root: string,
+  changes: readonly PendingSymbolChange[],
+): Promise<(ParentVersion | null)[]> {
+  const wanted = changes.flatMap((change, index) =>
+    change.status !== 'added' && change.firstParentSha
+      ? [{ index, revision: change.firstParentSha, path: change.previousPath ?? change.path }]
+      : [],
+  );
+  const ids = await readBlobIds(root, wanted);
+  const result: (ParentVersion | null)[] = changes.map(() => null);
+  wanted.forEach((request, i) => {
+    const oid = ids[i];
+    if (oid) result[request.index] = { oid, revision: request.revision, path: request.path };
+  });
+  return result;
+}
+
+/**
+ * Symbol hashes of parent versions this run does not parse itself: versions
+ * a merge commit produced (merges record no file changes) and versions
+ * parsed by an earlier run. Without them a change would be compared with
+ * whichever version was stored last.
+ */
+async function parseOutsideParents(
+  root: string,
+  extractor: SymbolExtractor,
+  changes: readonly PendingSymbolChange[],
+  parents: readonly (ParentVersion | null)[],
+): Promise<Map<string, ReadonlyMap<string, string>>> {
+  const own = new Set(
+    (
+      await readBlobIds(
+        root,
+        changes.map((change) => ({ revision: change.sha, path: change.path })),
+      )
+    ).filter((oid): oid is string => oid !== null),
+  );
+  const outside = new Map<string, ParentVersion>();
+  for (const parent of parents) {
+    if (parent && !own.has(parent.oid)) outside.set(parent.oid, parent);
+  }
+  const hashes = new Map<string, ReadonlyMap<string, string>>();
+  for await (const { request, content } of readBlobs(root, [...outside.values()])) {
+    const result = await parse(extractor, request.path, content, () => undefined);
+    if (result) {
+      hashes.set(request.oid, new Map(result.symbols.map((s) => [s.stableKey, s.contentHash])));
+    }
+  }
+  return hashes;
 }
 
 /**
@@ -162,7 +256,7 @@ async function parse(
 function writeChange(
   db: FossilDb,
   repositoryId: number,
-  { change, result }: ParsedChange,
+  { change, result, previous }: ParsedChange,
   observedAt: string,
   totals: Totals,
   touchedFiles: Set<number>,
@@ -190,7 +284,7 @@ function writeChange(
       change.status === 'added' ||
       hasIndexedVersion(db, change.fileId) ||
       (renamedFrom !== null && hasIndexedVersion(db, renamedFrom));
-    writeSymbols(db, repositoryId, change, result, sawEarlierVersion, observedAt, totals);
+    writeSymbols(db, repositoryId, change, result, previous, sawEarlierVersion, observedAt, totals);
     totals.versionsParsed++;
   }
   markSymbolsIndexed(db, change.fileChangeId, observedAt);
@@ -201,13 +295,18 @@ function writeSymbols(
   repositoryId: number,
   change: PendingSymbolChange,
   result: ExtractResult,
+  previous: ReadonlyMap<string, string> | null,
   sawEarlierVersion: boolean,
   observedAt: string,
   totals: Totals,
 ): void {
   const derivedConfidence = result.hasSyntaxErrors ? RECOVERED_PARSE_CONFIDENCE : 1;
   for (const symbol of result.symbols) {
-    const { row, created, changed } = upsertSymbol(db, { fileId: change.fileId, ...symbol });
+    const upsert = upsertSymbol(db, { fileId: change.fileId, ...symbol });
+    const { row, created } = upsert;
+    const changed =
+      created ||
+      (previous ? previous.get(symbol.stableKey) !== symbol.contentHash : upsert.changed);
     if (!changed) continue;
 
     insertSymbolVersion(db, {

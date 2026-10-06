@@ -180,6 +180,62 @@ describe('indexSymbols at the edges of the evidence', () => {
     expect(symbols.find((s) => s.name === 'Start')?.introducedBy).not.toBeNull();
   });
 
+  it('diffs each version against its parent, not against another branch indexed in between', async () => {
+    const r = fixture();
+    const file = (a: number, b: number) =>
+      `function a() {\n  return ${String(a)};\n}\n\nfunction b() {\n  return ${String(b)};\n}\n`;
+    await r.write('lib.js', file(1, 1));
+    await r.commit('Base');
+    await r.git('checkout', '-q', '-b', 'maintenance');
+    await r.write('lib.js', file(2, 1));
+    await r.commit('Change a on the maintenance line');
+    await r.git('checkout', '-q', 'main');
+    await r.write('lib.js', file(1, 2));
+    await r.commit('Change b on main');
+    await r.git('checkout', '-q', 'maintenance');
+    await r.write('lib.js', file(3, 1));
+    await r.commit('Change a again on the maintenance line');
+    await r.git('checkout', '-q', 'main');
+    await r.git('merge', '-q', '--no-ff', '--no-commit', 'maintenance');
+    await r.write('lib.js', file(3, 2));
+    await r.git('add', 'lib.js');
+    await r.commit('Merge maintenance');
+
+    const { repositoryId } = await runIndex(fossil.db, r.root, { now });
+
+    // Commits are indexed by date, alternating between the two lines. Compared with the
+    // version indexed last, each line would seem to undo the other's change every time.
+    const symbols = symbolsOf(repositoryId, 'lib.js');
+    expect(symbols.find((s) => s.name === 'a')?.versions).toBe(3);
+    expect(symbols.find((s) => s.name === 'b')?.versions).toBe(2);
+  });
+
+  it('diffs a commit after a merge against the merged version, which no commit diff recorded', async () => {
+    const r = fixture();
+    const file = (a: number, b: number) =>
+      `function a() {\n  return ${String(a)};\n}\n\nfunction b() {\n  return ${String(b)};\n}\n`;
+    await r.write('lib.js', file(1, 1));
+    await r.commit('Base');
+    await r.git('checkout', '-q', '-b', 'maintenance');
+    await r.write('lib.js', file(2, 1));
+    await r.commit('Change a on the maintenance line');
+    await r.git('checkout', '-q', 'main');
+    await r.write('lib.js', file(1, 2));
+    await r.commit('Change b on main');
+    await r.git('merge', '-q', '--no-ff', '--no-commit', 'maintenance');
+    await r.write('lib.js', file(2, 2));
+    await r.git('add', 'lib.js');
+    await r.commit('Merge maintenance');
+    await r.write('lib.js', file(2, 3));
+    await r.commit('Change b after the merge');
+
+    const { repositoryId } = await runIndex(fossil.db, r.root, { now });
+
+    const symbols = symbolsOf(repositoryId, 'lib.js');
+    expect(symbols.find((s) => s.name === 'a')?.versions).toBe(2);
+    expect(symbols.find((s) => s.name === 'b')?.versions).toBe(3);
+  });
+
   it('skips binary content and unsupported languages without failing', async () => {
     const r = fixture();
     await r.write('fake.ts', new Uint8Array([0x00, 0x01, 0x02]));
