@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import type { EvidenceLevel } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import {
@@ -75,6 +75,7 @@ export interface AnalysisCommit {
   readonly subject: string;
   readonly body: string;
   readonly committedAt: string;
+  readonly authorName: string;
 }
 
 export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCommit[] {
@@ -85,6 +86,7 @@ export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCom
       subject: commits.subject,
       body: commits.body,
       committedAt: commits.committedAt,
+      authorName: commits.authorName,
     })
     .from(commits)
     .where(eq(commits.repositoryId, repositoryId))
@@ -282,4 +284,69 @@ export function runtimeEvidence(db: FossilDb, repositoryId: number): RuntimeEvid
       ),
     )
     .all();
+}
+
+/** A current symbol with the commit that introduced it, when the evidence establishes one. */
+export interface SymbolOrigin {
+  readonly symbolId: number;
+  readonly qualifiedName: string;
+  readonly kind: string;
+  readonly path: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly introduced: {
+    readonly commitId: number;
+    readonly level: EvidenceLevel;
+    readonly confidence: number;
+    readonly evidenceIds: readonly number[];
+  } | null;
+}
+
+/** Every current symbol of files present at HEAD, with its `INTRODUCED_BY` relation if any. */
+export function currentSymbolOrigins(db: FossilDb, repositoryId: number): SymbolOrigin[] {
+  const introductions = new Map<number, NonNullable<SymbolOrigin['introduced']>>();
+  for (const row of db
+    .select({
+      symbolId: relations.sourceId,
+      commitId: relations.targetId,
+      level: relations.evidenceType,
+      confidence: relations.confidence,
+      provenance: relations.provenanceJson,
+    })
+    .from(relations)
+    .where(
+      and(
+        eq(relations.repositoryId, repositoryId),
+        eq(relations.sourceType, 'symbol'),
+        eq(relations.relation, 'INTRODUCED_BY'),
+        eq(relations.targetType, 'commit'),
+      ),
+    )
+    .all()) {
+    const known = introductions.get(row.symbolId);
+    if (!known || row.confidence > known.confidence) {
+      introductions.set(row.symbolId, {
+        commitId: row.commitId,
+        level: row.level,
+        confidence: row.confidence,
+        evidenceIds: row.provenance.evidenceIds,
+      });
+    }
+  }
+  return db
+    .select({
+      symbolId: symbols.id,
+      qualifiedName: symbols.qualifiedName,
+      kind: symbols.kind,
+      path: files.path,
+      startLine: symbols.startLine,
+      endLine: symbols.endLine,
+    })
+    .from(symbols)
+    .innerJoin(files, eq(symbols.fileId, files.id))
+    .where(
+      and(eq(files.repositoryId, repositoryId), eq(symbols.current, true), isNull(files.deletedAt)),
+    )
+    .all()
+    .map((row) => ({ ...row, introduced: introductions.get(row.symbolId) ?? null }));
 }

@@ -1,0 +1,1 @@
+CREATE INDEX `symbol_versions_content_hash_idx` ON `symbol_versions` (`content_hash`);

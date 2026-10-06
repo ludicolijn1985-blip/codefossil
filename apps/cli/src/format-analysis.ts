@@ -1,4 +1,4 @@
-import type { DeadIntentReport, HotspotReport } from '@codefossil/analyzers';
+import type { DeadIntentReport, FossilReport, HotspotReport } from '@codefossil/analyzers';
 import { plural } from './format.js';
 
 const SHORT_SHA_LENGTH = 7;
@@ -61,4 +61,33 @@ export function formatDeadIntent(report: DeadIntentReport): string {
     runtimes +
     `\n${blocks.join('\n\n')}\n\nNotes\n${report.notes.map((n) => `  - ${n}`).join('\n')}\n`
   );
+}
+
+const day = (iso: string) => iso.slice(0, 10);
+
+export function formatFossils(report: FossilReport): string {
+  const ordering =
+    report.order === 'introduced'
+      ? 'The oldest code still here, oldest introduction first'
+      : 'The code that has gone longest without a change, longest first';
+  const header =
+    `${ordering} (${plural(report.withOrigin, 'symbol')} with an established origin, ` +
+    `${String(report.unchanged)} unchanged since).\n` +
+    (report.withoutOrigin > 0
+      ? `${plural(report.withoutOrigin, 'symbol')} older than the indexed history ${report.withoutOrigin === 1 ? 'is' : 'are'} not dated.\n`
+      : '');
+  if (report.fossils.length === 0)
+    return `${header}\nNo current symbol has an established origin.\n`;
+  const blocks = report.fossils.map((fossil, index) => {
+    const { symbol, introduced, lastChange } = fossil;
+    const born = introduced;
+    return [
+      `${String(index + 1).padStart(3)}. ${symbol.kind} ${symbol.qualifiedName}  ${symbol.path}:${String(symbol.startLine)}`,
+      `     introduced ${day(born.committedAt)} in ${born.sha.slice(0, SHORT_SHA_LENGTH)} "${born.subject}" by ${born.authorName} · ${born.level} ${score(born.confidence)}`,
+      lastChange
+        ? `     changed ${plural(fossil.changesSince, 'time')} since, last on ${day(lastChange.committedAt)} in ${lastChange.sha.slice(0, SHORT_SHA_LENGTH)} "${lastChange.subject}"`
+        : '     unchanged since',
+    ].join('\n');
+  });
+  return `${header}\n${blocks.join('\n\n')}\n`;
 }

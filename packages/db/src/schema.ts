@@ -157,7 +157,11 @@ export const symbolVersions = sqliteTable(
     contentHash: text('content_hash').notNull(),
     signature: text('signature'),
   },
-  (t) => [uniqueIndex('symbol_versions_symbol_commit_idx').on(t.symbolId, t.commitId)],
+  (t) => [
+    uniqueIndex('symbol_versions_symbol_commit_idx').on(t.symbolId, t.commitId),
+    // Finds identical content in other files: copies and moves of a symbol.
+    index('symbol_versions_content_hash_idx').on(t.contentHash),
+  ],
 );
 
 export const evidence = sqliteTable(

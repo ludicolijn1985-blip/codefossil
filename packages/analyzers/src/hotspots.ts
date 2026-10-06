@@ -106,6 +106,12 @@ export const isGeneratedPath = (path: string): boolean => GENERATED_PATH.test(pa
 /** Languages that are documentation or configuration rather than code people maintain. */
 const NON_CODE_LANGUAGES: ReadonlySet<string> = new Set(['markdown', 'json', 'yaml', 'toml']);
 
+/** Examples, docs, fixtures and benchmarks illustrate code; they are not the product itself. */
+const ILLUSTRATIVE_PATH =
+  /(^|\/)(examples?|samples?|demos?|docs?|fixtures?|benchmarks?|__mocks__)\//i;
+
+export const isIllustrativePath = (path: string): boolean => ILLUSTRATIVE_PATH.test(path);
+
 /** Whether a path is source code in a recognized language. */
 export function isCodePath(path: string): boolean {
   const language = detectLanguage(path);

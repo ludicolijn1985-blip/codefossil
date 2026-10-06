@@ -1,13 +1,16 @@
 import { Option, type Command } from 'commander';
 import {
   analyzeDeadIntent,
+  analyzeFossils,
   analyzeHotspots,
   DEFAULT_DEAD_INTENT_LIMIT,
+  DEFAULT_FOSSIL_LIMIT,
   DEFAULT_HOTSPOT_LIMIT,
   DEFAULT_STALE_DAYS,
+  type FossilOrder,
   type HotspotOrder,
 } from '@codefossil/analyzers';
-import { formatDeadIntent, formatHotspots } from './format-analysis.js';
+import { formatDeadIntent, formatFossils, formatHotspots } from './format-analysis.js';
 import { writeJson, type CliIO } from './io.js';
 import { parsePositiveInteger, parseSince } from './options.js';
 import { openIndexedWorkspace } from './auto-index.js';
@@ -20,6 +23,13 @@ interface HotspotCommandOptions {
   readonly generated?: boolean;
   readonly allFiles?: boolean;
   readonly order: HotspotOrder;
+  readonly json?: boolean;
+}
+
+interface FossilCommandOptions {
+  readonly limit: string;
+  readonly order: FossilOrder;
+  readonly tests?: boolean;
   readonly json?: boolean;
 }
 
@@ -88,6 +98,33 @@ export function registerAnalysisCommands(
         });
         if (options.json) writeJson(io, report);
         else io.stdout(formatDeadIntent(report));
+      });
+    });
+
+  program
+    .command('fossils')
+    .description(
+      'Show the oldest code still present and its story: when each symbol was introduced, by whom, ' +
+        'and what changed since. Only origins the indexed history establishes are dated.',
+    )
+    .option('--limit <n>', 'symbols to show', String(DEFAULT_FOSSIL_LIMIT))
+    .addOption(
+      new Option('--order <by>', 'oldest introduction first, or longest without a change first')
+        .choices(['introduced', 'untouched'])
+        .default('introduced'),
+    )
+    .option('--tests', 'include tests, examples, docs, fixtures and benchmarks')
+    .addOption(new Option('--json', 'print the result as JSON'))
+    .action(async (options: FossilCommandOptions) => {
+      const limit = parsePositiveInteger(options.limit, '--limit');
+      await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
+        const report = analyzeFossils(ws.fossil.db, ws.repositoryId, {
+          limit,
+          order: options.order,
+          includeTests: options.tests === true,
+        });
+        if (options.json) writeJson(io, report);
+        else io.stdout(formatFossils(report));
       });
     });
 }
