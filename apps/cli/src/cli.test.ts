@@ -1196,3 +1196,35 @@ describe('codefossil lens', () => {
     expect(json.symbols[0]?.born?.subject).toBe('Add tax (#3)');
   });
 });
+
+describe('codefossil site', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.commit('Add rate <script>alert(1)</script>');
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.09;\n}\n');
+    await repo.commit('fix: wrong rate');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('writes an overview whose every link leads to a written page', async () => {
+    const root = repo?.root ?? '';
+    const result = await fossil(root, 'site', 'out', '--name', 'acme/shop');
+    expect(result.code).toBe(0);
+
+    const index = readFileSync(join(root, 'out', 'index.html'), 'utf8');
+    expect(index).toContain('<h1>acme/shop</h1>');
+    expect(index).toContain('Fixed most often');
+    expect(index).not.toContain('<script>');
+    const links = [...index.matchAll(/href="(stories\/[^"]+)"/g)].map((m) => m[1] ?? '');
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(existsSync(join(root, 'out', link))).toBe(true);
+    const page = readFileSync(join(root, 'out', links[0] ?? ''), 'utf8');
+    expect(page).toContain('href="../index.html"');
+  });
+});

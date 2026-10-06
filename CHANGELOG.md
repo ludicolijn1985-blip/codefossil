@@ -21,6 +21,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   method, details on hover, and the full history on a click, from one local `codefossil mcp`
   process per workspace. `codefossil lens <file> [--json]` and the MCP `lens` tool provide the data
   for any editor.
+- **Fossil sites.** `codefossil site <dir>` writes a static website about a repository: the oldest
+  code, code untouched the longest, functions fixed most often, hotspots and dead intent, with a
+  history page for every function it names. `site/` holds the demo for Express and React.
 - **Shareable history pages.** `codefossil why <symbol> --html <file>` writes one
   self-contained page with the symbol's birth, moves, every change on a timeline, its fixes,
   linked issues and callers.

@@ -25,6 +25,7 @@ import { registerReportCommand } from './report-command.js';
 import { openIndexedWorkspace } from './auto-index.js';
 import { registerLensCommand } from './lens-command.js';
 import { registerMcpCommand } from './mcp-command.js';
+import { registerSiteCommand } from './site-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -264,6 +265,7 @@ export function createProgram(io: CliIO): Command {
   registerServeCommand(program, io, repoPath);
   registerMcpCommand(program, io, repoPath);
   registerLensCommand(program, io, repoPath);
+  registerSiteCommand(program, io, repoPath);
 
   return program;
 }

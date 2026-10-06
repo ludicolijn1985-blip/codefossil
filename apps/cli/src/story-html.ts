@@ -74,11 +74,43 @@ function eventItem(e: StoryEvent): string {
   );
 }
 
+/** Styles shared by every CODEFOSSIL page: light and dark, readable on a phone. */
+export const PAGE_CSS = `:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
+.where{color:var(--muted);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
+.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
+.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
+figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
+figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
+svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
+circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
+ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
+.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
+.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
+time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
+.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
+footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
+`;
+
 /**
  * One self-contained HTML page with a symbol's history: no scripts, no
  * external resources, every piece of repository text escaped.
  */
-export function storyHtml(story: SymbolStory, generatedAt: Date): string {
+export function storyHtml(
+  story: SymbolStory,
+  generatedAt: Date,
+  /** A link back to an overview page, for pages that are part of a site. */
+  back?: { readonly href: string; readonly label: string },
+): string {
   const { symbol, events } = story;
   const born = events.find((e) => e.kind === 'introduced');
   const last = events.at(-1);
@@ -117,34 +149,11 @@ export function storyHtml(story: SymbolStory, generatedAt: Date): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escape(title)}</title>
 <style>
-:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
-@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
-.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
-h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
-.where{color:var(--muted);margin:0 0 28px}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
-.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
-.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
-figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
-figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
-svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
-circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
-ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
-.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
-.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
-.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
-time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
-code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
-.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
-.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
-footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
-@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
-</style>
+${PAGE_CSS}</style>
 </head>
 <body>
 <main>
+${back ? `<p class="back"><a href="${escape(back.href)}">← ${escape(back.label)}</a></p>` : ''}
 <p class="kicker">CODEFOSSIL · ${escape(story.repository.name)}</p>
 <h1>${escape(symbol.qualifiedName)}</h1>
 <p class="where">${escape(symbol.kind)} in <code>${escape(symbol.path)}:${String(symbol.startLine)}</code>${symbol.current ? '' : ' (no longer at HEAD)'} · ${escape(origin)}</p>

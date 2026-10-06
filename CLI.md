@@ -46,6 +46,12 @@ Also write a one-page history of a symbol as self-contained HTML (no scripts, no
 resources, all repository text escaped): its birth followed back through copies, every change on
 a timeline, which changes read as fixes, linked issues and pull requests, and its callers.
 
+codefossil site fossil-site [--limit n] [--name acme/shop]
+Write a static website about the repository's history: an overview of the oldest code, code
+untouched the longest, functions fixed most often, hotspots and dead-intent candidates, and a
+one-page history for every function it names. No scripts or external resources; open
+`fossil-site/index.html` or host the folder anywhere.
+
 codefossil impact calculateVAT [--depth n]
 Show what depends on a target, with distances, routes and which are tests. For a symbol: the
 functions (or files, at module level) that call it, directly and through other calls, then the
