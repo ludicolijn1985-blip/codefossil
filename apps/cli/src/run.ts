@@ -1,5 +1,6 @@
 import { CommanderError } from 'commander';
 import { CliError, type CliIO } from './io.js';
+import { explainMissingNativeDriver } from './native-driver.js';
 import { createProgram } from './program.js';
 
 /**
@@ -20,7 +21,7 @@ export async function runCli(args: readonly string[], io: CliIO): Promise<number
       return error.exitCode;
     }
     const message = error instanceof Error ? error.message : String(error);
-    io.stderr(`error: ${message}\n`);
+    io.stderr(`error: ${explainMissingNativeDriver(message) ?? message}\n`);
     return 1;
   }
 }

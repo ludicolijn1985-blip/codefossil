@@ -12,6 +12,7 @@ import {
 import { openGitRepository, runGit } from '@codefossil/git';
 import { SymbolExtractor, type GrammarId } from '@codefossil/parser';
 import { CliError, writeJson, type CliIO } from './io.js';
+import { explainMissingNativeDriver } from './native-driver.js';
 import { DATABASE_FILE, WORKSPACE_DIR } from './workspace.js';
 
 export interface Check {
@@ -54,11 +55,8 @@ function databaseCheck(): Check {
     openDatabase(IN_MEMORY).close();
     return { name: 'SQLite', ok: true, detail: 'native driver loads; migrations apply' };
   } catch (error) {
-    return {
-      name: 'SQLite',
-      ok: false,
-      detail: error instanceof Error ? error.message : String(error),
-    };
+    const message = error instanceof Error ? error.message : String(error);
+    return { name: 'SQLite', ok: false, detail: explainMissingNativeDriver(message) ?? message };
   }
 }
 

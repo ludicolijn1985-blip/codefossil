@@ -25,6 +25,10 @@ The first question indexes the history into `.codefossil/` (it ignores itself; y
 untouched). Express, 6,170 commits over 15 years, takes about 20 seconds. Later questions only
 add new commits. No account, no upload, no AI needed.
 
+Some repositories (Express among them) set `ignore-scripts=true` in their `.npmrc`, which stops
+npm from installing the SQLite driver's binary. There, run
+`npx --ignore-scripts=false codefossil …`, or `npm install -g codefossil` once.
+
 ## What you can ask
 
 | Command                                 | Answers                                                                         |
