@@ -3,15 +3,7 @@
 All notable changes to CODEFOSSIL. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Added
-
-- **TypeScript path aliases.** Imports through `paths` and `baseUrl` in the nearest
-  `tsconfig.json`/`jsconfig.json` now resolve to repository files, following `extends` within
-  the repository. The provenance names the config and pattern that matched.
-
-## [0.1.0] - 2026-09-27
+## [0.1.0] - 2026-10-06
 
 First public release.
 
@@ -24,7 +16,8 @@ First public release.
   confidence and evidence, following files across renames.
 - **Indexing.** Git history (streaming, incremental), symbols for TypeScript, JavaScript
   (including CommonJS and prototype-style assignments), Python, Go and Rust (Tree-sitter), and a
-  dependency graph from imports and manifests (npm, Go, Cargo, Python).
+  dependency graph from imports and manifests (npm, Go, Cargo, Python), including TypeScript
+  `paths`/`baseUrl` aliases.
 - **GitHub provider.** Issues, pull requests and reviews become evidence; tokens are never stored
   and are scoped per host.
 - **Risk analysis.** `hotspots` (change × churn × defect commits, with risk components) and
