@@ -3,6 +3,14 @@
 All notable changes to CODEFOSSIL. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **TypeScript path aliases.** Imports through `paths` and `baseUrl` in the nearest
+  `tsconfig.json`/`jsconfig.json` now resolve to repository files, following `extends` within
+  the repository. The provenance names the config and pattern that matched.
+
 ## [0.1.0] - 2026-09-27
 
 First public release.
