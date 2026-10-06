@@ -14,7 +14,11 @@ import {
 import { ecmascript } from './languages/ecmascript.js';
 import { go } from './languages/go.js';
 import { python } from './languages/python.js';
+import { csharp } from './languages/csharp.js';
+import { java } from './languages/java.js';
+import { php } from './languages/php.js';
 import { rust } from './languages/rust.js';
+import { ruby } from './languages/ruby.js';
 import { visitNodes, type GrammarId, type LanguageSpec } from './spec.js';
 
 const require = createRequire(import.meta.url);
@@ -38,6 +42,10 @@ const GRAMMARS: Readonly<
   python: { wasm: 'tree-sitter-python/tree-sitter-python.wasm', spec: python },
   go: { wasm: 'tree-sitter-go/tree-sitter-go.wasm', spec: go },
   rust: { wasm: 'tree-sitter-rust/tree-sitter-rust.wasm', spec: rust },
+  java: { wasm: 'tree-sitter-java/tree-sitter-java.wasm', spec: java },
+  csharp: { wasm: 'tree-sitter-c-sharp/tree-sitter-c_sharp.wasm', spec: csharp },
+  ruby: { wasm: 'tree-sitter-ruby/tree-sitter-ruby.wasm', spec: ruby },
+  php: { wasm: 'tree-sitter-php/tree-sitter-php.wasm', spec: php },
 };
 
 const EXTENSION_GRAMMARS: Readonly<Record<string, GrammarId>> = {
@@ -52,6 +60,10 @@ const EXTENSION_GRAMMARS: Readonly<Record<string, GrammarId>> = {
   py: 'python',
   go: 'go',
   rs: 'rust',
+  java: 'java',
+  cs: 'csharp',
+  rb: 'ruby',
+  php: 'php',
 };
 
 /** The grammar that parses `path`, or null when symbols cannot be extracted from it. */

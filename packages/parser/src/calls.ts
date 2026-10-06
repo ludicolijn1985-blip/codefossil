@@ -33,6 +33,9 @@ const NAME_TYPES: ReadonlySet<string> = new Set([
   'shorthand_property_identifier',
   'this',
   'self',
+  // Ruby constants (`Rates.vat`) and PHP names (`helper()`, `Rates::vat()`).
+  'constant',
+  'name',
 ]);
 
 /** Longest name path kept; deeper chains keep their last segments. */
@@ -41,12 +44,39 @@ const MAX_PATH = 6;
 function calleePath(node: Node | null, spec: LanguageSpec, depth = 0): string[] | null {
   if (!node || depth > MAX_PATH) return null;
   if (NAME_TYPES.has(node.type)) return [node.text];
+  // A PHP variable: `$this`, `$repo`.
+  if (node.type === 'variable_name') return [node.text.replace(/^\$/, '')];
+  // PHP `self::`, `static::` and `parent::`.
+  if (node.type === 'relative_scope') return [node.text];
   const member = spec.members[node.type];
-  if (!member) return null;
-  const property = node.childForFieldName(member[1]);
-  if (!property || !NAME_TYPES.has(property.type)) return null;
-  const head = calleePath(node.childForFieldName(member[0]), spec, depth + 1) ?? ['*'];
-  return [...head, property.text].slice(-MAX_PATH);
+  return member ? memberPath(node, member, spec, depth) : null;
+}
+
+/** `object.name` from a node with separate object and name fields. */
+function memberPath(
+  node: Node,
+  [objectField, nameField]: readonly [string, string],
+  spec: LanguageSpec,
+  depth: number,
+): string[] | null {
+  const name = node.childForFieldName(nameField);
+  if (!name || !NAME_TYPES.has(name.type)) return null;
+  const object = node.childForFieldName(objectField);
+  // C# writes `this.Save()` with `this` as an unnamed token rather than a field.
+  const keyword = object ? null : node.child(0)?.text;
+  const head = object
+    ? (calleePath(object, spec, depth + 1) ?? ['*'])
+    : keyword === 'this' || keyword === 'base'
+      ? [keyword]
+      : [];
+  return [...head, name.text].slice(-MAX_PATH);
+}
+
+/** The callee of a call node, by its rule: one callee field, or separate object and name fields. */
+function calleeOf(node: Node, rule: string | readonly [string, string], spec: LanguageSpec) {
+  return typeof rule === 'string'
+    ? calleePath(node.childForFieldName(rule), spec)
+    : memberPath(node, rule, spec, 0);
 }
 
 /** Symbols by byte range, to find the innermost one containing a position. */
@@ -76,7 +106,7 @@ class Enclosing {
 }
 
 /** Node types that bind a name in a declaration (`{ opt }` in a destructuring pattern). */
-const BINDING_TYPES = new Set(['identifier', 'shorthand_property_identifier_pattern']);
+const BINDING_TYPES = new Set(['identifier', 'shorthand_property_identifier_pattern', 'name']);
 
 /** Every binding name inside `node`. */
 function identifiers(node: Node): string[] {
@@ -131,8 +161,8 @@ export function callCollector(
         locals.set(owner.key, names);
       }
     }
-    const calleeField = spec.calls[node.type];
-    const callee = calleeField ? calleePath(node.childForFieldName(calleeField), spec) : null;
+    const rule = spec.calls[node.type];
+    const callee = rule ? calleeOf(node, rule, spec) : null;
     const head = callee?.[0];
     if (!callee || !head || spec.ignoredCallees.has(callee.join('.'))) return;
     sites.push({
