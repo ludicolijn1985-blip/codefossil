@@ -9,4 +9,7 @@ export const python: LanguageSpec = {
   },
   // Class bodies are also `block`s, but containers are always descended into.
   opaque: new Set(['lambda', 'block']),
+  calls: { call: 'function' },
+  members: { attribute: ['object', 'attribute'] },
+  ignoredCallees: new Set(),
 };

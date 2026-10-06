@@ -64,6 +64,13 @@
       "when": 1791292727092,
       "tag": "0008_symbol_copies",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791307306572,
+      "tag": "0009_call_sites",
+      "breakpoints": true
     }
   ]
 }

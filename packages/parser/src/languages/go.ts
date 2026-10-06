@@ -29,4 +29,7 @@ export const go: LanguageSpec = {
     type_alias: { kind: 'type' },
   },
   opaque: new Set(['func_literal', 'block']),
+  calls: { call_expression: 'function' },
+  members: { selector_expression: ['operand', 'field'] },
+  ignoredCallees: new Set(),
 };

@@ -103,8 +103,9 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     name: 'impact',
     title: 'What depends on this?',
     description:
-      'List what depends on a symbol, file or dependency, directly and transitively through ' +
-      'imports, and which dependents are tests. File-level: importing the defining file counts.' +
+      'List what depends on a symbol, file or dependency, directly and transitively, and which ' +
+      'dependents are tests. For a symbol: the functions that call it (statically resolved calls; ' +
+      'calls through variables or callbacks are not seen), then the files importing its file.' +
       UNTRUSTED,
     input: { target, depth: limit(10) },
     args: ({ target, depth }) => [

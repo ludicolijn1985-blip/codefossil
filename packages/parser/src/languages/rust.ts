@@ -29,4 +29,7 @@ export const rust: LanguageSpec = {
     static_item: { kind: 'variable' },
   },
   opaque: new Set(['closure_expression', 'block']),
+  calls: { call_expression: 'function' },
+  members: { field_expression: ['value', 'field'], scoped_identifier: ['path', 'name'] },
+  ignoredCallees: new Set(),
 };

@@ -46,6 +46,12 @@ export interface LanguageSpec {
    * Definitions inside them are not symbols of the file.
    */
   readonly opaque: ReadonlySet<string>;
+  /** Call node types, each with the field that holds the callee. */
+  readonly calls: Readonly<Record<string, string>>;
+  /** Member access node types, each with its object and property fields (`a.b`). */
+  readonly members: Readonly<Record<string, readonly [object: string, property: string]>>;
+  /** Callees that are not calls into code (`require` in JavaScript is an import). */
+  readonly ignoredCallees: ReadonlySet<string>;
 }
 
 /** Container kinds whose functions are methods. */

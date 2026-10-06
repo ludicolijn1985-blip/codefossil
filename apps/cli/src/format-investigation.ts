@@ -47,7 +47,7 @@ export function formatWhy(why: WhyInvestigation, savedId: number | null): string
 function dependentLine(d: Dependent): string {
   const test = d.isTest ? ' [test]' : '';
   const via = d.via.length > 0 ? `  via ${d.via.join(' → ')}` : '';
-  const certainty = d.confidence < 1 ? `  (confidence ${d.confidence.toFixed(2)})` : '';
+  const certainty = d.confidence < 1 ? `  (${d.level} ${d.confidence.toFixed(2)})` : '';
   return `  ${d.label}${test}${via}${certainty}`;
 }
 
@@ -60,8 +60,19 @@ export function formatImpact(report: ImpactReport, savedId: number | null): stri
     ...list.map((d) => `  ${dependentLine(d)}`),
   ]);
   const definedIn = report.definedIn ? `Defined in ${report.definedIn.label}.\n` : '';
+  const callers = report.callers
+    ? section(
+        `Callers (${report.callers.direct.length})`,
+        report.callers.direct.map(dependentLine),
+      ) +
+      section(
+        `Indirect callers (${report.callers.transitive.length})`,
+        report.callers.transitive.map(dependentLine),
+      )
+    : '';
   return (
     `${report.question}\n\n${definedIn}${report.answer}\n` +
+    callers +
     section(`Direct (${report.direct.length})`, report.direct.map(dependentLine)) +
     section(`Transitive (${report.transitive.length})`, transitive) +
     section(

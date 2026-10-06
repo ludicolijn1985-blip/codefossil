@@ -255,7 +255,7 @@ describe('codefossil deps', () => {
     await fossil(root(), 'init');
     const indexed = await fossil(root(), 'index');
     expect(indexed.stdout).toContain(
-      'Dependency graph (full): 1 file import edge, 1 package dependency edge, 1 declared dependency; 1 import left unresolved.',
+      'Dependency graph (full): 1 file import edge, 1 package dependency edge, 1 declared dependency; 1 import left unresolved; 0 call edges from 0 call sites.',
     );
   });
 

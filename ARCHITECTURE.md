@@ -166,3 +166,21 @@ symbol -> callers -> modules -> tests -> routes -> packages
 ```
 
 Return direct and transitive dependencies with path explanations.
+
+**Call graph.** While reading imports at HEAD, the dependency indexer also records each file's
+call sites (`calls` table): the callee as a name path (`utils.flatten`, `this.save`, `*.listen`)
+and the innermost symbol whose lines contain the call. After the import edges are rebuilt, every
+call is resolved, and recorded as `CALLS` (caller symbol, or the file for module-level code, to
+the callee) only when exactly one definition fits:
+
+| Rule                   | Example                                                          | Level        |
+| ---------------------- | ---------------------------------------------------------------- | ------------ |
+| Same class             | `this.validate()` in `Cart.total` → `Cart.validate`              | DERIVED 1.0  |
+| Same file              | `round()` or `res.send()` defined in the calling file            | DERIVED 1.0  |
+| Imported file          | `helper()`, one `helper` across the files the caller imports     | DERIVED 0.9  |
+| Imported module member | `utils.sum()`, `sum` in an imported `utils.*` or `utils/index.*` | DERIVED 0.8  |
+| Qualified name         | `res.send()` on a parameter, one `res.send` in the repository    | INFERRED 0.6 |
+
+Each edge cites the call site as `ast_node` evidence (`path@sha#Lline`). Calls whose receiver is
+an expression (`getApp().listen()`) or that fit several definitions are not recorded. `impact`
+walks `CALLS` backwards for callers, then `CONTAINS`/`IMPORTS` for files.

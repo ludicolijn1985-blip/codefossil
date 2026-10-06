@@ -138,4 +138,7 @@ export const ecmascript: LanguageSpec = {
     'generator_function',
     'statement_block',
   ]),
+  calls: { call_expression: 'function', new_expression: 'constructor' },
+  members: { member_expression: ['object', 'property'] },
+  ignoredCallees: new Set(['require']),
 };

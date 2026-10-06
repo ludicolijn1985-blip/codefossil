@@ -1,3 +1,4 @@
+export type { ParsedCall } from './calls.js';
 export type { ParsedImport, ParsedSymbol } from './extract.js';
 export {
   grammarForPath,

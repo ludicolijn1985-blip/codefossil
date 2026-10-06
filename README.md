@@ -31,18 +31,18 @@ npm from installing the SQLite driver's binary. There, run
 
 ## What you can ask
 
-| Command                                 | Answers                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since |
-| `codefossil impact lib/utils.js`        | Everything that depends on it, directly and transitively, and which are tests   |
-| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it      |
-| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components  |
-| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions) |
-| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since   |
-| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                    |
-| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests      |
-| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies            |
-| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)            |
+| Command                                 | Answers                                                                           |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since   |
+| `codefossil impact res.json`            | Which functions call it, which files import it, transitively, and which are tests |
+| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it        |
+| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components    |
+| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)   |
+| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since     |
+| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                      |
+| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests        |
+| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies              |
+| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)              |
 
 Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
 `#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
@@ -181,8 +181,10 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 
 ## Known limitations
 
-- **File-level impact.** `impact` is file-level: call edges are not indexed yet, so a file that
-  imports the defining file counts as a dependent even if it never calls the symbol.
+- **Static calls only.** `impact` lists callers from calls resolved at HEAD where one definition
+  fits (same file or class, a unique name in an imported file, or a unique qualified name, the last
+  INFERRED). Calls through variables, callbacks and dynamic dispatch are not seen, and files are
+  still counted when they import the defining file.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
 - **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.

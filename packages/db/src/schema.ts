@@ -383,6 +383,28 @@ export const imports = sqliteTable(
   (t) => [index('imports_file_idx').on(t.fileId)],
 );
 
+/**
+ * Calls found in each file at HEAD (a snapshot, replaced when the file
+ * changes): who calls what, as written, before resolution.
+ */
+export const calls = sqliteTable(
+  'calls',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    fileId: integer('file_id')
+      .notNull()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    /** `stableKey` of the calling symbol; null for module-level code. */
+    callerKey: text('caller_key'),
+    /** The callee's name path joined with dots: `utils.flatten`, `*.listen`. */
+    callee: text('callee').notNull(),
+    line: integer('line').notNull(),
+    /** The commit the file was read at, for evidence locators. */
+    sha: text('sha').notNull(),
+  },
+  (t) => [index('calls_file_idx').on(t.fileId)],
+);
+
 export const incidents = sqliteTable(
   'incidents',
   {
