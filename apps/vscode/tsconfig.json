@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowJs": true,
+    "types": ["node", "vscode"]
+  },
+  "include": ["src", "vitest.config.ts", "build.mjs"]
+}

@@ -128,7 +128,7 @@ Serve the JSON API (see API.md) on this machine only.
 
 codefossil mcp
 Serve this repository to AI coding agents over the Model Context Protocol (stdio). Tools: `why`,
-`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`, `fossils` and `change_report`, each the
+`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`, `fossils`, `lens` and `change_report`, each the
 command of the same name, read-only and offline. The index is brought up to date before the first
 answer; progress goes to stderr. Use `--repo <path>` when the client cannot set the directory.
 

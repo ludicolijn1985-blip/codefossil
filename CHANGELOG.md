@@ -7,9 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) eight
+- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) nine
   read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`,
-  `fossils` and `change_report`, with the same evidence and labels as the CLI.
+  `fossils`, `lens` and `change_report`, with the same evidence and labels as the CLI.
 - **Changed code that broke before.** `codefossil report --base` and the pull-request comment
   now lead with the functions a change modifies whose history holds earlier fixes, with those
   fixes, their issues and how many files depend on them. Repository-wide sections fold away on
@@ -17,6 +17,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 - **Fossils.** `codefossil fossils` lists the oldest functions, methods and classes still present,
   with the commit that introduced each and what changed since, or (`--order untouched`) the code
   that has gone longest without a change.
+- **VS Code extension** (`apps/vscode`). One line of history above every function, class and
+  method, details on hover, and the full history on a click, from one local `codefossil mcp`
+  process per workspace. `codefossil lens <file> [--json]` and the MCP `lens` tool provide the data
+  for any editor.
 - **Shareable history pages.** `codefossil why <symbol> --html <file>` writes one
   self-contained page with the symbol's birth, moves, every change on a timeline, its fixes,
   linked issues and callers.

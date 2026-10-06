@@ -72,8 +72,8 @@ Cursor, in `.cursor/mcp.json` (VS Code: `.vscode/mcp.json`, with `"servers"` ins
 }
 ```
 
-The agent gets eight read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
-`dead_intent`, `fossils` and `change_report` (what a branch's commits touch). They run
+The agent gets nine read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
+`dead_intent`, `fossils`, `lens` and `change_report` (what a branch's commits touch). They run
 offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
 CLI, so the agent can tell what is known from what is guessed.
 
@@ -146,6 +146,14 @@ codefossil index            # syncs issues, pull requests and reviews incrementa
 
 Now `why` can say "introduced by PR #412, which resolves issue #398", and hotspots count issues
 labelled as bugs instead of relying on commit wording.
+
+## In your editor
+
+The VS Code extension in [`apps/vscode`](apps/vscode) shows one line of history above every
+function, class and method — `born 2011 · 78 changes · 17 fixes · 64 callers` — with the
+birth commit and latest change on hover. It talks to one local `codefossil mcp` process per
+workspace, so nothing leaves your machine. Any editor can do the same with
+`codefossil lens <file> --json`.
 
 ## Web UI
 

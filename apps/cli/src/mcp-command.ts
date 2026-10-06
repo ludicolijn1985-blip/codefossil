@@ -170,6 +170,17 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     args: ({ limit }) => ['dead-intent', ...(limit ? ['--limit', String(limit)] : [])],
   }),
   tool({
+    name: 'lens',
+    title: 'History of every function in a file',
+    description:
+      'One line of history per function, class and method of a file (repository-relative path), ' +
+      'as JSON: when it was born (followed back through moves), how often it changed, its fixes, ' +
+      'callers and latest change. Useful before editing a file.' +
+      UNTRUSTED,
+    input: { path: target },
+    args: ({ path }) => ['lens', '--json', '--', path],
+  }),
+  tool({
     name: 'fossils',
     title: 'Oldest surviving code',
     description:
