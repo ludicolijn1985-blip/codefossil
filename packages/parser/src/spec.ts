@@ -46,6 +46,11 @@ export interface LanguageSpec {
    * Definitions inside them are not symbols of the file.
    */
   readonly opaque: ReadonlySet<string>;
+  /**
+   * Bodies whose contents count as module level although they sit in a
+   * function: the wrapper of an IIFE or UMD module. Empty for other nodes.
+   */
+  readonly moduleWrappers?: (node: Node) => readonly Node[];
   /** Call node types, each with the field that holds the callee. */
   readonly calls: Readonly<Record<string, string>>;
   /** Member access node types, each with its object and property fields (`a.b`). */

@@ -188,8 +188,9 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
 - **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.
-- **Wrapped modules.** Functions defined inside a wrapper (`(function () { exports.x = … })()`, UMD)
-  are not symbols yet; module-level definitions are.
+- **Wrapped modules.** Definitions inside a module-level wrapper (an IIFE, `.call(this)` or a UMD
+  factory) count as module level; definitions inside other functions or callbacks are local and are
+  not symbols.
 - **Symbol identity.** A symbol is identified by kind and qualified name within a file. Code
   copied or moved to another file with identical content (three lines or more) is followed back to
   its original; a renamed symbol, or one edited while it moved, looks like a new one.

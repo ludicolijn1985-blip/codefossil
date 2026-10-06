@@ -28,6 +28,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   definition fits (same file or class, a unique name in an imported file, or a unique qualified
   name, INFERRED). `impact` on a symbol now lists the functions that call it, directly and
   transitively, before the files that import it.
+- **Wrapped modules.** Definitions inside a module-level IIFE (`(function () { … })()`,
+  `!function () { … }()`, `.call(this)`) or a UMD factory are symbols, as at the top of a file.
 - **Import resolution.** Go `replace` directives that point at a directory of the repository
   resolve to its packages. Python imports from the standard library are recognised as built-in
   (including modules removed in 3.12 and 3.13), and well-known import names that differ from their

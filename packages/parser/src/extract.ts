@@ -55,7 +55,9 @@ export function extractSymbols(root: Node, spec: LanguageSpec): ParsedSymbol[] {
     const { node, scope } = item;
     const rule = spec.definitions[node.type];
     if (!rule || (rule.accept && !rule.accept(node))) {
-      if (!spec.opaque.has(node.type)) pushChildren(stack, node, scope);
+      const wrapped = spec.moduleWrappers?.(node) ?? [];
+      for (const body of wrapped) pushChildren(stack, body, scope);
+      if (wrapped.length === 0 && !spec.opaque.has(node.type)) pushChildren(stack, node, scope);
       continue;
     }
     // Anonymous definitions (e.g. `export default class {}`) have no stable identity.
