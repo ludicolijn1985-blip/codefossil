@@ -31,6 +31,18 @@ export interface ImportReference {
   readonly kind: ImportKind;
   /** Names imported from the module, when the syntax lists them (Python `from x import a, b`). */
   readonly names?: readonly string[];
+  /** The local names the import binds, when the syntax shows them. */
+  readonly bindings?: readonly ImportBinding[];
+}
+
+/**
+ * A local name an import introduces: `import { a as b }` binds `b` to `a`;
+ * `import * as u`, `const u = require(…)`, Python `import u` and a Go package
+ * bind `u` to the whole module (`*`); `import d from …` binds `d` to `default`.
+ */
+export interface ImportBinding {
+  readonly local: string;
+  readonly imported: string;
 }
 
 /** Turns one kind of syntax node into the module references it makes. */
@@ -57,6 +69,24 @@ export interface LanguageSpec {
   readonly members: Readonly<Record<string, readonly [object: string, property: string]>>;
   /** Callees that are not calls into code (`require` in JavaScript is an import). */
   readonly ignoredCallees: ReadonlySet<string>;
+  /**
+   * Nodes that declare local names, each with the field holding the names
+   * (null: the whole node). Every `identifier` in it counts as declared.
+   */
+  readonly locals: Readonly<Record<string, string | null>>;
+  /**
+   * Whether `receiver` at the start of the call names the object the
+   * enclosing method belongs to: `this` outside nested functions, `self`,
+   * a Go method's receiver.
+   */
+  readonly isSelf: (call: Node, receiver: string) => boolean;
+}
+
+/** The nearest ancestor of one of the given types. */
+export function ancestorOf(node: Node, types: ReadonlySet<string>): Node | null {
+  let current = node.parent;
+  while (current && !types.has(current.type)) current = current.parent;
+  return current;
 }
 
 /** Container kinds whose functions are methods. */

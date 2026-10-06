@@ -375,6 +375,10 @@ export const imports = sqliteTable(
     }).notNull(),
     line: integer('line').notNull(),
     namesJson: text('names_json', { mode: 'json' }).$type<string[]>(),
+    /** Local names the import binds: `{ local, imported }`, `imported` `*` for the whole module. */
+    bindingsJson: text('bindings_json', { mode: 'json' }).$type<
+      { local: string; imported: string }[]
+    >(),
     evidenceId: integer('evidence_id').references(() => evidence.id, { onDelete: 'set null' }),
     resolution: text('resolution', { enum: ['files', 'dependency', 'builtin', 'unresolved'] }),
     /** Target description or, when unresolved, the reason. */
@@ -399,6 +403,10 @@ export const calls = sqliteTable(
     /** The callee's name path joined with dots: `utils.flatten`, `*.listen`. */
     callee: text('callee').notNull(),
     line: integer('line').notNull(),
+    /** The callee's first name is declared inside the caller (parameter, variable, inner function). */
+    localHead: integer('local_head', { mode: 'boolean' }).notNull().default(false),
+    /** The callee's first name is the caller's own object (`this`, `self`, a Go receiver). */
+    selfReceiver: integer('self_receiver', { mode: 'boolean' }).notNull().default(false),
     /** The commit the file was read at, for evidence locators. */
     sha: text('sha').notNull(),
   },

@@ -37,14 +37,17 @@ export const HISTORY_ROUTE: StepTable = {
 const IMPORTED_BY: Step = { relation: 'IMPORTS', direction: 'in', to: ['file'] };
 
 /**
- * What depends on it? Reverse dependencies: a symbol's file, the files that
- * import it, and so on transitively; for a package, the files using it.
+ * Who calls it? Callers of a symbol, transitively. A file calls only at module
+ * level and has no callers itself, so a path ends there.
  */
-/** Who calls it? Callers of a symbol (functions, or files at module level), transitively. */
 export const CALLERS_ROUTE: StepTable = {
   symbol: [{ relation: 'CALLS', direction: 'in', to: ['symbol', 'file'] }],
 };
 
+/**
+ * What depends on it? Reverse dependencies: a symbol's file, the files that
+ * import it, and so on transitively; for a package, the files using it.
+ */
 export const IMPACT_ROUTE: StepTable = {
   symbol: [{ relation: 'CONTAINS', direction: 'in', to: ['file'] }],
   file: [IMPORTED_BY],

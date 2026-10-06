@@ -95,8 +95,8 @@ const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1
 /**
  * What depends on the target: files importing it directly, and files
  * reaching it through a chain of imports, each with its shortest route.
- * For a symbol the analysis is file-level — it starts from the file that
- * defines the symbol, since call-level edges are not indexed.
+ * For a symbol: first the functions that call it (statically resolved `CALLS`
+ * edges, transitively), then the files importing the file that defines it.
  */
 export function analyzeImpact(
   db: FossilDb,
@@ -164,7 +164,9 @@ export function analyzeImpact(
       ? result.truncated.length > 0
         ? `No dependents of ${targetLabel} were found within the analysed bounds (see notes).`
         : `Nothing in the index depends on ${targetLabel}.`
-      : `${plural(direct.length, 'file depends', 'files depend')} on ${targetLabel} directly and ${String(transitive.length)} transitively (${String(tests)} of them tests).`;
+      : target.type === 'symbol'
+        ? `${plural(direct.length, 'file imports', 'files import')} the file that defines it directly and ${String(transitive.length)} transitively (${String(tests)} of them tests).`
+        : `${plural(direct.length, 'file depends', 'files depend')} on ${targetLabel} directly and ${String(transitive.length)} transitively (${String(tests)} of them tests).`;
   const callSentence = !callers
     ? ''
     : callers.length === 0
@@ -191,7 +193,10 @@ export function analyzeImpact(
     answer: `${callSentence}${fileSentence}`,
     confidence: everything.length === 0 ? 1 : Math.min(...everything.map((d) => d.confidence)),
     classification: weakestLevel(everything.map((d) => d.level)),
-    truncated: [...result.truncated, ...(callResult?.truncated ?? [])],
+    truncated: [
+      ...result.truncated.map((t) => (callResult ? `imports: ${t}` : t)),
+      ...(callResult?.truncated ?? []).map((t) => `calls: ${t}`),
+    ],
     caveats,
   };
 }

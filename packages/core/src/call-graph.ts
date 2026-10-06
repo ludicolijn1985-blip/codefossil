@@ -1,9 +1,8 @@
 import {
-  analysisFiles,
+  callEvidenceByLocator,
   currentSymbols,
   deleteCallEvidence,
   deleteRelationsByProducer,
-  fileImportEdges,
   listRepositoryCalls,
   recordEvidence,
   recordRelation,
@@ -13,18 +12,27 @@ import {
 } from '@codefossil/db';
 import type { EntityRef, EvidenceLevel } from '@codefossil/shared';
 
-export const CALL_RESOLVER_PRODUCER = 'call-resolver@0.1.0';
+export const CALL_RESOLVER_PRODUCER = 'call-resolver@0.2.0';
+/** Earlier versions whose edges a rebuild replaces. */
+const LEGACY_PRODUCERS = ['call-resolver@0.1.0'];
 
-/** A callee defined in the calling file: the name is unambiguous there. */
-const SAME_FILE_CONFIDENCE = 1;
-/** A uniquely named definition in a file the caller imports. */
-const IMPORTED_FILE_CONFIDENCE = 0.9;
-/** `utils.flatten()` with `utils` named after an imported file that defines `flatten`. */
-const IMPORTED_MODULE_CONFIDENCE = 0.8;
-/** Only the qualified name matches (`res.send` called on a parameter named `res`). */
+/** A name bound by an import: what it imports, and the repository files the import resolved to. */
+export interface ImportBinding {
+  /** The imported name, `*` for the whole module, `default` for a default export. */
+  readonly imported: string;
+  /** Empty when the import points outside the repository (a package, the standard library). */
+  readonly targetFileIds: readonly number[];
+  /** Confidence of the import's resolution. */
+  readonly confidence: number;
+}
+
+/** Per file, the local names its imports bind. */
+export type ImportBindings = ReadonlyMap<number, ReadonlyMap<string, ImportBinding>>;
+
+/** `utils.sum()` or `sum()` through an import binding that resolved to the defining file. */
+const IMPORT_BINDING_CONFIDENCE = 0.95;
+/** Only the full qualified name ties the call to a definition (`res.send()` on a parameter). */
 const QUALIFIED_NAME_CONFIDENCE = 0.6;
-/** Receivers that mean "this object" inside a method. */
-const SELF = new Set(['this', 'self']);
 
 interface Resolved {
   readonly target: CallableSymbol;
@@ -34,141 +42,139 @@ interface Resolved {
 }
 
 export interface CallGraphResult {
-  /** Distinct calls considered. */
+  /** Distinct call sites considered. */
   readonly calls: number;
   /** `CALLS` edges recorded. */
   readonly callEdges: number;
 }
 
+/** Current symbols by file and qualified name, and by qualified name across the repository. */
 class SymbolIndex {
-  readonly byFileKey = new Map<string, CallableSymbol>();
-  readonly byFile = new Map<number, CallableSymbol[]>();
-  readonly byQualifiedName = new Map<string, CallableSymbol[]>();
+  private readonly byFileKey = new Map<string, CallableSymbol>();
+  private readonly byFileName = new Map<string, CallableSymbol[]>();
+  private readonly byName = new Map<string, CallableSymbol[]>();
 
-  constructor(
-    symbols: readonly CallableSymbol[],
-    private readonly paths: ReadonlyMap<number, string>,
-  ) {
+  constructor(symbols: readonly CallableSymbol[]) {
     for (const symbol of symbols) {
       this.byFileKey.set(`${String(symbol.fileId)}\0${symbol.stableKey}`, symbol);
-      this.byFile.set(symbol.fileId, [...(this.byFile.get(symbol.fileId) ?? []), symbol]);
-      const named = this.byQualifiedName.get(symbol.qualifiedName) ?? [];
-      named.push(symbol);
-      this.byQualifiedName.set(symbol.qualifiedName, named);
+      push(this.byFileName, `${String(symbol.fileId)}\0${symbol.qualifiedName}`, symbol);
+      push(this.byName, symbol.qualifiedName, symbol);
     }
   }
 
-  inFile(fileId: number, qualifiedName: string): CallableSymbol[] {
-    return (this.byFile.get(fileId) ?? []).filter((s) => s.qualifiedName === qualifiedName);
+  caller(fileId: number, stableKey: string): CallableSymbol | undefined {
+    return this.byFileKey.get(`${String(fileId)}\0${stableKey}`);
   }
 
-  /** Whether a file is named `name` (`utils.js`), or is the index of a directory of that name. */
-  fileNamed(fileId: number, name: string): boolean {
-    const path = this.paths.get(fileId);
-    if (!path) return false;
-    const parts = path.split('/');
-    const base = (parts.at(-1) ?? '').replace(/\.[^.]+$/, '');
-    return base === name || (/^(index|__init__|mod)$/.test(base) && parts.at(-2) === name);
+  inFile(fileId: number, qualifiedName: string): readonly CallableSymbol[] {
+    return this.byFileName.get(`${String(fileId)}\0${qualifiedName}`) ?? [];
   }
+
+  anywhere(qualifiedName: string): readonly CallableSymbol[] {
+    return this.byName.get(qualifiedName) ?? [];
+  }
+}
+
+function push<K, V>(map: Map<K, V[]>, key: K, value: V): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
 }
 
 /** The one element, or null when there are none or several: ambiguity is never guessed. */
 const only = <T>(items: readonly T[]): T | null => (items.length === 1 ? (items[0] ?? null) : null);
 
+const derived = (target: CallableSymbol | null, confidence: number, method: string) =>
+  target ? { target, level: 'DERIVED' as const, confidence, method } : null;
+
+/**
+ * Resolve one call site. The first name of the callee decides which rule
+ * may apply, in this order:
+ * - the caller's own object (`this.save()` in a method): the class's `save`;
+ * - a parameter or local variable: only the qualified-name rule (INFERRED);
+ * - a name an import binds: the imported definition in the resolved file, or
+ *   nothing — a bound name never falls back to a same-named definition;
+ * - otherwise a definition of that name in the same file;
+ * - finally, for `a.b()`, a unique definition named `a.b` anywhere (INFERRED).
+ */
 function resolveCall(
   call: RepositoryCall,
   caller: CallableSymbol | null,
   index: SymbolIndex,
-  imported: ReadonlySet<number>,
+  bindings: ReadonlyMap<string, ImportBinding>,
 ): Resolved | null {
   const path = call.callee.split('.');
+  const [head = '', ...rest] = path;
   const name = path.at(-1) ?? '';
-  if (name === '' || name === '*') return null;
-  const [receiver] = path;
+  if (name === '' || name === '*' || head === '*') return null;
 
-  // `this.save()` inside `Cart.checkout` is `Cart.save` in the same file.
-  if (path.length === 2 && receiver && SELF.has(receiver) && caller) {
+  if (call.selfReceiver) {
+    if (!caller || path.length !== 2) return null;
     const owner = caller.qualifiedName.split('.').slice(0, -1).join('.');
-    const target = owner ? only(index.inFile(call.fileId, `${owner}.${name}`)) : null;
-    if (target) return { target, level: 'DERIVED', confidence: 1, method: 'same-class' };
-    return null;
+    return owner
+      ? derived(only(index.inFile(call.fileId, `${owner}.${name}`)), 1, 'same-class')
+      : null;
   }
-  if (!path.includes('*')) {
-    const local = only(index.inFile(call.fileId, call.callee));
-    if (local) {
-      return {
-        target: local,
-        level: 'DERIVED',
-        confidence: SAME_FILE_CONFIDENCE,
-        method: 'same-file',
-      };
-    }
+
+  const qualified = (): Resolved | null => {
+    if (path.length < 2) return null;
+    const target = only(index.anywhere(call.callee));
+    return target
+      ? {
+          target,
+          level: 'INFERRED',
+          confidence: QUALIFIED_NAME_CONFIDENCE,
+          method: 'qualified-name',
+        }
+      : null;
+  };
+  if (call.localHead) return qualified();
+
+  const binding = bindings.get(head);
+  if (binding) {
+    // `sum()` from `import { sum }`, `utils.sum()` from `import * as utils`.
+    const member =
+      path.length === 1 && binding.imported !== '*' && binding.imported !== 'default'
+        ? binding.imported
+        : path.length >= 2 && binding.imported === '*'
+          ? rest.join('.')
+          : null;
+    if (member === null) return null;
+    const target = only(binding.targetFileIds.flatMap((fileId) => index.inFile(fileId, member)));
+    return derived(
+      target,
+      Math.min(IMPORT_BINDING_CONFIDENCE, binding.confidence),
+      'import-binding',
+    );
   }
-  // `flatten()`: a definition named `flatten` in a file this file imports. `utils.flatten()`
-  // only when the receiver is named after that file (`utils.js`, `utils/index.js`):
-  // `items.map()` must not reach an imported `map`.
-  if (path.length <= 2 && receiver && !SELF.has(receiver)) {
-    const files =
-      path.length === 1 ? [...imported] : [...imported].filter((f) => index.fileNamed(f, receiver));
-    const target = only(files.flatMap((fileId) => index.inFile(fileId, name)));
-    if (target) {
-      return {
-        target,
-        level: 'DERIVED',
-        confidence: path.length === 1 ? IMPORTED_FILE_CONFIDENCE : IMPORTED_MODULE_CONFIDENCE,
-        method: path.length === 1 ? 'imported-file-name' : 'imported-module-member',
-      };
-    }
-  }
-  // `res.send()` anywhere: only the full qualified name ties it to a definition.
-  if (path.length >= 2 && !path.includes('*')) {
-    const target = only(index.byQualifiedName.get(call.callee) ?? []);
-    if (target) {
-      return {
-        target,
-        level: 'INFERRED',
-        confidence: QUALIFIED_NAME_CONFIDENCE,
-        method: 'qualified-name',
-      };
-    }
-  }
-  return null;
+
+  const local = derived(only(index.inFile(call.fileId, call.callee)), 1, 'same-file');
+  return local ?? qualified();
 }
 
 /**
- * Rebuild `CALLS` edges from the call sites stored for HEAD. A call resolves
- * only when one definition fits: in the same file or class (DERIVED), by a
- * unique name in a file the caller imports (DERIVED, 0.9), or by a unique
- * qualified name anywhere (INFERRED, 0.6). Module-level calls come from the
- * file. Each edge cites the call site.
+ * Rebuild `CALLS` edges from the call sites stored for HEAD, each edge citing
+ * its call site. Calls whose calling symbol is no longer in the index are
+ * skipped, never attributed to the file; module-level calls come from the file.
  */
 export function rebuildCallEdges(
   db: FossilDb,
   repositoryId: number,
+  bindings: ImportBindings,
   observedAt: string,
 ): CallGraphResult {
-  deleteRelationsByProducer(db, repositoryId, CALL_RESOLVER_PRODUCER);
-  deleteCallEvidence(db, repositoryId);
-
-  const calls = listRepositoryCalls(db, repositoryId);
-  const paths = new Map(
-    analysisFiles(db, repositoryId).map((file) => [file.id, file.path] as const),
-  );
-  const index = new SymbolIndex(currentSymbols(db, repositoryId), paths);
-  const importsOf = new Map<number, Set<number>>();
-  for (const edge of fileImportEdges(db, repositoryId)) {
-    const targets = importsOf.get(edge.source) ?? new Set<number>();
-    targets.add(edge.target);
-    importsOf.set(edge.source, targets);
+  for (const producer of [CALL_RESOLVER_PRODUCER, ...LEGACY_PRODUCERS]) {
+    deleteRelationsByProducer(db, repositoryId, producer);
   }
+  const index = new SymbolIndex(currentSymbols(db, repositoryId));
+  const calls = listRepositoryCalls(db, repositoryId);
+  const none = new Map<string, ImportBinding>();
 
   const edges = new Map<string, { source: EntityRef; resolved: Resolved; call: RepositoryCall }>();
   for (const call of calls) {
-    const caller =
-      call.callerKey === null
-        ? null
-        : (index.byFileKey.get(`${String(call.fileId)}\0${call.callerKey}`) ?? null);
-    const resolved = resolveCall(call, caller, index, importsOf.get(call.fileId) ?? new Set());
+    const caller = call.callerKey === null ? null : index.caller(call.fileId, call.callerKey);
+    if (caller === undefined) continue;
+    const resolved = resolveCall(call, caller, index, bindings.get(call.fileId) ?? none);
     if (!resolved || resolved.target.id === caller?.id) continue;
     const source: EntityRef = caller
       ? { type: 'symbol', id: caller.id }
@@ -180,14 +186,22 @@ export function rebuildCallEdges(
     }
   }
 
+  // Cite the same evidence row for the same call site as earlier runs did.
+  const previous = callEvidenceByLocator(db, repositoryId);
+  const cited = new Set<number>();
   for (const { source, resolved, call } of edges.values()) {
-    const evidence = recordEvidence(db, {
-      repositoryId,
-      type: 'ast_node',
-      locator: `${call.path}@${call.sha}#L${String(call.line)}`,
-      excerpt: `call ${call.callee}`,
-      metadata: { snapshot: 'calls' },
-    });
+    const locator = `${call.path}@${call.sha}#L${String(call.line)}`;
+    const excerpt = `call ${call.callee}`;
+    const evidenceId =
+      previous.get(`${locator} ${excerpt}`) ??
+      recordEvidence(db, {
+        repositoryId,
+        type: 'ast_node',
+        locator,
+        excerpt,
+        metadata: { snapshot: 'calls' },
+      }).id;
+    cited.add(evidenceId);
     recordRelation(db, {
       repositoryId,
       source,
@@ -198,10 +212,15 @@ export function rebuildCallEdges(
       provenance: {
         producer: CALL_RESOLVER_PRODUCER,
         method: resolved.method,
-        evidenceIds: [evidence.id],
+        evidenceIds: [evidenceId],
         observedAt,
       },
     });
   }
+  deleteCallEvidence(
+    db,
+    repositoryId,
+    [...previous.values()].filter((id) => !cited.has(id)),
+  );
   return { calls: calls.length, callEdges: edges.size };
 }

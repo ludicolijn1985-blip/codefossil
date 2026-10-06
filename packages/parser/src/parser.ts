@@ -4,7 +4,13 @@ import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser } from 'web-tree-sitter';
 import { extractCalls, type ParsedCall } from './calls.js';
-import { extractImports, extractSymbols, type ParsedImport, type ParsedSymbol } from './extract.js';
+import {
+  extractImports,
+  extractSymbols,
+  type ParsedImport,
+  type ParsedSymbol,
+  type SymbolRange,
+} from './extract.js';
 import { ecmascript } from './languages/ecmascript.js';
 import { go } from './languages/go.js';
 import { python } from './languages/python.js';
@@ -89,11 +95,12 @@ export class SymbolExtractor {
     if (!tree) throw new Error(`Tree-sitter returned no tree for ${grammar} source`);
     try {
       const { spec } = GRAMMARS[grammar];
-      const symbols = extractSymbols(tree.rootNode, spec);
+      const ranges = new Map<string, SymbolRange>();
+      const symbols = extractSymbols(tree.rootNode, spec, ranges);
       return {
         symbols,
         imports: extractImports(tree.rootNode, spec),
-        calls: extractCalls(tree.rootNode, spec, symbols),
+        calls: extractCalls(tree.rootNode, spec, ranges),
         hasSyntaxErrors: tree.rootNode.hasError,
       };
     } finally {

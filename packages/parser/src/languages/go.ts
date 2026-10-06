@@ -1,6 +1,8 @@
 import { goImports } from './go-imports.js';
 import type { SymbolKind } from '@codefossil/shared';
-import { firstDescendant, type LanguageSpec } from '../spec.js';
+import { ancestorOf, firstDescendant, type LanguageSpec } from '../spec.js';
+
+const METHODS = new Set(['method_declaration']);
 
 const TYPE_NAMES = new Set(['type_identifier']);
 
@@ -32,4 +34,17 @@ export const go: LanguageSpec = {
   calls: { call_expression: 'function' },
   members: { selector_expression: ['operand', 'field'] },
   ignoredCallees: new Set(),
+  locals: {
+    parameter_list: null,
+    short_var_declaration: 'left',
+    var_spec: 'name',
+    const_spec: 'name',
+    range_clause: 'left',
+  },
+  // The receiver of the enclosing method: `s` in `func (s *Server) Start()`.
+  isSelf: (call, receiver) => {
+    const method = ancestorOf(call, METHODS);
+    const parameter = method?.childForFieldName('receiver')?.namedChildren[0];
+    return parameter?.childForFieldName('name')?.text === receiver;
+  },
 };

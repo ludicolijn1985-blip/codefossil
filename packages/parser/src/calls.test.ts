@@ -78,3 +78,70 @@ describe('call extraction', () => {
     ]);
   });
 });
+
+describe('local names and self in calls', () => {
+  async function flags(grammar: GrammarId, source: string) {
+    const result = await extractor.extract(source, grammar);
+    return result?.calls.map(
+      ({ callee, self, local }) =>
+        `${callee.join('.')}${self ? ' self' : ''}${local ? ' local' : ''}`,
+    );
+  }
+
+  it('marks parameters, variables and inner functions as local, and only real `this` as self', async () => {
+    const source = [
+      'function helper() {}',
+      'function run(cb, { opt }) {',
+      '  cb();',
+      '  helper();',
+      '  const fmt = makeFormatter();',
+      '  fmt.format();',
+      '  function inner() {}',
+      '  inner();',
+      '  opt.go();',
+      '}',
+      'class Cart {',
+      '  total() {',
+      '    this.validate();',
+      '    items.forEach(function () { this.oops(); });',
+      '    items.forEach(() => this.ok());',
+      '  }',
+      '}',
+      'Cart.prototype.save = function () { this.persist(); };',
+    ].join('\n');
+    expect(await flags('javascript', source)).toEqual([
+      'cb local',
+      'helper',
+      'makeFormatter',
+      'fmt.format local',
+      'inner local',
+      'opt.go local',
+      'this.validate self',
+      'items.forEach',
+      'this.oops',
+      'this.ok self',
+      'this.persist self',
+    ]);
+  });
+
+  it('recognises Python self, Go receivers and Rust self', async () => {
+    expect(
+      await flags(
+        'python',
+        'class A:\n    def m(self, x):\n        self.n()\n        x.y()\n\ndef f(self):\n    pass\n',
+      ),
+    ).toEqual(['self.n self', 'x.y local']);
+    expect(
+      await flags(
+        'go',
+        'package a\n\nfunc (s *Server) Start(c Conf) {\n\ts.listen()\n\tc.check()\n}\n',
+      ),
+    ).toEqual(['s.listen self', 'c.check local']);
+    expect(
+      await flags(
+        'rust',
+        'impl A {\n    fn m(&self, v: V) {\n        self.n();\n        v.w();\n    }\n}\nfn free() {\n    helper();\n}\n',
+      ),
+    ).toEqual(['self.n self', 'v.w local', 'helper']);
+  });
+});

@@ -30,6 +30,7 @@ export interface NewImport {
   readonly kind: ImportRow['kind'];
   readonly line: number;
   readonly names?: readonly string[] | undefined;
+  readonly bindings?: readonly { readonly local: string; readonly imported: string }[] | undefined;
 }
 
 /**
@@ -63,6 +64,7 @@ export function replaceFileImports(
         kind: item.kind,
         line: item.line,
         namesJson: item.names ? [...item.names] : null,
+        bindingsJson: item.bindings ? item.bindings.map((b) => ({ ...b })) : null,
         evidenceId: record.id,
       })
       .run();
@@ -88,6 +90,7 @@ export interface RepositoryImport {
   readonly specifier: string;
   readonly kind: ImportRow['kind'];
   readonly names: string[] | null;
+  readonly bindings: { local: string; imported: string }[] | null;
   readonly evidenceId: number | null;
 }
 
@@ -101,6 +104,7 @@ export function listRepositoryImports(db: FossilDb, repositoryId: number): Repos
       specifier: imports.specifier,
       kind: imports.kind,
       names: imports.namesJson,
+      bindings: imports.bindingsJson,
       evidenceId: imports.evidenceId,
     })
     .from(imports)

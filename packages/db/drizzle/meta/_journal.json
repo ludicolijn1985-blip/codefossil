@@ -71,6 +71,13 @@
       "when": 1791307306572,
       "tag": "0009_call_sites",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791308635751,
+      "tag": "0010_call_bindings",
+      "breakpoints": true
     }
   ]
 }

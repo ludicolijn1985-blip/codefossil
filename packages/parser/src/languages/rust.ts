@@ -1,5 +1,7 @@
 import { rustImports } from './rust-imports.js';
-import type { LanguageSpec } from '../spec.js';
+import { ancestorOf, type LanguageSpec } from '../spec.js';
+
+const FUNCTIONS = new Set(['function_item']);
 
 export const rust: LanguageSpec = {
   imports: rustImports,
@@ -32,4 +34,18 @@ export const rust: LanguageSpec = {
   calls: { call_expression: 'function' },
   members: { field_expression: ['value', 'field'], scoped_identifier: ['path', 'name'] },
   ignoredCallees: new Set(),
+  locals: {
+    parameters: null,
+    closure_parameters: null,
+    let_declaration: 'pattern',
+    for_expression: 'pattern',
+  },
+  isSelf: (call, receiver) => {
+    if (receiver !== 'self') return false;
+    const fn = ancestorOf(call, FUNCTIONS);
+    return (
+      fn?.childForFieldName('parameters')?.namedChildren.some((p) => p.type === 'self_parameter') ??
+      false
+    );
+  },
 };

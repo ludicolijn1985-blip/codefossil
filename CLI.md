@@ -44,10 +44,10 @@ API.md investigation shape.
 codefossil impact calculateVAT [--depth n]
 Show what depends on a target, with distances, routes and which are tests. For a symbol: the
 functions (or files, at module level) that call it, directly and through other calls, then the
-files that import its file. Calls resolve at HEAD only where one definition fits: in the same file
-or class (DERIVED), a uniquely named definition in an imported file (DERIVED, 0.9; 0.8 for
-`module.name()` with the receiver named after the file), or a unique qualified name anywhere
-(INFERRED, 0.6). Ambiguous calls are left out, never guessed.
+files that import its file. A call resolves at HEAD only where one definition fits: the method's
+own class for `this`/`self` (DERIVED), the definition an import binds (DERIVED, 0.95), a definition
+in the calling file (DERIVED), or, for `a.b()` and for names that are parameters or locals, a
+unique qualified name anywhere (INFERRED, 0.6). Ambiguous calls are left out, never guessed.
 
 codefossil hotspots [--since date] [--limit n] [--order hotspot|risk] [--tests] [--generated] [--json]
 Rank files by historical change: hotspot score (change frequency × churn × defect commits) and

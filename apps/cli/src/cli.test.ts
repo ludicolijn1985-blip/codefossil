@@ -1082,3 +1082,41 @@ describe('codefossil fossils and copied code', () => {
     expect(result.stdout).toContain('Confidence 0.90');
   });
 });
+
+describe('codefossil impact with callers', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.write(
+      'src/cart.ts',
+      "import { rate } from './tax.js';\nexport function total(n: number) {\n  return n * rate();\n}\n",
+    );
+    await repo.write(
+      'test/cart.test.ts',
+      "import { total } from '../src/cart.js';\nexport function check() {\n  return total(1);\n}\n",
+    );
+    await repo.commit('Shop');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('lists direct and indirect callers before the importing files', async () => {
+    const result = await fossil(repo?.root ?? '', 'impact', 'rate', '--no-save');
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      '1 caller calls it directly and 1 through other calls (1 in tests). 1 file imports the file that defines it directly and 1 transitively (1 of them tests).',
+    );
+    expect(result.stdout).toMatch(
+      /Callers \(1\)\n {2}function total \(src\/cart\.ts:2\) {2}\(DERIVED 0\.95\)/,
+    );
+    expect(result.stdout).toMatch(
+      /Indirect callers \(1\)\n {2}function check \(test\/cart\.test\.ts:2\) \[test\] {2}via function total/,
+    );
+    expect(result.stdout.indexOf('Callers (1)')).toBeLessThan(result.stdout.indexOf('Direct (1)'));
+  });
+});

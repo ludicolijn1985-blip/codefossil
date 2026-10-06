@@ -134,7 +134,7 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
       'src/checkout.test.ts via src/checkout.ts (test)',
     ]);
     expect(impact.answer).toBe(
-      'No call to it was resolved. 1 file depends on function calculateVAT (src/payment/vat.ts:2) directly and 2 transitively (1 of them tests).',
+      'No call to it was resolved. 1 file imports the file that defines it directly and 2 transitively (1 of them tests).',
     );
     expect(impact.callers).toEqual({ direct: [], transitive: [] });
     expect(impact.caveats[0]).toMatch(/^Calls are resolved at HEAD only where one definition fits/);

@@ -24,10 +24,12 @@ and the project uses [Semantic Versioning](https://semver.org/).
   introduced; `why` and `fossils` follow it back to the original. A name defined once at HEAD now
   resolves to that definition even when removed copies share the name.
 
-- **Call graph.** Call sites are read at HEAD and resolved to `CALLS` edges where exactly one
-  definition fits (same file or class, a unique name in an imported file, or a unique qualified
-  name, INFERRED). `impact` on a symbol now lists the functions that call it, directly and
-  transitively, before the files that import it.
+- **Call graph.** Call sites and import bindings are read at HEAD and resolved to `CALLS` edges
+  where exactly one definition fits: the method's own class, the definition an import binds, one
+  in the calling file (all DERIVED), or a unique qualified name (INFERRED). Parameters and locals
+  that shadow a name, and `this` inside nested functions, are taken into account. `impact` on a
+  symbol lists the functions that call it, directly and transitively, before the files that
+  import it.
 - **Wrapped modules.** Definitions inside a module-level IIFE (`(function () { … })()`,
   `!function () { … }()`, `.call(this)`) or a UMD factory are symbols, as at the top of a file.
 - **Import resolution.** Go `replace` directives that point at a directory of the repository

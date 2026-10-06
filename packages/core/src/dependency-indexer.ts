@@ -40,7 +40,7 @@ import {
   type ParsedCall,
   type ParsedImport,
 } from '@codefossil/parser';
-import { rebuildCallEdges } from './call-graph.js';
+import { rebuildCallEdges, type ImportBinding, type ImportBindings } from './call-graph.js';
 import { detectLanguage } from '@codefossil/shared';
 
 export const IMPORT_RESOLVER_PRODUCER = 'import-resolver@0.1.0';
@@ -141,8 +141,8 @@ export async function indexDependencies(
       replaceFileCalls(tx, file.id, headSha, found?.calls ?? []);
     }
     const dependencies = writeManifests(tx, repositoryId, headSha, snapshot.manifests, observedAt);
-    const edges = rebuildImportEdges(tx, repositoryId, snapshot, observedAt);
-    const callGraph = rebuildCallEdges(tx, repositoryId, observedAt);
+    const { bindings, ...edges } = rebuildImportEdges(tx, repositoryId, snapshot, observedAt);
+    const callGraph = rebuildCallEdges(tx, repositoryId, bindings, observedAt);
     setGraphIndexedSha(tx, repositoryId, headSha);
     return {
       mode: changed ? 'incremental' : 'full',
@@ -351,7 +351,7 @@ function rebuildImportEdges(
 ): Pick<
   DependencyIndexResult,
   'importEdges' | 'dependencyEdges' | 'builtinImports' | 'unresolvedImports'
-> {
+> & { readonly bindings: ImportBindings } {
   deleteRelationsByProducer(db, repositoryId, IMPORT_RESOLVER_PRODUCER);
   const resolve = createResolver({
     files: snapshot.headFiles,
@@ -361,6 +361,7 @@ function rebuildImportEdges(
   const edges = new Map<string, Edge>();
   let builtinImports = 0;
   let unresolvedImports = 0;
+  const bindings = new Map<number, Map<string, ImportBinding>>();
 
   const addEdge = (
     item: RepositoryImport,
@@ -391,11 +392,13 @@ function rebuildImportEdges(
       ...(item.names ? { names: item.names } : {}),
     });
     setImportResolution(db, item.id, resolution.kind, describe(resolution));
+    const targetFileIds: number[] = [];
 
     if (resolution.kind === 'files') {
       for (const path of resolution.paths) {
         if (path === item.path) continue;
         const target = ensureFile(db, repositoryId, path, detectLanguage(path));
+        targetFileIds.push(target.id);
         addEdge(item, { type: 'file', id: target.id }, resolution.confidence, resolution.method);
       }
     } else if (resolution.kind === 'dependency') {
@@ -413,6 +416,17 @@ function rebuildImportEdges(
     } else {
       unresolvedImports++;
     }
+    // Every bound name is recorded, also when it points outside the repository: a call
+    // through it then reaches no repository definition of the same name.
+    const fileBindings = bindings.get(item.fileId) ?? new Map<string, ImportBinding>();
+    for (const binding of item.bindings ?? []) {
+      fileBindings.set(binding.local, {
+        imported: binding.imported,
+        targetFileIds,
+        confidence: resolution.kind === 'files' ? resolution.confidence : 0,
+      });
+    }
+    bindings.set(item.fileId, fileBindings);
   }
 
   let importEdges = 0;
@@ -435,5 +449,5 @@ function rebuildImportEdges(
     if (edge.target.type === 'file') importEdges++;
     else dependencyEdges++;
   }
-  return { importEdges, dependencyEdges, builtinImports, unresolvedImports };
+  return { importEdges, dependencyEdges, builtinImports, unresolvedImports, bindings };
 }

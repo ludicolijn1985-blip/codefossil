@@ -1,6 +1,6 @@
 import { ecmascriptImports } from './ecmascript-imports.js';
 import type { Node } from 'web-tree-sitter';
-import type { LanguageSpec } from '../spec.js';
+import { ancestorOf, type LanguageSpec } from '../spec.js';
 
 /** Where a `const`/`let`/`var` declaration counts as a module-level symbol. */
 const MODULE_LEVEL = new Set(['program', 'export_statement']);
@@ -9,6 +9,16 @@ const FUNCTION_VALUES = new Set([
   'function_expression',
   'function',
   'generator_function',
+]);
+
+/** Functions that give `this` a new meaning (arrow functions keep the outer one). */
+const THIS_BINDERS = new Set([
+  'function_expression',
+  'function_declaration',
+  'generator_function',
+  'generator_function_declaration',
+  'function',
+  'method_definition',
 ]);
 
 /** Look through `( … )` and `!` / `void` around a wrapper call. */
@@ -188,4 +198,20 @@ export const ecmascript: LanguageSpec = {
   calls: { call_expression: 'function', new_expression: 'constructor' },
   members: { member_expression: ['object', 'property'] },
   ignoredCallees: new Set(['require']),
+  locals: {
+    variable_declarator: 'name',
+    function_declaration: 'name',
+    generator_function_declaration: 'name',
+    class_declaration: 'name',
+    formal_parameters: null,
+    arrow_function: 'parameter',
+    catch_clause: 'parameter',
+  },
+  // `this` is the object only up to the nearest non-arrow function: the method itself, or
+  // a function assigned as one (`X.prototype.m = function () {}`).
+  isSelf: (call, receiver) => {
+    if (receiver !== 'this') return false;
+    const fn = ancestorOf(call, THIS_BINDERS);
+    return fn?.type === 'method_definition' || fn?.parent?.type === 'assignment_expression';
+  },
 };

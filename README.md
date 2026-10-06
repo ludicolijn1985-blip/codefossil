@@ -182,9 +182,9 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 ## Known limitations
 
 - **Static calls only.** `impact` lists callers from calls resolved at HEAD where one definition
-  fits (same file or class, a unique name in an imported file, or a unique qualified name, the last
-  INFERRED). Calls through variables, callbacks and dynamic dispatch are not seen, and files are
-  still counted when they import the defining file.
+  fits: the method's own class, the definition an import binds, one in the calling file, or a
+  unique qualified name (INFERRED). Calls through variables, callbacks and dynamic dispatch are not
+  seen, and files are still counted when they import the defining file.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
 - **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.

@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { SymbolKind } from '@codefossil/shared';
 import type { Node } from 'web-tree-sitter';
-import { METHOD_OWNERS, nameField, type ImportReference, type LanguageSpec } from './spec.js';
+import {
+  METHOD_OWNERS,
+  nameField,
+  type ImportBinding,
+  type ImportReference,
+  type LanguageSpec,
+} from './spec.js';
 
 export interface ParsedSymbol {
   /** Identity within a file across versions, e.g. `method:Cart.total`. */
@@ -40,12 +46,23 @@ function pushChildren(stack: Pending[], node: Node, scope: readonly Scope[]): vo
   }
 }
 
+/** Where a symbol's definition sits in the source, in bytes (end exclusive). */
+export interface SymbolRange {
+  readonly start: number;
+  readonly end: number;
+}
+
 /**
  * Walk a syntax tree and collect the definitions `spec` describes, in source
  * order. The walk is iterative: repository content is untrusted, and deeply
  * nested source must not be able to overflow the call stack.
  */
-export function extractSymbols(root: Node, spec: LanguageSpec): ParsedSymbol[] {
+export function extractSymbols(
+  root: Node,
+  spec: LanguageSpec,
+  /** Filled with each symbol's byte range, by `stableKey`. */
+  ranges?: Map<string, SymbolRange>,
+): ParsedSymbol[] {
   const symbols: ParsedSymbol[] = [];
   const seen = new Map<string, number>();
   const stack: Pending[] = [];
@@ -75,8 +92,10 @@ export function extractSymbols(root: Node, spec: LanguageSpec): ParsedSymbol[] {
     const occurrence = (seen.get(baseKey) ?? 0) + 1;
     seen.set(baseKey, occurrence);
 
+    const stableKey = occurrence === 1 ? baseKey : `${baseKey}#${occurrence}`;
+    ranges?.set(stableKey, { start: node.startIndex, end: node.endIndex });
     symbols.push({
-      stableKey: occurrence === 1 ? baseKey : `${baseKey}#${occurrence}`,
+      stableKey,
       name,
       qualifiedName,
       kind,
@@ -108,15 +127,26 @@ export interface ParsedImport extends ImportReference {
  * merged — `from x import a` and a later `from x import b` both matter.
  */
 export function extractImports(root: Node, spec: LanguageSpec): ParsedImport[] {
-  const byKey = new Map<string, { reference: ImportReference; line: number; names: string[] }>();
+  const byKey = new Map<
+    string,
+    { reference: ImportReference; line: number; names: string[]; bindings: ImportBinding[] }
+  >();
   const stack: Node[] = [root];
   for (let node = stack.pop(); node; node = stack.pop()) {
     const rule = spec.imports[node.type];
     for (const reference of rule ? rule(node) : []) {
       const key = `${reference.kind}\0${reference.specifier}`;
-      const entry = byKey.get(key) ?? { reference, line: node.startPosition.row + 1, names: [] };
+      const entry = byKey.get(key) ?? {
+        reference,
+        line: node.startPosition.row + 1,
+        names: [],
+        bindings: [],
+      };
       for (const name of reference.names ?? []) {
         if (!entry.names.includes(name)) entry.names.push(name);
+      }
+      for (const binding of reference.bindings ?? []) {
+        if (!entry.bindings.some((b) => b.local === binding.local)) entry.bindings.push(binding);
       }
       byKey.set(key, entry);
     }
@@ -126,9 +156,15 @@ export function extractImports(root: Node, spec: LanguageSpec): ParsedImport[] {
       if (child) stack.push(child);
     }
   }
-  return [...byKey.values()].map(({ reference, line, names }) =>
-    reference.names === undefined ? { ...reference, line } : { ...reference, names, line },
-  );
+  return [...byKey.values()].map(({ reference, line, names, bindings }) => {
+    return {
+      specifier: reference.specifier,
+      kind: reference.kind,
+      line,
+      ...(reference.names === undefined ? {} : { names }),
+      ...(bindings.length > 0 ? { bindings } : {}),
+    };
+  });
 }
 
 /** The declaration without its body: `function total(items: Item[]): number`. */
