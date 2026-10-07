@@ -1,6 +1,6 @@
 import { analysisChanges, analysisCommits, analysisFiles, type FossilDb } from '@codefossil/db';
 import { isTestPath } from '@codefossil/query';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { People, type EvidenceLevel } from '@codefossil/shared';
 import { fileActivity } from './file-history.js';
 import { isCodePath, isGeneratedPath } from './hotspots.js';
 
@@ -69,55 +69,8 @@ const KNOWLEDGE_SHARE = 0.25;
 const CONCENTRATION = 0.75;
 const DEFAULT_ACTIVE_DAYS = 365;
 const DEFAULT_LIMIT = 20;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
-
-/** Emails that say nothing about who wrote a commit. */
-const ANONYMOUS_EMAIL = /^(|.*noreply.*|.*@localhost.*|unknown|none)$/i;
-
-/**
- * One identity per person: names compared without case and spacing, joined
- * with every other name used with the same email address (`Tj Holowaychuk`,
- * `TJ Holowaychuk` and `visionmedia` committing as tj@…). Each person is
- * shown under the name of their latest commit.
- */
-function identities(
-  commits: readonly { authorName: string; authorEmail: string; committedAt: string }[],
-): (commit: { authorName: string }) => string {
-  const parent = new Map<string, string>();
-  const find = (key: string): string => {
-    let root = key;
-    while (parent.get(root) !== undefined && parent.get(root) !== root)
-      root = parent.get(root) ?? root;
-    parent.set(key, root);
-    return root;
-  };
-  const union = (a: string, b: string) => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  };
-  const nameKey = (name: string) => `name:${name.toLowerCase().replace(/\s+/g, ' ').trim()}`;
-  for (const commit of commits) {
-    const name = nameKey(commit.authorName);
-    find(name);
-    const email = commit.authorEmail.trim().toLowerCase();
-    if (!ANONYMOUS_EMAIL.test(email)) union(name, `email:${email}`);
-  }
-  const display = new Map<string, { name: string; at: string }>();
-  for (const commit of commits) {
-    const root = find(nameKey(commit.authorName));
-    const known = display.get(root);
-    if (!known || commit.committedAt > known.at) {
-      display.set(root, { name: commit.authorName, at: commit.committedAt });
-    }
-  }
-  return (commit) => {
-    const root = find(nameKey(commit.authorName));
-    return display.get(root)?.name ?? commit.authorName;
-  };
-}
 
 function inScope(path: string, scope: string | undefined): boolean {
   if (!scope) return true;
@@ -159,19 +112,8 @@ export function analyzeOwnership(
   const activeDays = options.activeDays ?? DEFAULT_ACTIVE_DAYS;
   const commits = analysisCommits(db, repositoryId);
   const commitById = new Map(commits.map((c) => [c.id, c]));
-  const asOf = commits.reduce<string | null>(
-    (latest, c) => (latest === null || c.committedAt > latest ? c.committedAt : latest),
-    null,
-  );
-  const personOf = identities(commits);
-  const lastSeen = new Map<string, string>();
-  for (const commit of commits) {
-    const person = personOf(commit);
-    const seen = lastSeen.get(person);
-    if (!seen || commit.committedAt > seen) lastSeen.set(person, commit.committedAt);
-  }
-  const cutoff = asOf === null ? 0 : Date.parse(asOf) - activeDays * DAY_MS;
-  const isActive = (author: string) => Date.parse(lastSeen.get(author) ?? '') >= cutoff;
+  const people = new People(commits, activeDays);
+  const asOf = people.asOf;
 
   const activity = fileActivity(
     analysisFiles(db, repositoryId),
@@ -190,7 +132,7 @@ export function analyzeOwnership(
     for (const commitId of file.commitIds) {
       const commit = commitById.get(commitId);
       if (!commit) continue;
-      const person = personOf(commit);
+      const person = people.personOf(commit);
       const entry = byAuthor.get(person) ?? { commits: 0, churn: 0, last: '' };
       byAuthor.set(person, {
         commits: entry.commits + 1,
@@ -206,8 +148,8 @@ export function analyzeOwnership(
         churn: entry.churn,
         share: round(byLines ? entry.churn / file.churn : entry.commits / file.commitIds.size),
         lastChangedAt: entry.last,
-        lastCommitAt: lastSeen.get(author) ?? entry.last,
-        active: isActive(author),
+        lastCommitAt: people.lastCommitOf(author) ?? entry.last,
+        active: people.isActive(author),
       }))
       .sort(
         (a, b) => b.share - a.share || b.commits - a.commits || a.author.localeCompare(b.author),

@@ -42,6 +42,29 @@ describe('lens text', () => {
     ).toBe('born before the indexed history · moved · 1 change');
   });
 
+  it('names the main author when they made most commits, and whether they left', () => {
+    const owner = { author: 'TJ', share: 0.6, active: false, lastCommitAt: '2014-06-01T00:00:00Z' };
+    expect(lensTitle(entry({ owner }))).toBe(
+      'born 2011 · 78 changes · 17 fixes · 64 callers · mostly TJ (left 2014)',
+    );
+    expect(lensTitle(entry({ owner: { ...owner, active: true } }))).toMatch(/mostly TJ$/);
+    expect(lensTitle(entry({ owner: { ...owner, share: 0.3 } }))).not.toContain('mostly');
+    const hover = hoverMarkdown(entry({ owner: { ...owner, author: '[x](y)' } }));
+    expect(hover).toContain('Most commits by \\[x\\]\\(y\\) (60%), last committed 2014-06-01');
+    expect(hover).toContain('no longer active');
+  });
+
+  it('drops a malformed owner but keeps the entry', () => {
+    const lens = parseLens(
+      JSON.stringify({
+        path: 'a.js',
+        headSha: null,
+        symbols: [{ ...entry(), owner: { author: 1 } }],
+      }),
+    );
+    expect(lens?.symbols[0]?.owner).toBeNull();
+  });
+
   it('keeps repository text from becoming links, HTML or formatting in hovers', () => {
     const hostile = entry({
       born: {

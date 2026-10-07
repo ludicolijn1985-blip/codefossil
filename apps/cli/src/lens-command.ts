@@ -28,6 +28,16 @@ export interface LensEntry {
   readonly changes: number;
   readonly fixes: number;
   readonly authors: number;
+  /**
+   * The person who made most of its commits, with their share and whether
+   * they still commit; null without commits. Stands in for who knows it.
+   */
+  readonly owner: {
+    readonly author: string;
+    readonly share: number;
+    readonly active: boolean;
+    readonly lastCommitAt: string | null;
+  } | null;
   readonly callers: number;
   readonly lastChange: {
     readonly sha: string;
@@ -67,6 +77,14 @@ function lensEntry(story: SymbolStory): LensEntry {
     changes: changes.length,
     fixes: story.fixes,
     authors: story.authors,
+    owner: story.owners[0]
+      ? {
+          author: story.owners[0].author,
+          share: story.owners[0].share,
+          active: story.owners[0].active,
+          lastCommitAt: story.owners[0].lastCommitAt,
+        }
+      : null,
     callers: story.callers,
     lastChange: last
       ? { sha: last.sha, date: last.committedAt.slice(0, 10), subject: last.subject }
@@ -77,7 +95,18 @@ function lensEntry(story: SymbolStory): LensEntry {
 const plural = (n: number, noun: string, many = `${noun}s`) =>
   `${String(n)} ${n === 1 ? noun : many}`;
 
-/** "born 2011 · 78 changes · 17 fixes · 64 callers", as the editor lens shows it. */
+/** "mostly Ada (left 2020)" when one person made at least half of the commits. */
+function ownerNote(entry: LensEntry): string[] {
+  const owner = entry.owner;
+  if (!owner || owner.share < MOSTLY) return [];
+  const left = owner.active ? '' : ` (left ${owner.lastCommitAt?.slice(0, 4) ?? '?'})`;
+  return [`mostly ${owner.author}${left}`];
+}
+
+/** One person made at least this share of a symbol's commits: "mostly" theirs. */
+const MOSTLY = 0.5;
+
+/** "born 2011 · 78 changes · 17 fixes · 64 callers · mostly Ada", as the editor lens shows it. */
 export function lensTitle(entry: LensEntry): string {
   return [
     entry.born ? `born ${entry.born.date.slice(0, 4)}` : 'born before the indexed history',
@@ -85,6 +114,7 @@ export function lensTitle(entry: LensEntry): string {
     plural(entry.changes, 'change'),
     ...(entry.fixes > 0 ? [plural(entry.fixes, 'fix', 'fixes')] : []),
     ...(entry.callers > 0 ? [plural(entry.callers, 'caller')] : []),
+    ...ownerNote(entry),
   ].join(' · ');
 }
 

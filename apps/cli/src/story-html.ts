@@ -144,6 +144,15 @@ export function storyHtml(
           .map((c, i) => `${i === 0 ? '' : ', then '}${lineageNote(c)}`)
           .join('')}; its history is followed back to where it was born.</p>`
       : '';
+  const owners =
+    story.owners.length > 0
+      ? `<p class="note">Most commits by ${story.owners
+          .map(
+            (o) =>
+              `${escape(o.author)} (${String(o.commits)}${!o.active && o.lastCommitAt ? `, last committed ${day(o.lastCommitAt)}` : ''})`,
+          )
+          .join(', ')}.</p>`
+      : '';
   const origin = story.introduction
     ? `Born ${born ? day(born.committedAt) : ''} (${story.introduction.level}, confidence ${story.introduction.confidence.toFixed(2)})`
     : 'Its origin lies before the indexed history';
@@ -166,6 +175,7 @@ ${back ? `<p class="back"><a href="${escape(back.href)}">← ${escape(back.label
 <p class="where">${escape(symbol.kind)} in <code>${escape(symbol.path)}:${String(symbol.startLine)}</code>${symbol.current ? '' : ' (no longer at HEAD)'} · ${escape(origin)}</p>
 <section class="stats" aria-label="At a glance">${stats}</section>
 ${copied}
+${owners}
 <figure>${timeline(events, generatedAt)}<figcaption>Every commit that changed it${last ? `, ${day(events[0]?.committedAt ?? '')} – ${day(last.committedAt)}` : ''}. Raised orange dots are fixes.</figcaption></figure>
 <ol>${[...events].reverse().map(eventItem).join('')}</ol>
 <footer>

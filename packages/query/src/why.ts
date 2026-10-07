@@ -1,11 +1,12 @@
 import {
+  analysisCommits,
   currentFileCoverage,
   entityKey,
   findEvidenceId,
   type EntityRecord,
   type FossilDb,
 } from '@codefossil/db';
-import { issueReference, resolutionBasis, type EntityRef } from '@codefossil/shared';
+import { issueReference, People, resolutionBasis, type EntityRef } from '@codefossil/shared';
 import {
   commitContext,
   commitEvidence,
@@ -282,6 +283,47 @@ function whySymbol(
       : [],
   );
   parts.statements.push(historyStatement('It', changes, 'DERIVED'));
+  const owners = ownersStatement(db, repositoryId, ref);
+  if (owners) parts.statements.push(owners);
+}
+
+/**
+ * Who made a symbol's commits, matched across name spellings and email
+ * addresses, and whether the main author still commits to the repository.
+ */
+function ownersStatement(db: FossilDb, repositoryId: number, ref: EntityRef): Statement | null {
+  const touching = linked(db, repositoryId, ref, 'MODIFIES', 'in').flatMap(({ record }) =>
+    record.type === 'commit' ? [record] : [],
+  );
+  if (touching.length === 0) return null;
+  const all = analysisCommits(db, repositoryId);
+  const people = new People(all);
+  const byId = new Map(all.map((c) => [c.id, c]));
+  const counts = new Map<string, CommitRecord[]>();
+  for (const commit of touching) {
+    const person = people.personOf(byId.get(commit.id) ?? commit);
+    counts.set(person, [...(counts.get(person) ?? []), commit]);
+  }
+  const ranked = [...counts].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  const [owner, commits] = ranked[0] ?? ['', []];
+  const latest = [...commits].sort((a, b) => b.committedAt.localeCompare(a.committedAt))[0];
+  const last = people.lastCommitOf(owner);
+  const activity = last
+    ? people.isActive(owner)
+      ? ` ${owner} still commits to the repository (last on ${day(last)}).`
+      : ` ${owner} has not committed in the year before the latest commit (last on ${day(last)}).`
+    : '';
+  const evidenceId = latest ? commitEvidence(db, repositoryId, latest) : undefined;
+  const peopleText = ranked.length === 1 ? '1 person' : `${String(ranked.length)} people`;
+  return {
+    text:
+      `Its ${String(touching.length)} commit${touching.length === 1 ? ' was' : 's were'} made by ${peopleText}, ` +
+      `most by ${owner} (${String(commits.length)}).${activity}`,
+    role: 'authors',
+    level: 'DERIVED',
+    confidence: 1,
+    evidenceIds: evidenceId === undefined ? [] : [evidenceId],
+  };
 }
 
 function whyFile(

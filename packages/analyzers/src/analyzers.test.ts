@@ -443,6 +443,9 @@ describe('symbol story', () => {
         authors: 1,
         callers: 0,
       });
+      // One author made all three commits and is the latest committer, so still active.
+      expect(story?.owners).toHaveLength(1);
+      expect(story?.owners[0]).toMatchObject({ commits: 3, share: 1, active: true });
       expect(buildSymbolStory(fossil.db, repositoryId, 999_999)).toBeNull();
     } finally {
       fossil.close();

@@ -12,7 +12,7 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import { copyChain } from '@codefossil/query';
-import { lineageKind, type EvidenceLevel, type LineageKind } from '@codefossil/shared';
+import { lineageKind, People, type EvidenceLevel, type LineageKind } from '@codefossil/shared';
 import { classifyDefects, type DefectSignal } from './defects.js';
 
 /** One commit in a symbol's life. */
@@ -33,6 +33,20 @@ export interface StoryEvent {
     readonly title: string;
   }[];
 }
+
+/** One person's part in a symbol's history. */
+export interface SymbolOwner {
+  readonly author: string;
+  readonly commits: number;
+  /** Share of the symbol's commits, 0–1. */
+  readonly share: number;
+  readonly active: boolean;
+  /** Their latest commit anywhere in the repository. */
+  readonly lastCommitAt: string | null;
+}
+
+/** People listed per symbol. */
+const OWNERS_SHOWN = 3;
 
 /** Everything a one-page history of a symbol shows, from the index alone. */
 export interface SymbolStory {
@@ -56,6 +70,12 @@ export interface SymbolStory {
   /** Oldest first: the introduction, any copies, then every change. */
   readonly events: readonly StoryEvent[];
   readonly authors: number;
+  /**
+   * The people who made its commits, most commits first (at most three), and
+   * whether each still commits. Who made the changes stands in for who knows
+   * the code: an inference.
+   */
+  readonly owners: readonly SymbolOwner[];
   readonly fixes: number;
   /** Symbols and files that call it (statically resolved). */
   readonly callers: number;
@@ -69,11 +89,14 @@ export class StoryContext {
   readonly commitById: ReadonlyMap<number, AnalysisCommit>;
   readonly defects: ReadonlyMap<number, DefectSignal>;
   readonly repository: SymbolStory['repository'];
+  /** The repository's authors, one per person, with their activity. */
+  readonly people: People;
   private readonly discussionsByCommit = new Map<number, StoryEvent['discussions'][number][]>();
 
   constructor(db: FossilDb, repositoryId: number) {
     const commits = analysisCommits(db, repositoryId);
     this.commitById = new Map(commits.map((c) => [c.id, c]));
+    this.people = new People(commits);
     const discussions = commitDiscussions(db, repositoryId);
     this.defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
     for (const d of discussions) {
@@ -134,7 +157,7 @@ export function buildSymbolStory(
       sha: commit.sha,
       subject: commit.subject,
       committedAt: commit.committedAt,
-      authorName: commit.authorName,
+      authorName: context.people.personOf(commit),
       kind,
       fix: signal ? { reason: signal.reason, level: signal.level } : null,
       discussions: discussionsOf(commitId),
@@ -184,8 +207,25 @@ export function buildSymbolStory(
     })),
     events,
     authors: new Set(events.map((e) => e.authorName)).size,
+    owners: ownersOf(events, context.people),
     fixes: events.filter((e) => e.fix !== null).length,
     callers: incomingRelations(db, repositoryId, ref).filter((row) => row.relation === 'CALLS')
       .length,
   };
+}
+
+/** The people behind a symbol's commits, most first. */
+function ownersOf(events: readonly StoryEvent[], people: People): SymbolOwner[] {
+  const counts = new Map<string, number>();
+  for (const e of events) counts.set(e.authorName, (counts.get(e.authorName) ?? 0) + 1);
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, OWNERS_SHOWN)
+    .map(([author, commits]) => ({
+      author,
+      commits,
+      share: Math.round((commits / Math.max(1, events.length)) * 1000) / 1000,
+      active: people.isActive(author),
+      lastCommitAt: people.lastCommitOf(author),
+    }));
 }

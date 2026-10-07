@@ -64,6 +64,7 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
       'FACT 1.00 It is part of pull request #421 "Calculate VAT", merged on 2026-01-02.',
       'DERIVED 0.90 Pull request #421 resolves issue #398 "VAT missing on invoices" (closing keyword; confidence 0.90).',
       `DERIVED 1.00 It changed 1 time since, most recently in commit ${short(scenario.rounding)} "Round VAT" by Ada Lovelace on 2026-01-01.`,
+      'DERIVED 1.00 Its 2 commits were made by 1 person, most by Ada Lovelace (2). Ada Lovelace still commits to the repository (last on 2026-01-01).',
     ]);
     // Never more certain than the weakest statement.
     expect(why.confidence).toBeCloseTo(0.9);
@@ -79,6 +80,7 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
       'ast_node: introducing commit',
       'commit: introducing commit',
       'pull_request: pull request carrying the change; resolved issue',
+      'commit: authors',
     ]);
     expect(why.evidence.every((e) => e.locator.length > 0)).toBe(true);
   });

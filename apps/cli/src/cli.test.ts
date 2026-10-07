@@ -1294,6 +1294,7 @@ describe('codefossil why --html', () => {
       /<script|<link|https?:\/\/(?!github\.com\/ludicolijn1985-blip\/codefossil)/,
     );
     expect(html).toContain('class="badge fix-badge"');
+    expect(html).toMatch(/Most commits by Ada Lovelace \(\d+\)\./);
   });
 
   it('draws only symbols', async () => {
@@ -1328,15 +1329,26 @@ describe('codefossil lens', () => {
   it('summarises every function of a file in one line', async () => {
     const root = repo?.root ?? '';
     const text = await fossil(root, 'lens', join(root, 'src/round.ts'));
-    expect(text.stdout).toMatch(/^ +1 {2}round {2}born \d{4} · 1 change · 1 fix · 1 caller\n$/);
+    expect(text.stdout).toMatch(
+      /^ +1 {2}round {2}born \d{4} · 1 change · 1 fix · 1 caller · mostly Ada Lovelace\n$/,
+    );
 
     const json = JSON.parse((await fossil(root, 'lens', 'src/tax.ts', '--json')).stdout) as {
       path: string;
-      symbols: { qualifiedName: string; born: { subject: string; issues: string[] } | null }[];
+      symbols: {
+        qualifiedName: string;
+        born: { subject: string; issues: string[] } | null;
+        owner: { author: string; share: number; active: boolean } | null;
+      }[];
     };
     expect(json.path).toBe('src/tax.ts');
     expect(json.symbols.map((s) => s.qualifiedName)).toEqual(['rate']);
     expect(json.symbols[0]?.born?.subject).toBe('Add tax (#3)');
+    expect(json.symbols[0]?.owner).toMatchObject({
+      author: 'Ada Lovelace',
+      share: 1,
+      active: true,
+    });
   });
 });
 

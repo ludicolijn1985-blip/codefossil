@@ -5,6 +5,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Who wrote this function.** `why` states how many people made a symbol's commits, who made
+  most, and whether they still commit; the lens (`codefossil lens`, MCP, VS Code) adds
+  "mostly Ada (left 2020)" when one person made at least half of them, and the history page names
+  the main authors. People are matched across name spellings and email addresses, as in `owners`.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added
