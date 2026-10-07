@@ -31,17 +31,19 @@ npm from installing the SQLite driver's binary. There, run
 
 ## What you can ask
 
-| Command                                 | Answers                                                                         |
-| --------------------------------------- | ------------------------------------------------------------------------------- |
-| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since |
-| `codefossil impact lib/utils.js`        | Everything that depends on it, directly and transitively, and which are tests   |
-| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it      |
-| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components  |
-| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions) |
-| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                    |
-| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests      |
-| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies            |
-| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)            |
+| Command                                 | Answers                                                                           |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since   |
+| `codefossil impact res.json`            | Which functions call it, which files import it, transitively, and which are tests |
+| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it        |
+| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components    |
+| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)   |
+| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since     |
+| `codefossil why res.send --html x.html` | A one-page, shareable history of a function: birth, moves, every change, fixes    |
+| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                      |
+| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests        |
+| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies              |
+| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)              |
 
 Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
 `#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
@@ -70,10 +72,22 @@ Cursor, in `.cursor/mcp.json` (VS Code: `.vscode/mcp.json`, with `"servers"` ins
 }
 ```
 
-The agent gets seven read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
-`dead_intent` and `change_report` (what a branch touches, before it is committed). They run
+The agent gets nine read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
+`dead_intent`, `fossils`, `lens` and `change_report` (what a branch's commits touch). They run
 offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
 CLI, so the agent can tell what is known from what is guessed.
+
+## Share a function's life story
+
+```bash
+codefossil why res.send --html res-send.html
+```
+
+One self-contained page, with no scripts or external files: when the function was born (followed
+back through moves), every commit that changed it on a timeline, which of them were fixes, the
+issues behind them and how many places call it.
+
+![The life of res.send in Express](docs/images/story-res-send.png)
 
 ## Evidence, not guesses
 
@@ -133,6 +147,14 @@ codefossil index            # syncs issues, pull requests and reviews incrementa
 Now `why` can say "introduced by PR #412, which resolves issue #398", and hotspots count issues
 labelled as bugs instead of relying on commit wording.
 
+## In your editor
+
+The VS Code extension in [`apps/vscode`](apps/vscode) shows one line of history above every
+function, class and method — `born 2011 · 78 changes · 17 fixes · 64 callers` — with the
+birth commit and latest change on hover. It talks to one local `codefossil mcp` process per
+workspace, so nothing leaves your machine. Any editor can do the same with
+`codefossil lens <file> --json`.
+
 ## Web UI
 
 ![Investigating a symbol in the web UI](docs/images/web-investigate.png)
@@ -163,8 +185,9 @@ unless you allow it, and every AI claim is INFERRED and capped at confidence 0.6
 
 ## Languages
 
-Symbols and imports: **TypeScript, JavaScript (ES modules, CommonJS and prototype style), Python,
-Go and Rust**, parsed with Tree-sitter. History, hotspots and timelines work for any file in any
+Symbols, calls and imports: **TypeScript, JavaScript (ES modules, CommonJS, prototype style and
+IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. C#
+`using` directives name namespaces, which are not tied to files, so they stay unresolved. History, hotspots and timelines work for any file in any
 language. Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`.
 
 More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -180,8 +203,10 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 
 ## Known limitations
 
-- **File-level impact.** `impact` is file-level: call edges are not indexed yet, so a file that
-  imports the defining file counts as a dependent even if it never calls the symbol.
+- **Static calls only.** `impact` lists callers from calls resolved at HEAD where one definition
+  fits: the method's own class, the definition an import binds, one in the calling file, or a
+  unique qualified name (INFERRED). Calls through variables, callbacks and dynamic dispatch are not
+  seen, and files are still counted when they import the defining file.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
 - **HEAD only.** Only history reachable from HEAD is indexed. When HEAD leaves the indexed
@@ -194,14 +219,17 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   clone does not have are kept, since they cannot be told apart from older history: index CI runs
   with `fetch-depth: 0`. With automatic indexing off (`CODEFOSSIL_AUTO_INDEX=0`), `status`,
   `doctor`, the report, the API status and the web UI say so instead.
-- **Wrapped modules.** Functions defined inside a wrapper (`(function () { exports.x = … })()`, UMD)
-  are not symbols yet; module-level definitions are.
-- **Symbol identity.** A symbol is identified by kind and qualified name within a file. A rename
-  or a move to another file looks like one symbol removed and another introduced.
+- **Wrapped modules.** Definitions inside a module-level wrapper (an IIFE, `.call(this)` or a UMD
+  factory) count as module level; definitions inside other functions or callbacks are local and are
+  not symbols.
+- **Symbol identity.** A symbol is identified by kind and qualified name within a file. Code
+  copied or moved to another file with identical content (three lines or more) is followed back to
+  its original; a renamed symbol, or one edited while it moved, looks like a new one.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
-  decide from files and manifests: Python modules whose import name differs from the distribution,
-  and Go `replace` directives. TypeScript `paths` and `baseUrl` come from the nearest
-  `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
+  decide from files and manifests. Python import names that differ from their distribution are
+  matched only for a curated list of well-known packages (`yaml` → PyYAML); Go `replace` directives
+  are followed to directories inside the repository. TypeScript `paths` and `baseUrl` come from the
+  nearest `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
 - **GitHub links.** Closing keywords (`Fixes #12`) are DERIVED at confidence 0.9, and only
   same-repository references are linked.
 

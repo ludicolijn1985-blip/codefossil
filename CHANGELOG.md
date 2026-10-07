@@ -5,16 +5,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) seven
-  read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`
-  and `change_report`, with the same evidence and labels as the CLI.
-- **Changed code that broke before.** `codefossil report --base` and the pull-request comment
-  now lead with the functions a change modifies whose history holds earlier fixes, with those
-  fixes, their issues and how many files depend on them. Repository-wide sections fold away on
-  pull requests.
-
 ### Fixed
 
 - **Commits outside HEAD's history.** The index only ever added commits, so after a reset, a
@@ -26,6 +16,56 @@ and the project uses [Semantic Versioning](https://semver.org/).
   index), `status`, `doctor`, the Markdown report, `GET /api/repositories/:id/status` (new `head`
   field) and the web UI warn that HEAD left the indexed history. Existing indexes are re-indexed
   once on the next question.
+
+## [0.2.0] - 2026-10-07
+
+### Added
+
+- **MCP server.** `codefossil mcp` gives AI coding agents (Claude Code, Cursor, VS Code) nine
+  read-only, offline tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`,
+  `fossils`, `lens` and `change_report`, with the same evidence and labels as the CLI.
+- **Changed code that broke before.** `codefossil report --base` and the pull-request comment
+  now lead with the functions a change modifies whose history holds earlier fixes, with those
+  fixes, their issues and how many files depend on them. Repository-wide sections fold away on
+  pull requests.
+- **Fossils.** `codefossil fossils` lists the oldest functions, methods and classes still present,
+  with the commit that introduced each and what changed since, or (`--order untouched`) the code
+  that has gone longest without a change.
+- **VS Code extension** (`apps/vscode`). One line of history above every function, class and
+  method, details on hover, and the full history on a click, from one local `codefossil mcp`
+  process per workspace. `codefossil lens <file> [--json]` and the MCP `lens` tool provide the data
+  for any editor.
+- **Fossil sites.** `codefossil site <dir>` writes a static website about a repository: the oldest
+  code, code untouched the longest, functions fixed most often, hotspots and dead intent, with a
+  history page for every function it names. `site/` holds the demo for Express and React.
+- **Shareable history pages.** `codefossil why <symbol> --html <file>` writes one
+  self-contained page with the symbol's birth, moves, every change on a timeline, its fixes,
+  linked issues and callers.
+- **Functions fixed most often.** `codefossil hotspots --symbols` ranks functions, methods and
+  classes by the fix commits that changed them; on Express, `res.send` leads with 17.
+- **Copied and moved code.** A new function, method or class whose content is identical to one in
+  another file is recorded as copied from it (`COPIED_FROM`, DERIVED, confidence 0.9) instead of
+  introduced; `why` and `fossils` follow it back to the original. A name defined once at HEAD now
+  resolves to that definition even when removed copies share the name.
+
+- **Call graph.** Call sites and import bindings are read at HEAD and resolved to `CALLS` edges
+  where exactly one definition fits: the method's own class, the definition an import binds, one
+  in the calling file (all DERIVED), or a unique qualified name (INFERRED). Parameters and locals
+  that shadow a name, and `this` inside nested functions, are taken into account. `impact` on a
+  symbol lists the functions that call it, directly and transitively, before the files that
+  import it.
+- **Wrapped modules.** Definitions inside a module-level IIFE (`(function () { … })()`,
+  `!function () { … }()`, `.call(this)`) or a UMD factory are symbols, as at the top of a file.
+- **Java, C#, Ruby and PHP.** Symbols, history, call sites and imports for four more languages.
+  Java imports resolve to class files and packages by path, Ruby `require`/`require_relative` and
+  PHP `require`/`use` (PSR-4 paths) to repository files, standard libraries count as built-in;
+  C# namespaces stay unresolved since they are not tied to files.
+- **Import resolution.** Go `replace` directives that point at a directory of the repository
+  resolve to its packages. Python imports from the standard library are recognised as built-in
+  (including modules removed in 3.12 and 3.13), and well-known import names that differ from their
+  distribution (`yaml`, `PIL`, `sklearn`, `bs4`, …) resolve to the declared distribution.
+
+### Fixed
 
 - **Symbol history on branchy repositories.** A symbol version is now diffed against the same file
   in the commit's first parent, including versions only a merge produced. Before, it was diffed
@@ -61,4 +101,5 @@ First public release.
 - **Local UI and API.** A loopback-only JSON API (`codefossil serve`) and a local web UI.
 - **Optional AI layer** (Ollama or Anthropic), off by default, held to the evidence it is shown.
 
+[0.2.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.1.0

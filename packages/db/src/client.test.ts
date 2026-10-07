@@ -7,6 +7,7 @@ import * as schema from './schema.js';
 import { openTestDatabase } from './test-helpers.js';
 
 const EXPECTED_TABLES = [
+  'calls',
   'commit_parents',
   'commits',
   'dependencies',

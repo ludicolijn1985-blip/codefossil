@@ -3,12 +3,23 @@ import { createRequire } from 'node:module';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Language, Parser } from 'web-tree-sitter';
-import { extractImports, extractSymbols, type ParsedImport, type ParsedSymbol } from './extract.js';
+import { callCollector, type ParsedCall } from './calls.js';
+import {
+  extractSymbols,
+  importCollector,
+  type ParsedImport,
+  type ParsedSymbol,
+  type SymbolRange,
+} from './extract.js';
 import { ecmascript } from './languages/ecmascript.js';
 import { go } from './languages/go.js';
 import { python } from './languages/python.js';
+import { csharp } from './languages/csharp.js';
+import { java } from './languages/java.js';
+import { php } from './languages/php.js';
 import { rust } from './languages/rust.js';
-import type { GrammarId, LanguageSpec } from './spec.js';
+import { ruby } from './languages/ruby.js';
+import { visitNodes, type GrammarId, type LanguageSpec } from './spec.js';
 
 const require = createRequire(import.meta.url);
 
@@ -31,6 +42,10 @@ const GRAMMARS: Readonly<
   python: { wasm: 'tree-sitter-python/tree-sitter-python.wasm', spec: python },
   go: { wasm: 'tree-sitter-go/tree-sitter-go.wasm', spec: go },
   rust: { wasm: 'tree-sitter-rust/tree-sitter-rust.wasm', spec: rust },
+  java: { wasm: 'tree-sitter-java/tree-sitter-java.wasm', spec: java },
+  csharp: { wasm: 'tree-sitter-c-sharp/tree-sitter-c_sharp.wasm', spec: csharp },
+  ruby: { wasm: 'tree-sitter-ruby/tree-sitter-ruby.wasm', spec: ruby },
+  php: { wasm: 'tree-sitter-php/tree-sitter-php.wasm', spec: php },
 };
 
 const EXTENSION_GRAMMARS: Readonly<Record<string, GrammarId>> = {
@@ -45,6 +60,10 @@ const EXTENSION_GRAMMARS: Readonly<Record<string, GrammarId>> = {
   py: 'python',
   go: 'go',
   rs: 'rust',
+  java: 'java',
+  cs: 'csharp',
+  rb: 'ruby',
+  php: 'php',
 };
 
 /** The grammar that parses `path`, or null when symbols cannot be extracted from it. */
@@ -61,10 +80,20 @@ export function grammarForPath(path: string): GrammarId | null {
  */
 export const MAX_SOURCE_LENGTH = 1_000_000;
 
+export interface ExtractOptions {
+  /**
+   * Also collect imports and calls (default true). Reading history only needs
+   * symbols, and skipping the extra walk keeps indexing large histories fast.
+   */
+  readonly references?: boolean;
+}
+
 export interface ExtractResult {
   readonly symbols: readonly ParsedSymbol[];
-  /** Module references in source order, unresolved. */
+  /** Module references in source order, unresolved; empty when references were not asked for. */
   readonly imports: readonly ParsedImport[];
+  /** Distinct calls per calling symbol, unresolved; empty when references were not asked for. */
+  readonly calls: readonly ParsedCall[];
   /** True when Tree-sitter had to recover from syntax errors; symbols may be incomplete. */
   readonly hasSyntaxErrors: boolean;
 }
@@ -79,15 +108,33 @@ let runtime: Promise<void> | undefined;
 export class SymbolExtractor {
   private readonly parsers = new Map<GrammarId, Promise<Parser>>();
 
-  async extract(source: string, grammar: GrammarId): Promise<ExtractResult | null> {
+  async extract(
+    source: string,
+    grammar: GrammarId,
+    options: ExtractOptions = {},
+  ): Promise<ExtractResult | null> {
     if (source.length > MAX_SOURCE_LENGTH) return null;
     const parser = await this.parserFor(grammar);
     const tree = parser.parse(source);
     if (!tree) throw new Error(`Tree-sitter returned no tree for ${grammar} source`);
     try {
+      const { spec } = GRAMMARS[grammar];
+      const ranges = new Map<string, SymbolRange>();
+      const symbols = extractSymbols(tree.rootNode, spec, ranges);
+      if (options.references === false) {
+        return { symbols, imports: [], calls: [], hasSyntaxErrors: tree.rootNode.hasError };
+      }
+      // Imports and calls share one walk of the tree.
+      const imports = importCollector(spec);
+      const calls = callCollector(spec, ranges);
+      visitNodes(tree.rootNode, new Set([...imports.types, ...calls.types]), (node) => {
+        if (imports.types.has(node.type)) imports.visit(node);
+        if (calls.types.has(node.type)) calls.visit(node);
+      });
       return {
-        symbols: extractSymbols(tree.rootNode, GRAMMARS[grammar].spec),
-        imports: extractImports(tree.rootNode, GRAMMARS[grammar].spec),
+        symbols,
+        imports: imports.result(),
+        calls: calls.result(),
         hasSyntaxErrors: tree.rootNode.hasError,
       };
     } finally {

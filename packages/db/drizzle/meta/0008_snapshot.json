@@ -1,8 +1,8 @@
 {
-  "id": "592896bd-4ce5-49ad-9d4b-8cd11efc3815",
-  "prevId": "114ee8e7-07a2-480c-8762-690073ff53f1",
   "version": "6",
   "dialect": "sqlite",
+  "id": "9b610441-2efd-4852-aa23-c82183a55f4b",
+  "prevId": "114ee8e7-07a2-480c-8762-690073ff53f1",
   "tables": {
     "commit_parents": {
       "name": "commit_parents",
@@ -42,15 +42,15 @@
         "commit_parents_commit_id_commits_id_fk": {
           "name": "commit_parents_commit_id_commits_id_fk",
           "tableFrom": "commit_parents",
+          "tableTo": "commits",
           "columnsFrom": [
             "commit_id"
           ],
-          "tableTo": "commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -147,15 +147,15 @@
         "commits_repository_id_repositories_id_fk": {
           "name": "commits_repository_id_repositories_id_fk",
           "tableFrom": "commits",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -248,15 +248,15 @@
         "dependencies_repository_id_repositories_id_fk": {
           "name": "dependencies_repository_id_repositories_id_fk",
           "tableFrom": "dependencies",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -332,15 +332,15 @@
         "evidence_repository_id_repositories_id_fk": {
           "name": "evidence_repository_id_repositories_id_fk",
           "tableFrom": "evidence",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -435,28 +435,28 @@
         "file_changes_commit_id_commits_id_fk": {
           "name": "file_changes_commit_id_commits_id_fk",
           "tableFrom": "file_changes",
+          "tableTo": "commits",
           "columnsFrom": [
             "commit_id"
           ],
-          "tableTo": "commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "file_changes_file_id_files_id_fk": {
           "name": "file_changes_file_id_files_id_fk",
           "tableFrom": "file_changes",
+          "tableTo": "files",
           "columnsFrom": [
             "file_id"
           ],
-          "tableTo": "files",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -530,41 +530,41 @@
         "files_repository_id_repositories_id_fk": {
           "name": "files_repository_id_repositories_id_fk",
           "tableFrom": "files",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "files_first_seen_commit_id_commits_id_fk": {
           "name": "files_first_seen_commit_id_commits_id_fk",
           "tableFrom": "files",
+          "tableTo": "commits",
           "columnsFrom": [
             "first_seen_commit_id"
           ],
-          "tableTo": "commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "files_last_seen_commit_id_commits_id_fk": {
           "name": "files_last_seen_commit_id_commits_id_fk",
           "tableFrom": "files",
+          "tableTo": "commits",
           "columnsFrom": [
             "last_seen_commit_id"
           ],
-          "tableTo": "commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -651,28 +651,28 @@
         "imports_file_id_files_id_fk": {
           "name": "imports_file_id_files_id_fk",
           "tableFrom": "imports",
+          "tableTo": "files",
           "columnsFrom": [
             "file_id"
           ],
-          "tableTo": "files",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "imports_evidence_id_evidence_id_fk": {
           "name": "imports_evidence_id_evidence_id_fk",
           "tableFrom": "imports",
+          "tableTo": "evidence",
           "columnsFrom": [
             "evidence_id"
           ],
-          "tableTo": "evidence",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -754,15 +754,15 @@
         "incidents_repository_id_repositories_id_fk": {
           "name": "incidents_repository_id_repositories_id_fk",
           "tableFrom": "incidents",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -872,15 +872,15 @@
         "investigations_repository_id_repositories_id_fk": {
           "name": "investigations_repository_id_repositories_id_fk",
           "tableFrom": "investigations",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1007,15 +1007,15 @@
         "issues_repository_id_repositories_id_fk": {
           "name": "issues_repository_id_repositories_id_fk",
           "tableFrom": "issues",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1104,15 +1104,15 @@
         "provider_connections_repository_id_repositories_id_fk": {
           "name": "provider_connections_repository_id_repositories_id_fk",
           "tableFrom": "provider_connections",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1150,15 +1150,15 @@
         "pull_request_commits_pull_request_id_pull_requests_id_fk": {
           "name": "pull_request_commits_pull_request_id_pull_requests_id_fk",
           "tableFrom": "pull_request_commits",
+          "tableTo": "pull_requests",
           "columnsFrom": [
             "pull_request_id"
           ],
-          "tableTo": "pull_requests",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1319,15 +1319,15 @@
         "pull_requests_repository_id_repositories_id_fk": {
           "name": "pull_requests_repository_id_repositories_id_fk",
           "tableFrom": "pull_requests",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1452,15 +1452,15 @@
         "relations_repository_id_repositories_id_fk": {
           "name": "relations_repository_id_repositories_id_fk",
           "tableFrom": "relations",
+          "tableTo": "repositories",
           "columnsFrom": [
             "repository_id"
           ],
-          "tableTo": "repositories",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1623,15 +1623,15 @@
         "reviews_pull_request_id_pull_requests_id_fk": {
           "name": "reviews_pull_request_id_pull_requests_id_fk",
           "tableFrom": "reviews",
+          "tableTo": "pull_requests",
           "columnsFrom": [
             "pull_request_id"
           ],
-          "tableTo": "pull_requests",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1685,34 +1685,41 @@
             "commit_id"
           ],
           "isUnique": true
+        },
+        "symbol_versions_content_hash_idx": {
+          "name": "symbol_versions_content_hash_idx",
+          "columns": [
+            "content_hash"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
         "symbol_versions_symbol_id_symbols_id_fk": {
           "name": "symbol_versions_symbol_id_symbols_id_fk",
           "tableFrom": "symbol_versions",
+          "tableTo": "symbols",
           "columnsFrom": [
             "symbol_id"
           ],
-          "tableTo": "symbols",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "symbol_versions_commit_id_commits_id_fk": {
           "name": "symbol_versions_commit_id_commits_id_fk",
           "tableFrom": "symbol_versions",
+          "tableTo": "commits",
           "columnsFrom": [
             "commit_id"
           ],
-          "tableTo": "commits",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1830,15 +1837,15 @@
         "symbols_file_id_files_id_fk": {
           "name": "symbols_file_id_files_id_fk",
           "tableFrom": "symbols",
+          "tableTo": "files",
           "columnsFrom": [
             "file_id"
           ],
-          "tableTo": "files",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1889,28 +1896,28 @@
         "tests_symbol_id_symbols_id_fk": {
           "name": "tests_symbol_id_symbols_id_fk",
           "tableFrom": "tests",
+          "tableTo": "symbols",
           "columnsFrom": [
             "symbol_id"
           ],
-          "tableTo": "symbols",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "tests_file_id_files_id_fk": {
           "name": "tests_file_id_files_id_fk",
           "tableFrom": "tests",
+          "tableTo": "files",
           "columnsFrom": [
             "file_id"
           ],
-          "tableTo": "files",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1921,9 +1928,9 @@
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {}

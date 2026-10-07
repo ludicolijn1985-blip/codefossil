@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CODEFOSSIL · fossil records</title>
+<meta name="description" content="What a codebase's own Git history says about its code: the oldest functions still running, what breaks most often, and why code exists. Built with CODEFOSSIL.">
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--accent:#2f7d5b;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--accent:#4fbf8c;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:56px 20px 72px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(36px,7vw,64px)/1.04 ui-sans-serif,system-ui,sans-serif;margin:16px 0 14px;letter-spacing:-.02em}
+.lede{font-size:20px;color:var(--muted);max-width:720px;margin:0 0 36px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+a.card{display:block;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;transition:transform .15s ease,border-color .15s ease}
+a.card:hover,a.card:focus-visible{transform:translateY(-2px);border-color:var(--accent);outline:none}
+.card h2{font:700 26px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace;margin:0 0 4px}
+.card .facts{color:var(--muted);font-size:14px;margin:0 0 16px}
+.card .find{margin:0;border-left:3px solid var(--accent);padding-left:12px}
+.card .find code{font:600 14px ui-monospace,monospace}
+.card .more{display:inline-block;margin-top:16px;font-weight:600;color:var(--accent)}
+section{margin-top:56px}
+h3{font-size:22px;margin:0 0 10px}
+pre{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow-x:auto;font:15px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;margin:0 0 12px}
+ul.levels{padding-left:20px;margin:0}
+ul.levels b{font-family:ui-monospace,monospace}
+footer{margin-top:56px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:18px}
+footer a,section a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<p class="kicker">CODEFOSSIL · fossil records</p>
+<h1>What does a codebase remember?</h1>
+<p class="lede">Every function has a history: when it was born, what changed it, what broke it, who depends on it. These pages were built from two well-known repositories' own Git history, with every claim labelled as observed, computed or inferred.</p>
+
+<div class="cards">
+<a class="card" href="express/index.html">
+<h2>expressjs/express</h2>
+<p class="facts">6,173 commits · 394 authors · since 2009</p>
+<p class="find"><code>res.get</code> has not changed a character since 2011. <code>res.send</code> has been fixed 17 times, most recently in 2026.</p>
+<span class="more">Open the fossil record →</span>
+</a>
+<a class="card" href="react/index.html">
+<h2>facebook/react</h2>
+<p class="facts">21,712 commits · since the first public release in 2013</p>
+<p class="find"><code>isEventSupported</code> shipped in the initial public release and is still there, 13 years later.</p>
+<span class="more">Open the fossil record →</span>
+</a>
+</div>
+
+<section>
+<h3>Make one for your repository</h3>
+<pre>cd your-repository
+npx codefossil site fossil-site</pre>
+<p>Or ask about one function: <code>npx codefossil why parseConfig</code>. Everything runs on your machine; no account, no upload, no AI needed.</p>
+</section>
+
+<section>
+<h3>How sure is it?</h3>
+<ul class="levels">
+<li><b>FACT</b>: read directly from Git (this commit exists, this function is defined here).</li>
+<li><b>DERIVED</b>: computed from facts (this commit introduced it; it changed 78 times).</li>
+<li><b>INFERRED</b>: a heuristic reading (this commit looks like a fix; this workaround may be obsolete).</li>
+</ul>
+</section>
+
+<footer>
+Built with <a href="https://github.com/ludicolijn1985-blip/codefossil">CODEFOSSIL</a>, open source under the MIT license. Snapshots: Express at <code>7ef9844</code> (2026-09-28), React at <code>17eca7b</code> (2026-10-06).
+</footer>
+</main>
+</body>
+</html>

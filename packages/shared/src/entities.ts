@@ -29,6 +29,8 @@ export const RELATION_TYPES = [
   'IMPLEMENTED_BY',
   'REFERENCES',
   'INTRODUCED_BY',
+  /** symbol → symbol: identical content appeared in another file (a copy or a move). */
+  'COPIED_FROM',
   'REVIEWED_IN',
   'CAUSED',
   'FIXED_BY',

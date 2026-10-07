@@ -83,7 +83,8 @@ function formatGraphSummary(graph: RunIndexResult['dependencies']): string {
     `Dependency graph (${graph.mode}): ${plural(graph.importEdges, 'file import edge')}, ` +
     `${plural(graph.dependencyEdges, 'package dependency edge')}, ` +
     `${plural(graph.dependencies, 'declared dependency', 'declared dependencies')}; ` +
-    `${plural(graph.unresolvedImports, 'import')} left unresolved.\n`
+    `${plural(graph.unresolvedImports, 'import')} left unresolved; ` +
+    `${plural(graph.callEdges, 'call edge')} from ${plural(graph.calls, 'call site')}.\n`
   );
 }
 

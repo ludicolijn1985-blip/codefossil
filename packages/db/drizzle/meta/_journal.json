@@ -61,8 +61,29 @@
     {
       "idx": 8,
       "version": "6",
-      "when": 1791305302999,
-      "tag": "0008_prune_unreachable",
+      "when": 1791292727092,
+      "tag": "0008_symbol_copies",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791307306572,
+      "tag": "0009_call_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791308635751,
+      "tag": "0010_call_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791308636751,
+      "tag": "0011_prune_unreachable",
       "breakpoints": true
     }
   ]

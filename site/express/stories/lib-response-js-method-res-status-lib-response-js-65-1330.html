@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>res.status · try</title>
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
+.where{color:var(--muted);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
+.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
+.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
+figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
+figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
+svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
+circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
+ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
+.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
+.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
+time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
+.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
+footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../index.html">← expressjs/express</a></p>
+<p class="kicker">CODEFOSSIL · try</p>
+<h1>res.status</h1>
+<p class="where">method in <code>lib/response.js:65</code> · Born 2011-06-28 (DERIVED, confidence 1.00)</p>
+<section class="stats" aria-label="At a glance"><div class="stat"><b>15</b><span>years old</span></div><div class="stat"><b>5</b><span>changes</span></div><div class="stat"><b>1</b><span>fix</span></div><div class="stat"><b>4</b><span>authors</span></div><div class="stat"><b>23</b><span>callers</span></div></section>
+
+<figure><svg viewBox="0 0 960 120" role="img" aria-label="Timeline of every change"><line x1="28" x2="932" y1="81" y2="81" class="axis"/><line x1="58.2" x2="58.2" y1="78" y2="84" class="tick"/><text x="58.2" y="100" class="year">2012</text><line x1="117.5" x2="117.5" y1="78" y2="84" class="tick"/><text x="117.5" y="100" class="year">2013</text><line x1="176.6" x2="176.6" y1="78" y2="84" class="tick"/><text x="176.6" y="100" class="year">2014</text><line x1="235.8" x2="235.8" y1="78" y2="84" class="tick"/><text x="235.8" y="100" class="year">2015</text><line x1="294.9" x2="294.9" y1="78" y2="84" class="tick"/><text x="294.9" y="100" class="year">2016</text><line x1="354.2" x2="354.2" y1="78" y2="84" class="tick"/><text x="354.2" y="100" class="year">2017</text><line x1="413.4" x2="413.4" y1="78" y2="84" class="tick"/><text x="413.4" y="100" class="year">2018</text><line x1="472.5" x2="472.5" y1="78" y2="84" class="tick"/><text x="472.5" y="100" class="year">2019</text><line x1="531.7" x2="531.7" y1="78" y2="84" class="tick"/><text x="531.7" y="100" class="year">2020</text><line x1="591.0" x2="591.0" y1="78" y2="84" class="tick"/><text x="591.0" y="100" class="year">2021</text><line x1="650.1" x2="650.1" y1="78" y2="84" class="tick"/><text x="650.1" y="100" class="year">2022</text><line x1="709.2" x2="709.2" y1="78" y2="84" class="tick"/><text x="709.2" y="100" class="year">2023</text><line x1="768.4" x2="768.4" y1="78" y2="84" class="tick"/><text x="768.4" y="100" class="year">2024</text><line x1="827.7" x2="827.7" y1="78" y2="84" class="tick"/><text x="827.7" y="100" class="year">2025</text><line x1="886.8" x2="886.8" y1="78" y2="84" class="tick"/><text x="886.8" y="100" class="year">2026</text><circle cx="263.4" cy="60" r="5" class="change"><title>2015-06-20 bb53b20 perf: remove argument reassignments in response prototype</title></circle><circle cx="461.9" cy="60" r="5" class="change"><title>2018-10-27 8da5110 Improve error message for null/undefined to res.status</title></circle><circle cx="496.0" cy="34" r="5" class="fix"><title>2019-05-25 0a48e18 Revert &#34;Improve error message for null/undefined to res.status&#34;</title></circle><circle cx="663.4" cy="60" r="5" class="change"><title>2022-03-24 4847d0e Deprecate string and non-integer arguments to res.status</title></circle><circle cx="802.7" cy="60" r="5" class="change"><title>2024-07-30 723b545 Throw on invalid status codes (#4212)</title></circle><circle cx="28.0" cy="60" r="8" class="introduced"><title>2011-06-28 b04be51 Added chainable res.status(code)</title></circle></svg><figcaption>Every commit that changed it, 2011-06-28 – 2024-07-30. Raised orange dots are fixes.</figcaption></figure>
+<ol><li class="event changed"><time datetime="2024-07-30T21:49:13.000Z">2024-07-30</time><div><p class="what"><strong>Changed</strong> Throw on invalid status codes (#4212)</p><p class="who"><code>723b545</code> · Jon Church </p></div></li><li class="event changed"><time datetime="2022-03-24T03:14:08.000Z">2022-03-24</time><div><p class="what"><strong>Changed</strong> Deprecate string and non-integer arguments to res.status</p><p class="who"><code>4847d0e</code> · Jon Church </p></div></li><li class="event changed is-fix"><time datetime="2019-05-25T22:15:13.000Z">2019-05-25</time><div><p class="what"><strong>Changed</strong> Revert &#34;Improve error message for null/undefined to res.status&#34;</p><p class="who"><code>0a48e18</code> · Douglas Christopher Wilson <span class="badge fix-badge" title="reverts an earlier change">fix · INFERRED</span></p></div></li><li class="event changed"><time datetime="2018-10-27T18:04:49.000Z">2018-10-27</time><div><p class="what"><strong>Changed</strong> Improve error message for null/undefined to res.status</p><p class="who"><code>8da5110</code> · Joshua Caron </p></div></li><li class="event changed"><time datetime="2015-06-20T18:36:48.000Z">2015-06-20</time><div><p class="what"><strong>Changed</strong> perf: remove argument reassignments in response prototype</p><p class="who"><code>bb53b20</code> · Douglas Christopher Wilson </p></div></li><li class="event introduced"><time datetime="2011-06-28T16:32:03.000Z">2011-06-28</time><div><p class="what"><strong>Born</strong> Added chainable res.status(code)</p><p class="who"><code>b04be51</code> · Tj Holowaychuk </p></div></li></ol>
+<footer>
+Built by <a href="https://github.com/ludicolijn1985-blip/codefossil">CODEFOSSIL</a> from this repository's own history at <code>7ef9844</code> on 2026-10-06.
+Dates and commits are facts read from git; "changed" compares each version with its parent commit (DERIVED);
+fixes are recognised from issue labels, reverts and commit wording, so most are inferences.
+</footer>
+</main>
+</body>
+</html>

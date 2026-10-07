@@ -123,3 +123,47 @@ describe('Rust imports', () => {
     ]);
   });
 });
+
+describe('import bindings', () => {
+  const bindings = async (grammar: GrammarId, source: string) =>
+    (await extractor.extract(source, grammar))?.imports.map((i) => [
+      i.specifier,
+      (i.bindings ?? []).map((b) => `${b.local}=${b.imported}`).join(' '),
+    ]);
+
+  it('records which local names ECMAScript imports and requires bind', async () => {
+    const source = [
+      "import d, * as ns from './a';",
+      "import { x, y as z } from './b';",
+      "import './side';",
+      "const u = require('./c');",
+      "const { p, q: r } = require('./d');",
+      "require('./e');",
+    ].join('\n');
+    expect(await bindings('javascript', source)).toEqual([
+      ['./a', 'd=default ns=*'],
+      ['./b', 'x=x z=y'],
+      ['./side', ''],
+      ['./c', 'u=*'],
+      ['./d', 'p=p r=q'],
+      ['./e', ''],
+    ]);
+  });
+
+  it('records Python and Go bindings', async () => {
+    const python = 'import os\nimport a.b\nimport x.y as xy\nfrom m import f, g as h\n';
+    expect(await bindings('python', python)).toEqual([
+      ['os', 'os=*'],
+      ['a.b', ''],
+      ['x.y', 'xy=*'],
+      ['m', 'f=f h=g'],
+    ]);
+    const go =
+      'package app\n\nimport (\n\t"net/http"\n\tfx "example.com/money/fx"\n\t_ "embed"\n)\n';
+    expect(await bindings('go', go)).toEqual([
+      ['net/http', 'http=*'],
+      ['example.com/money/fx', 'fx=*'],
+      ['embed', ''],
+    ]);
+  });
+});

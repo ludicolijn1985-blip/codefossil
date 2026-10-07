@@ -386,13 +386,33 @@ describe('Python resolution', () => {
     expect(resolve('main.py', 'python', ref('util')).kind).toBe('unresolved');
   });
 
-  it('maps declared distributions by normalized name only', () => {
+  it('maps declared distributions by normalized name, then by well-known import names', () => {
     expect(resolve('shop/views.py', 'python', ref('requests'))).toMatchObject({
       kind: 'dependency',
       name: 'requests',
+      method: 'declared-distribution',
     });
-    // `yaml` is provided by PyYAML, but the names differ: not guessed.
-    expect(resolve('shop/views.py', 'python', ref('yaml')).kind).toBe('unresolved');
+    // `yaml` is provided by PyYAML: a known import name of a declared distribution.
+    expect(resolve('shop/views.py', 'python', ref('yaml'))).toMatchObject({
+      kind: 'dependency',
+      name: 'PyYAML',
+      method: 'declared-distribution-import-name',
+    });
+    // A known import name whose distribution is not declared stays unresolved.
+    expect(resolve('shop/views.py', 'python', ref('sklearn')).kind).toBe('unresolved');
+    expect(resolve('shop/views.py', 'python', ref('nonexistent_pkg')).kind).toBe('unresolved');
+  });
+
+  it('recognises the standard library, including modules removed in recent versions', () => {
+    expect(resolve('shop/views.py', 'python', ref('os.path'))).toEqual({ kind: 'builtin' });
+    expect(resolve('shop/views.py', 'python', ref('json'))).toEqual({ kind: 'builtin' });
+    expect(resolve('shop/views.py', 'python', ref('distutils.core'))).toEqual({ kind: 'builtin' });
+    expect(resolve('shop/views.py', 'python', ref('__future__'))).toEqual({ kind: 'builtin' });
+  });
+
+  it('prefers a repository module over a standard library module of the same name', () => {
+    const shadowing = resolverFor(['app/main.py', 'app/json.py']);
+    expect(shadowing('app/main.py', 'python', ref('json'))).toMatchObject({ kind: 'files' });
   });
 });
 
@@ -418,6 +438,34 @@ describe('Go resolution', () => {
       name: 'github.com/google/uuid',
     });
     expect(resolve('main.go', 'go', ref('github.com/unknown/x')).kind).toBe('unresolved');
+  });
+
+  it('follows replace directives that point at a directory of the repository', () => {
+    const replaced = resolverFor(['app/main.go', 'libs/money/money.go', 'libs/money/fx/fx.go'], {
+      'app/go.mod': [
+        'module github.com/acme/app',
+        'require github.com/acme/money v1.0.0',
+        'replace github.com/acme/money => ../libs/money',
+        'replace (',
+        '\tgithub.com/acme/outside v1.0.0 => ../../outside',
+        '\tgithub.com/acme/fork => github.com/other/fork v2.0.0',
+        ')',
+      ].join('\n'),
+    });
+
+    expect(replaced('app/main.go', 'go', ref('github.com/acme/money/fx'))).toEqual({
+      kind: 'files',
+      paths: ['libs/money/fx/fx.go'],
+      confidence: 1,
+      method: 'go-replace:app/go.mod',
+    });
+    expect(replaced('app/main.go', 'go', ref('github.com/acme/money')).kind).toBe('files');
+    expect(replaced('app/main.go', 'go', ref('github.com/acme/outside'))).toEqual({
+      kind: 'unresolved',
+      reason: 'github.com/acme/outside is replaced by a directory outside the repository',
+    });
+    // A module replaced by another module is still an external dependency.
+    expect(replaced('app/main.go', 'go', ref('github.com/acme/fork')).kind).toBe('unresolved');
   });
 });
 
@@ -475,5 +523,72 @@ describe('Rust resolution', () => {
     });
     expect(resolve('src/lib.rs', 'rust', ref('std::io', 'use'))).toEqual({ kind: 'builtin' });
     expect(resolve('src/lib.rs', 'rust', ref('rand::Rng', 'use')).kind).toBe('unresolved');
+  });
+});
+
+describe('Java, C#, Ruby and PHP resolution', () => {
+  it('resolves Java classes and packages by path, platform classes as built-in', () => {
+    const resolve = resolverFor([
+      'src/main/java/com/acme/tax/Rates.java',
+      'src/main/java/com/acme/tax/Vat.java',
+      'src/main/java/com/acme/shop/Cart.java',
+      'a/util/Dup.java',
+      'b/util/Dup.java',
+    ]);
+    const from = 'src/main/java/com/acme/shop/Cart.java';
+    expect(resolve(from, 'java', ref('com.acme.tax.Rates'))).toEqual({
+      kind: 'files',
+      paths: ['src/main/java/com/acme/tax/Rates.java'],
+      confidence: 0.9,
+      method: 'java-class-path',
+    });
+    expect(resolve(from, 'java', ref('com.acme.tax.Rates.Inner'))).toMatchObject({
+      paths: ['src/main/java/com/acme/tax/Rates.java'],
+    });
+    expect(resolve(from, 'java', ref('com.acme.tax.*'))).toMatchObject({
+      kind: 'files',
+      paths: ['src/main/java/com/acme/tax/Rates.java', 'src/main/java/com/acme/tax/Vat.java'],
+    });
+    expect(resolve(from, 'java', ref('java.util.List'))).toEqual({ kind: 'builtin' });
+    expect(resolve(from, 'java', ref('util.Dup')).kind).toBe('unresolved');
+    expect(resolve(from, 'java', ref('org.junit.Test')).kind).toBe('unresolved');
+  });
+
+  it('leaves C# namespaces unresolved except the platform', () => {
+    const resolve = resolverFor(['Shop/Cart.cs']);
+    expect(resolve('Shop/Cart.cs', 'csharp', ref('System.Linq'))).toEqual({ kind: 'builtin' });
+    expect(resolve('Shop/Cart.cs', 'csharp', ref('Acme.Tax'))).toEqual({
+      kind: 'unresolved',
+      reason: 'C# namespaces are not tied to files',
+    });
+  });
+
+  it('resolves Ruby relative requires, the load path and the standard library', () => {
+    const resolve = resolverFor(['lib/shop/cart.rb', 'lib/shop/tax/rates.rb', 'lib/shop.rb']);
+    expect(resolve('lib/shop/cart.rb', 'ruby', ref('./tax/rates', 'require'))).toMatchObject({
+      paths: ['lib/shop/tax/rates.rb'],
+      confidence: 1,
+    });
+    expect(resolve('bin/run.rb', 'ruby', ref('shop/cart', 'require'))).toMatchObject({
+      paths: ['lib/shop/cart.rb'],
+      method: 'ruby-load-path',
+    });
+    expect(resolve('bin/run.rb', 'ruby', ref('json', 'require'))).toEqual({ kind: 'builtin' });
+    expect(resolve('bin/run.rb', 'ruby', ref('rails', 'require')).kind).toBe('unresolved');
+  });
+
+  it('resolves PHP requires and namespaced classes by their PSR-4 path', () => {
+    const resolve = resolverFor(['src/Tax/Rates.php', 'src/Shop/Cart.php', 'src/helpers.php']);
+    expect(resolve('src/Shop/Cart.php', 'php', ref('./../helpers.php', 'require'))).toMatchObject({
+      paths: ['src/helpers.php'],
+      method: 'php-require',
+    });
+    expect(resolve('src/Shop/Cart.php', 'php', ref('App\\Tax\\Rates'))).toEqual({
+      kind: 'files',
+      paths: ['src/Tax/Rates.php'],
+      confidence: 0.9,
+      method: 'php-class-path',
+    });
+    expect(resolve('src/Shop/Cart.php', 'php', ref('Vendor\\Lib\\Thing')).kind).toBe('unresolved');
   });
 });

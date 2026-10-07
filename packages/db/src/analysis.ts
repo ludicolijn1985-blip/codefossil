@@ -1,4 +1,4 @@
-import { and, eq, inArray, like, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import type { EvidenceLevel } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import {
@@ -75,6 +75,7 @@ export interface AnalysisCommit {
   readonly subject: string;
   readonly body: string;
   readonly committedAt: string;
+  readonly authorName: string;
 }
 
 export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCommit[] {
@@ -85,6 +86,7 @@ export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCom
       subject: commits.subject,
       body: commits.body,
       committedAt: commits.committedAt,
+      authorName: commits.authorName,
     })
     .from(commits)
     .where(eq(commits.repositoryId, repositoryId))
@@ -282,4 +284,130 @@ export function runtimeEvidence(db: FossilDb, repositoryId: number): RuntimeEvid
       ),
     )
     .all();
+}
+
+/** A current symbol with the commit that introduced it, when the evidence establishes one. */
+export interface SymbolOrigin {
+  readonly symbolId: number;
+  readonly qualifiedName: string;
+  readonly kind: string;
+  readonly path: string;
+  readonly startLine: number;
+  readonly endLine: number;
+  /**
+   * The `INTRODUCED_BY` relation of the code's origin: the symbol itself, or for
+   * copied or moved code the symbol it was copied from (followed back).
+   */
+  readonly introduced: {
+    readonly commitId: number;
+    readonly level: EvidenceLevel;
+    readonly confidence: number;
+    readonly evidenceIds: readonly number[];
+  } | null;
+  /** The symbol this one was copied from (`COPIED_FROM`), when it was. */
+  readonly copiedFrom: {
+    readonly symbolId: number;
+    readonly path: string;
+    readonly confidence: number;
+  } | null;
+}
+
+/** Longest copy chain followed back to an origin. */
+const MAX_COPY_HOPS = 10;
+
+/**
+ * Every current symbol of files present at HEAD, with the introduction of
+ * its origin: its own `INTRODUCED_BY` relation, or that of the code it was
+ * copied from, followed through `COPIED_FROM` links.
+ */
+export function currentSymbolOrigins(db: FossilDb, repositoryId: number): SymbolOrigin[] {
+  type Introduction = NonNullable<SymbolOrigin['introduced']>;
+  const introductions = new Map<number, Introduction>();
+  const copies = new Map<number, { readonly symbolId: number; readonly confidence: number }>();
+  for (const row of db
+    .select({
+      relation: relations.relation,
+      symbolId: relations.sourceId,
+      targetId: relations.targetId,
+      level: relations.evidenceType,
+      confidence: relations.confidence,
+      provenance: relations.provenanceJson,
+    })
+    .from(relations)
+    .where(
+      and(
+        eq(relations.repositoryId, repositoryId),
+        eq(relations.sourceType, 'symbol'),
+        inArray(relations.relation, ['INTRODUCED_BY', 'COPIED_FROM']),
+      ),
+    )
+    .all()) {
+    if (row.relation === 'COPIED_FROM') {
+      copies.set(row.symbolId, { symbolId: row.targetId, confidence: row.confidence });
+      continue;
+    }
+    const known = introductions.get(row.symbolId);
+    if (!known || row.confidence > known.confidence) {
+      introductions.set(row.symbolId, {
+        commitId: row.targetId,
+        level: row.level,
+        confidence: row.confidence,
+        evidenceIds: row.provenance.evidenceIds,
+      });
+    }
+  }
+  const pathOf = new Map(
+    db
+      .select({ id: symbols.id, path: files.path })
+      .from(symbols)
+      .innerJoin(files, eq(symbols.fileId, files.id))
+      .where(eq(files.repositoryId, repositoryId))
+      .all()
+      .map((row) => [row.id, row.path]),
+  );
+  const originOf = (symbolId: number): Introduction | null => {
+    const seen = new Set([symbolId]);
+    let current = symbolId;
+    let confidence = 1;
+    for (let hop = 0; hop < MAX_COPY_HOPS; hop++) {
+      const copy = copies.get(current);
+      if (!copy || seen.has(copy.symbolId)) break;
+      seen.add(copy.symbolId);
+      confidence = Math.min(confidence, copy.confidence);
+      current = copy.symbolId;
+    }
+    const own = introductions.get(current);
+    // A claim followed through copies is no surer than its weakest copy link.
+    return own ? { ...own, confidence: Math.min(own.confidence, confidence) } : null;
+  };
+
+  return db
+    .select({
+      symbolId: symbols.id,
+      qualifiedName: symbols.qualifiedName,
+      kind: symbols.kind,
+      path: files.path,
+      startLine: symbols.startLine,
+      endLine: symbols.endLine,
+    })
+    .from(symbols)
+    .innerJoin(files, eq(symbols.fileId, files.id))
+    .where(
+      and(eq(files.repositoryId, repositoryId), eq(symbols.current, true), isNull(files.deletedAt)),
+    )
+    .all()
+    .map((row) => {
+      const copy = copies.get(row.symbolId);
+      return {
+        ...row,
+        introduced: originOf(row.symbolId),
+        copiedFrom: copy
+          ? {
+              symbolId: copy.symbolId,
+              path: pathOf.get(copy.symbolId) ?? '',
+              confidence: copy.confidence,
+            }
+          : null,
+      };
+    });
 }

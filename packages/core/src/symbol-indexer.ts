@@ -1,6 +1,7 @@
 import {
   findFileById,
   findFileByPath,
+  findIdenticalSymbol,
   hasIndexedVersion,
   insertSymbolVersion,
   markSymbolsIndexed,
@@ -25,6 +26,22 @@ const DEFAULT_BATCH_SIZE = 200;
 /** Parsed versions whose symbol hashes are kept to diff their children against. */
 const MAX_CACHED_VERSIONS = 20_000;
 
+/** Kinds whose identical text in another file is taken as the same code, copied or moved. */
+const COPYABLE_KINDS: ReadonlySet<string> = new Set([
+  'function',
+  'method',
+  'class',
+  'interface',
+  'enum',
+  'struct',
+  'trait',
+  'impl',
+]);
+/** Shorter definitions are too likely to be identical by coincidence. */
+const MIN_COPY_LINES = 3;
+/** Identical content is observed; that it was copied (not rewritten identically) is very likely. */
+const COPY_CONFIDENCE = 0.9;
+
 /** Confidence for relations derived from a tree Tree-sitter had to error-recover. */
 const RECOVERED_PARSE_CONFIDENCE = 0.8;
 
@@ -43,6 +60,8 @@ export interface SymbolIndexResult {
   readonly symbolVersions: number;
   /** Symbols whose introducing commit is established by the indexed history. */
   readonly symbolsIntroduced: number;
+  /** New symbols identical to one in another file: copied or moved there, not introduced. */
+  readonly symbolsCopied: number;
   /** Versions the parser failed on; counted in versionsSkipped as well. */
   readonly parseFailures: number;
 }
@@ -64,6 +83,7 @@ interface Totals {
   versionsSkipped: number;
   symbolVersions: number;
   symbolsIntroduced: number;
+  symbolsCopied: number;
   parseFailures: number;
 }
 
@@ -95,6 +115,7 @@ export async function indexSymbols(
     versionsSkipped: 0,
     symbolVersions: 0,
     symbolsIntroduced: 0,
+    symbolsCopied: 0,
     parseFailures: 0,
   };
   const touchedFiles = new Set<number>();
@@ -246,7 +267,8 @@ async function parse(
   // A NUL byte means binary content that happens to have a source extension.
   if (!grammar || !content || content.includes(0)) return null;
   try {
-    return await extractor.extract(content.toString('utf8'), grammar);
+    // History needs symbols only; imports and calls are read at HEAD by the dependency indexer.
+    return await extractor.extract(content.toString('utf8'), grammar, { references: false });
   } catch {
     onFailure();
     return null;
@@ -353,7 +375,22 @@ function writeSymbols(
       confidence: derivedConfidence,
       provenance: provenance('content-hash-diff'),
     });
-    if (created && sawEarlierVersion) {
+    const copiedFrom =
+      created && sawEarlierVersion ? copySource(db, repositoryId, change, symbol) : null;
+    if (copiedFrom !== null) {
+      // Identical content already lived in another file: this is where it was copied or moved
+      // to, not where it was born. Its origin is the source symbol's.
+      recordRelation(db, {
+        repositoryId,
+        source: symbolRef,
+        relation: 'COPIED_FROM',
+        target: { type: 'symbol', id: copiedFrom },
+        evidenceType: 'DERIVED',
+        confidence: COPY_CONFIDENCE * derivedConfidence,
+        provenance: provenance('identical-content'),
+      });
+      totals.symbolsCopied++;
+    } else if (created && sawEarlierVersion) {
       recordRelation(db, {
         repositoryId,
         source: symbolRef,
@@ -368,6 +405,27 @@ function writeSymbols(
     totals.symbolVersions++;
   }
   setCurrentSymbols(db, change.fileId, new Set(result.symbols.map((s) => s.stableKey)));
+}
+
+/**
+ * The symbol in another file whose recorded content is identical to a newly
+ * seen one, for kinds and sizes where identical text means the same code:
+ * one-line declarations (`var http = require('http')`) repeat by coincidence.
+ */
+function copySource(
+  db: FossilDb,
+  repositoryId: number,
+  change: PendingSymbolChange,
+  symbol: ExtractResult['symbols'][number],
+): number | null {
+  if (!COPYABLE_KINDS.has(symbol.kind)) return null;
+  if (symbol.endLine - symbol.startLine + 1 < MIN_COPY_LINES) return null;
+  return findIdenticalSymbol(db, repositoryId, {
+    fileId: change.fileId,
+    qualifiedName: symbol.qualifiedName,
+    kind: symbol.kind,
+    contentHash: symbol.contentHash,
+  });
 }
 
 /**

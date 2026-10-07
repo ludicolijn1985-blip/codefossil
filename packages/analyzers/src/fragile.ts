@@ -3,12 +3,15 @@ import {
   analysisFiles,
   commitDiscussions,
   commitEvidenceIds,
+  currentSymbolOrigins,
   symbolChangeCommits,
   symbolsChangedIn,
   type FossilDb,
 } from '@codefossil/db';
 import type { EvidenceLevel } from '@codefossil/shared';
+import { isTestPath } from '@codefossil/query';
 import { classifyDefects } from './defects.js';
+import { isCodePath, isDeclarationPath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
 
 /** An earlier commit that changed the symbol and reads as a defect fix. */
 export interface FragileFix {
@@ -57,6 +60,89 @@ const LEVEL_ORDER: readonly EvidenceLevel[] = ['INFERRED', 'DERIVED', 'FACT'];
 const weakest = (levels: readonly EvidenceLevel[]): EvidenceLevel =>
   LEVEL_ORDER.find((level) => levels.includes(level)) ?? 'FACT';
 
+interface Candidate {
+  readonly symbolId: number;
+  readonly qualifiedName: string;
+  readonly kind: string;
+  readonly path: string;
+  readonly startLine: number;
+}
+
+/**
+ * The defect fixes in each candidate's history (commits in `exclude` left
+ * out), for candidates with at least one: most fixes first.
+ */
+function fixHistories(
+  db: FossilDb,
+  repositoryId: number,
+  candidates: readonly Candidate[],
+  exclude: ReadonlySet<number>,
+): FragileSymbol[] {
+  if (candidates.length === 0) return [];
+  const commits = analysisCommits(db, repositoryId);
+  const commitById = new Map(commits.map((c) => [c.id, c]));
+  const discussions = commitDiscussions(db, repositoryId);
+  const defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
+  const discussionsByCommit = new Map<number, FragileFix['discussions'][number][]>();
+  for (const d of discussions) {
+    const list = discussionsByCommit.get(d.commitId) ?? [];
+    if (!list.some((x) => x.type === d.type && x.number === d.number)) {
+      list.push({ type: d.type, number: d.number });
+    }
+    discussionsByCommit.set(d.commitId, list);
+  }
+  const history = symbolChangeCommits(
+    db,
+    candidates.map((c) => c.symbolId),
+  );
+
+  return candidates
+    .flatMap((symbol): FragileSymbol[] => {
+      const earlier = (history.get(symbol.symbolId) ?? []).filter((id) => !exclude.has(id));
+      const fixes = earlier
+        .flatMap((id): FragileFix[] => {
+          const signal = defects.get(id);
+          const commit = commitById.get(id);
+          if (!signal || !commit) return [];
+          return [
+            {
+              sha: commit.sha,
+              subject: commit.subject,
+              committedAt: commit.committedAt,
+              reason: signal.reason,
+              level: signal.level,
+              confidence: signal.confidence,
+              evidenceIds: signal.evidenceIds,
+              discussions: discussionsByCommit.get(id) ?? [],
+            },
+          ];
+        })
+        .sort((a, b) => b.committedAt.localeCompare(a.committedAt));
+      if (fixes.length === 0) return [];
+      return [
+        {
+          symbol: {
+            id: symbol.symbolId,
+            qualifiedName: symbol.qualifiedName,
+            kind: symbol.kind,
+            path: symbol.path,
+            startLine: symbol.startLine,
+          },
+          priorChanges: earlier.length,
+          fixes,
+          level: weakest(fixes.map((f) => f.level)),
+        },
+      ];
+    })
+    .sort(
+      (a, b) =>
+        b.fixes.length - a.fixes.length ||
+        b.priorChanges - a.priorChanges ||
+        a.symbol.path.localeCompare(b.symbol.path) ||
+        a.symbol.qualifiedName.localeCompare(b.symbol.qualifiedName),
+    );
+}
+
 /**
  * The symbols changed by a range of commits (a pull request) whose earlier
  * history holds defect fixes: the code that broke before. Fix detection is
@@ -69,83 +155,57 @@ export function analyzeFragileSymbols(
   rangeShas: readonly string[],
   options: { readonly limit?: number } = {},
 ): FragileReport {
-  const commits = analysisCommits(db, repositoryId);
-  const commitBySha = new Map(commits.map((c) => [c.sha, c]));
-  const commitById = new Map(commits.map((c) => [c.id, c]));
+  const idBySha = new Map(analysisCommits(db, repositoryId).map((c) => [c.sha, c.id]));
   const rangeIds = rangeShas.flatMap((sha) => {
-    const commit = commitBySha.get(sha);
-    return commit ? [commit.id] : [];
+    const id = idBySha.get(sha);
+    return id === undefined ? [] : [id];
   });
-  const inRange = new Set(rangeIds);
-
+  const pathById = new Map(analysisFiles(db, repositoryId).map((f) => [f.id, f.path]));
   const touched = new Map(
     symbolsChangedIn(db, rangeIds)
       .filter((s) => s.current)
-      .map((s) => [s.symbolId, s]),
+      .map((s) => [s.symbolId, { ...s, path: pathById.get(s.fileId) ?? '' }]),
   );
-  if (touched.size === 0) return { symbols: [], total: 0, symbolsTouched: 0 };
-
-  const discussions = commitDiscussions(db, repositoryId);
-  const defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
-  const discussionsByCommit = new Map<number, FragileFix['discussions'][number][]>();
-  for (const d of discussions) {
-    const list = discussionsByCommit.get(d.commitId) ?? [];
-    if (!list.some((x) => x.type === d.type && x.number === d.number)) {
-      list.push({ type: d.type, number: d.number });
-    }
-    discussionsByCommit.set(d.commitId, list);
-  }
-  const pathById = new Map(analysisFiles(db, repositoryId).map((f) => [f.id, f.path]));
-  const history = symbolChangeCommits(db, [...touched.keys()]);
-
-  const symbols = [...touched.values()].flatMap((symbol): FragileSymbol[] => {
-    const earlier = (history.get(symbol.symbolId) ?? []).filter((id) => !inRange.has(id));
-    const fixes = earlier
-      .flatMap((id): FragileFix[] => {
-        const signal = defects.get(id);
-        const commit = commitById.get(id);
-        if (!signal || !commit) return [];
-        return [
-          {
-            sha: commit.sha,
-            subject: commit.subject,
-            committedAt: commit.committedAt,
-            reason: signal.reason,
-            level: signal.level,
-            confidence: signal.confidence,
-            evidenceIds: signal.evidenceIds,
-            discussions: discussionsByCommit.get(id) ?? [],
-          },
-        ];
-      })
-      .sort((a, b) => b.committedAt.localeCompare(a.committedAt));
-    if (fixes.length === 0) return [];
-    return [
-      {
-        symbol: {
-          id: symbol.symbolId,
-          qualifiedName: symbol.qualifiedName,
-          kind: symbol.kind,
-          path: pathById.get(symbol.fileId) ?? '',
-          startLine: symbol.startLine,
-        },
-        priorChanges: earlier.length,
-        fixes,
-        level: weakest(fixes.map((f) => f.level)),
-      },
-    ];
-  });
-
+  const symbols = fixHistories(db, repositoryId, [...touched.values()], new Set(rangeIds));
   return {
-    symbols: symbols
-      .sort(
-        (a, b) =>
-          b.fixes.length - a.fixes.length ||
-          b.priorChanges - a.priorChanges ||
-          a.symbol.qualifiedName.localeCompare(b.symbol.qualifiedName),
-      )
-      .slice(0, options.limit ?? Number.MAX_SAFE_INTEGER),
+    symbols: symbols.slice(0, options.limit ?? Number.MAX_SAFE_INTEGER),
     total: symbols.length,
     symbolsTouched: touched.size,
+  };
+}
+
+export interface FixedSymbolsReport {
+  /** Current symbols with defect fixes in their history, most fixes first. */
+  readonly symbols: readonly FragileSymbol[];
+  /** Symbols with at least one fix, before the limit. */
+  readonly total: number;
+  /** Current symbols considered after the path filters. */
+  readonly considered: number;
+}
+
+/**
+ * The functions, methods and classes fixed most often: every current symbol
+ * ranked by the defect fixes that changed it. Variables, tests, examples and
+ * generated files are left out unless asked.
+ */
+export function analyzeFixedSymbols(
+  db: FossilDb,
+  repositoryId: number,
+  options: { readonly limit?: number; readonly includeTests?: boolean } = {},
+): FixedSymbolsReport {
+  const candidates = currentSymbolOrigins(db, repositoryId).filter(
+    (s) =>
+      s.kind !== 'variable' &&
+      s.kind !== 'property' &&
+      isCodePath(s.path) &&
+      !isGeneratedPath(s.path) &&
+      !isDeclarationPath(s.path) &&
+      (options.includeTests || (!isTestPath(s.path) && !isIllustrativePath(s.path))),
+  );
+  const symbols = fixHistories(db, repositoryId, candidates, new Set());
+  return {
+    symbols: symbols.slice(0, options.limit ?? Number.MAX_SAFE_INTEGER),
+    total: symbols.length,
+    considered: candidates.length,
   };
 }

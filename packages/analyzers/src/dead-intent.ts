@@ -22,7 +22,7 @@ import {
   workaroundLanguage,
   type WorkaroundMatch,
 } from './text-signals.js';
-import { isCodePath } from './hotspots.js';
+import { isCodePath, isIllustrativePath } from './hotspots.js';
 
 export type DeadIntentSignalKind =
   'workaround_language' | 'unsupported_version' | 'deadline_passed' | 'unconfirmed';
@@ -84,14 +84,10 @@ export const FOCUSED_COMMIT_FILES = 3;
 /** Changes after the workaround commit after which the code counts as reworked. */
 export const REWORKED_AFTER = 3;
 
-/** Examples, docs, fixtures and benchmarks illustrate code; they are not where workarounds live. */
-const NOT_PRODUCT_CODE =
-  /(^|\/)(examples?|samples?|demos?|docs?|fixtures?|benchmarks?|__mocks__)\//i;
-
 const IMPORT_BINDING = /^[^=]*=\s*(?:await\s+)?(?:require|import)\s*\(/;
 
 const isTargetPath = (path: string) =>
-  isCodePath(path) && !isTestPath(path) && !NOT_PRODUCT_CODE.test(path);
+  isCodePath(path) && !isTestPath(path) && !isIllustrativePath(path);
 export const DEFAULT_STALE_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 

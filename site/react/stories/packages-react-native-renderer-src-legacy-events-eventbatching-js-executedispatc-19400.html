@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>executeDispatchesAndRelease · react</title>
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
+.where{color:var(--muted);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
+.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
+.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
+figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
+figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
+svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
+circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
+ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
+.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
+.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
+time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
+.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
+footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../index.html">← facebook/react</a></p>
+<p class="kicker">CODEFOSSIL · react</p>
+<h1>executeDispatchesAndRelease</h1>
+<p class="where">function in <code>packages/react-native-renderer/src/legacy-events/EventBatching.js:26</code> · Born 2013-05-29 (DERIVED, confidence 0.72)</p>
+<section class="stats" aria-label="At a glance"><div class="stat"><b>13</b><span>years old</span></div><div class="stat"><b>2</b><span>changes</span></div><div class="stat"><b>0</b><span>fixes</span></div><div class="stat"><b>4</b><span>authors</span></div><div class="stat"><b>1</b><span>caller</span></div></section>
+<p class="note">Moved here from <code>packages/react-dom/src/test-utils/ReactTestUtils.js</code>, then from <code>packages/react-dom/src/legacy-events/EventBatching.js</code>, then from <code>packages/legacy-events/EventPluginHub.js</code>; its history is followed back to where it was born.</p>
+<figure><svg viewBox="0 0 960 120" role="img" aria-label="Timeline of every change"><line x1="28" x2="932" y1="81" y2="81" class="axis"/><line x1="68.1" x2="68.1" y1="78" y2="84" class="tick"/><text x="68.1" y="100" class="year">2014</text><line x1="135.7" x2="135.7" y1="78" y2="84" class="tick"/><text x="135.7" y="100" class="year">2015</text><line x1="203.3" x2="203.3" y1="78" y2="84" class="tick"/><text x="203.3" y="100" class="year">2016</text><line x1="271.2" x2="271.2" y1="78" y2="84" class="tick"/><text x="271.2" y="100" class="year">2017</text><line x1="338.8" x2="338.8" y1="78" y2="84" class="tick"/><text x="338.8" y="100" class="year">2018</text><line x1="406.5" x2="406.5" y1="78" y2="84" class="tick"/><text x="406.5" y="100" class="year">2019</text><line x1="474.1" x2="474.1" y1="78" y2="84" class="tick"/><text x="474.1" y="100" class="year">2020</text><line x1="541.9" x2="541.9" y1="78" y2="84" class="tick"/><text x="541.9" y="100" class="year">2021</text><line x1="609.6" x2="609.6" y1="78" y2="84" class="tick"/><text x="609.6" y="100" class="year">2022</text><line x1="677.2" x2="677.2" y1="78" y2="84" class="tick"/><text x="677.2" y="100" class="year">2023</text><line x1="744.9" x2="744.9" y1="78" y2="84" class="tick"/><text x="744.9" y="100" class="year">2024</text><line x1="812.7" x2="812.7" y1="78" y2="84" class="tick"/><text x="812.7" y="100" class="year">2025</text><line x1="880.3" x2="880.3" y1="78" y2="84" class="tick"/><text x="880.3" y="100" class="year">2026</text><circle cx="682.9" cy="60" r="5" class="change"><title>2023-01-31 6b30832 Upgrade prettier (#26081)</title></circle><circle cx="690.8" cy="60" r="5" class="change"><title>2023-03-15 d310d65 Avoid meta programming to initialize functions in module scope  (#26388)</title></circle><circle cx="508.0" cy="60" r="8" class="copied"><title>2020-07-01 e3f4eb7 Fork legacy-events folder into react-dom and react-native (#19228)</title></circle><circle cx="28.0" cy="60" r="8" class="introduced"><title>2013-05-29 75897c2 Initial public release</title></circle></svg><figcaption>Every commit that changed it, 2013-05-29 – 2023-03-15. Raised orange dots are fixes.</figcaption></figure>
+<ol><li class="event changed"><time datetime="2023-03-15T01:00:22.000Z">2023-03-15</time><div><p class="what"><strong>Changed</strong> Avoid meta programming to initialize functions in module scope  (#26388)</p><p class="who"><code>d310d65</code> · Sebastian Markbåge </p></div></li><li class="event changed"><time datetime="2023-01-31T13:25:05.000Z">2023-01-31</time><div><p class="what"><strong>Changed</strong> Upgrade prettier (#26081)</p><p class="who"><code>6b30832</code> · Jan Kassens </p></div></li><li class="event copied"><time datetime="2020-07-01T15:37:13.000Z">2020-07-01</time><div><p class="what"><strong>Moved here</strong> Fork legacy-events folder into react-dom and react-native (#19228)</p><p class="who"><code>e3f4eb7</code> · Dan Abramov </p></div></li><li class="event introduced"><time datetime="2013-05-29T19:54:02.000Z">2013-05-29</time><div><p class="what"><strong>Born</strong> Initial public release</p><p class="who"><code>75897c2</code> · Paul O’Shannessy </p></div></li></ol>
+<footer>
+Built by <a href="https://github.com/ludicolijn1985-blip/codefossil">CODEFOSSIL</a> from this repository's own history at <code>17eca7b</code> on 2026-10-06.
+Dates and commits are facts read from git; "changed" compares each version with its parent commit (DERIVED);
+fixes are recognised from issue labels, reverts and commit wording, so most are inferences.
+</footer>
+</main>
+</body>
+</html>

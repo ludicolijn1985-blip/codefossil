@@ -2,7 +2,17 @@ import type { SymbolKind } from '@codefossil/shared';
 import type { Node } from 'web-tree-sitter';
 
 /** A Tree-sitter grammar CODEFOSSIL can load. */
-export type GrammarId = 'typescript' | 'tsx' | 'javascript' | 'python' | 'go' | 'rust';
+export type GrammarId =
+  | 'typescript'
+  | 'tsx'
+  | 'javascript'
+  | 'python'
+  | 'go'
+  | 'rust'
+  | 'java'
+  | 'csharp'
+  | 'ruby'
+  | 'php';
 
 /** How to turn one kind of syntax node into a symbol. */
 export interface DefinitionRule {
@@ -31,6 +41,18 @@ export interface ImportReference {
   readonly kind: ImportKind;
   /** Names imported from the module, when the syntax lists them (Python `from x import a, b`). */
   readonly names?: readonly string[];
+  /** The local names the import binds, when the syntax shows them. */
+  readonly bindings?: readonly ImportBinding[];
+}
+
+/**
+ * A local name an import introduces: `import { a as b }` binds `b` to `a`;
+ * `import * as u`, `const u = require(…)`, Python `import u` and a Go package
+ * bind `u` to the whole module (`*`); `import d from …` binds `d` to `default`.
+ */
+export interface ImportBinding {
+  readonly local: string;
+  readonly imported: string;
 }
 
 /** Turns one kind of syntax node into the module references it makes. */
@@ -46,6 +68,62 @@ export interface LanguageSpec {
    * Definitions inside them are not symbols of the file.
    */
   readonly opaque: ReadonlySet<string>;
+  /**
+   * Bodies whose contents count as module level although they sit in a
+   * function: the wrapper of an IIFE or UMD module. Empty for other nodes.
+   */
+  readonly moduleWrappers?: (node: Node) => readonly Node[];
+  /**
+   * Call node types, each with the field that holds the callee, or a pair of
+   * fields `[object, name]` when the grammar splits it (`a.b()` in Java or Ruby).
+   */
+  readonly calls: Readonly<Record<string, string | readonly [object: string, name: string]>>;
+  /** Member access node types, each with its object and property fields (`a.b`). */
+  readonly members: Readonly<Record<string, readonly [object: string, property: string]>>;
+  /** Callees that are not calls into code (`require` in JavaScript is an import). */
+  readonly ignoredCallees: ReadonlySet<string>;
+  /**
+   * Nodes that declare local names, each with the field holding the names
+   * (null: the whole node). Every `identifier` in it counts as declared.
+   */
+  readonly locals: Readonly<Record<string, string | null>>;
+  /**
+   * Whether `receiver` at the start of the call names the object the
+   * enclosing method belongs to: `this` outside nested functions, `self`,
+   * a Go method's receiver.
+   */
+  readonly isSelf: (call: Node, receiver: string) => boolean;
+}
+
+/**
+ * Visit every node of the given types under `root`, in source order. A tree
+ * cursor walks without recursion and only materialises the nodes visited,
+ * which matters for large or deeply nested (possibly hostile) input.
+ */
+export function visitNodes(
+  root: Node,
+  types: ReadonlySet<string>,
+  visit: (node: Node) => void,
+): void {
+  const cursor = root.walk();
+  try {
+    for (;;) {
+      if (types.has(cursor.nodeType)) visit(cursor.currentNode);
+      if (cursor.gotoFirstChild()) continue;
+      while (!cursor.gotoNextSibling()) {
+        if (!cursor.gotoParent()) return;
+      }
+    }
+  } finally {
+    cursor.delete();
+  }
+}
+
+/** The nearest ancestor of one of the given types. */
+export function ancestorOf(node: Node, types: ReadonlySet<string>): Node | null {
+  let current = node.parent;
+  while (current && !types.has(current.type)) current = current.parent;
+  return current;
 }
 
 /** Container kinds whose functions are methods. */
@@ -55,6 +133,8 @@ export const METHOD_OWNERS: ReadonlySet<SymbolKind> = new Set([
   'struct',
   'trait',
   'impl',
+  // Java enums and PHP enums have methods of their own.
+  'enum',
 ]);
 
 export const nameField = (node: Node): string | null =>

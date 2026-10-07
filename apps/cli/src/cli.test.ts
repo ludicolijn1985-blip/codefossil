@@ -13,6 +13,7 @@ import { startFakeGitHub, type FakeGitHub } from '@codefossil/providers/testing'
 import { graphDocumentSchema } from '@codefossil/query';
 import type { CliIO } from './io.js';
 import { runCli } from './run.js';
+import { VERSION } from './version.js';
 
 interface Captured {
   readonly code: number;
@@ -214,10 +215,17 @@ describe('fossil CLI', () => {
     expect(result.stderr).toContain('is committed to this repository');
   });
 
-  it('asks for init before index or status', async () => {
+  it('asks for init before status', async () => {
     const result = await fossil(root(), 'status');
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Run `codefossil init` first');
+  });
+
+  it('creates the workspace when index runs first', async () => {
+    const result = await fossil(root(), 'index', '--offline');
+    expect(result.code).toBe(0);
+    expect(existsSync(join(root(), '.codefossil', 'fossil.db'))).toBe(true);
+    expect((await fossil(root(), 'status')).code).toBe(0);
   });
 });
 
@@ -248,7 +256,7 @@ describe('codefossil deps', () => {
     await fossil(root(), 'init');
     const indexed = await fossil(root(), 'index');
     expect(indexed.stdout).toContain(
-      'Dependency graph (full): 1 file import edge, 1 package dependency edge, 1 declared dependency; 1 import left unresolved.',
+      'Dependency graph (full): 1 file import edge, 1 package dependency edge, 1 declared dependency; 1 import left unresolved; 0 call edges from 0 call sites.',
     );
   });
 
@@ -1067,6 +1075,197 @@ describe('fossil CLI outside a repository', () => {
 
   it('prints its version', async () => {
     const result = await fossil(plain, '--version');
-    expect(result).toMatchObject({ code: 0, stdout: '0.1.0\n' });
+    expect(result).toMatchObject({ code: 0, stdout: `${VERSION}\n` });
+  });
+});
+
+describe('codefossil fossils and copied code', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    const parse = 'export function parse(s: string) {\n  return s.trim();\n}\n';
+    const helper = 'export function helper() {\n  return 1;\n}\n';
+    await repo.write('src/old.ts', `${parse}\n${helper}`);
+    await repo.commit('Add parser and helper');
+    await repo.write('src/old.ts', helper);
+    await repo.write('src/new.ts', parse);
+    await repo.commit('Move the parser');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  const root = (): string => repo?.root ?? '';
+
+  it('lists the oldest code with its origin and where it was copied', async () => {
+    const result = await fossil(root(), 'fossils');
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('The oldest code still here, oldest introduction first');
+    expect(result.stdout).toMatch(
+      /function parse {2}src\/new\.ts:1\n {5}introduced \d{4}-\d{2}-\d{2} in [0-9a-f]{7} "Add parser and helper"/,
+    );
+    expect(result.stdout).toMatch(
+      /copied here from src\/old\.ts on \d{4}-\d{2}-\d{2} in [0-9a-f]{7} "Move the parser"/,
+    );
+    expect(result.stdout).toContain('unchanged since it was copied here');
+  });
+
+  it('explains copied code through its original, at the copy’s confidence', async () => {
+    // The removed copy in src/old.ts still matches the name; the one defined at HEAD wins.
+    const result = await fossil(root(), 'why', 'parse', '--no-save');
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      'It was copied, with identical content, from function parse in src/old.ts',
+    );
+    expect(result.stdout).toContain('That code was introduced in commit');
+    expect(result.stdout).toContain('Confidence 0.90');
+  });
+});
+
+describe('codefossil impact with callers', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.write(
+      'src/cart.ts',
+      "import { rate } from './tax.js';\nexport function total(n: number) {\n  return n * rate();\n}\n",
+    );
+    await repo.write(
+      'test/cart.test.ts',
+      "import { total } from '../src/cart.js';\nexport function check() {\n  return total(1);\n}\n",
+    );
+    await repo.commit('Shop');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('lists direct and indirect callers before the importing files', async () => {
+    const result = await fossil(repo?.root ?? '', 'impact', 'rate', '--no-save');
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain(
+      '1 caller calls it directly and 1 through other calls (1 in tests). 1 file imports the file that defines it directly and 1 transitively (1 of them tests).',
+    );
+    expect(result.stdout).toMatch(
+      /Callers \(1\)\n {2}function total \(src\/cart\.ts:2\) {2}\(DERIVED 0\.95\)/,
+    );
+    expect(result.stdout).toMatch(
+      /Indirect callers \(1\)\n {2}function check \(test\/cart\.test\.ts:2\) \[test\] {2}via function total/,
+    );
+    expect(result.stdout.indexOf('Callers (1)')).toBeLessThan(result.stdout.indexOf('Direct (1)'));
+  });
+});
+
+describe('codefossil why --html', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.commit('Add rate');
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.09;\n}\n');
+    await repo.commit('fix: <img src=x onerror=alert(1)> wrong rate for @someone');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('writes a self-contained page with every piece of repository text escaped', async () => {
+    const root = repo?.root ?? '';
+    const result = await fossil(root, 'why', 'rate', '--no-save', '--html', 'rate.html');
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain('rate.html');
+
+    const html = readFileSync(join(root, 'rate.html'), 'utf8');
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).toContain('<h1>rate</h1>');
+    expect(html).toContain('fix: &#60;img src=x onerror=alert(1)&#62; wrong rate');
+    expect(html).not.toContain('<img');
+    expect(html).not.toMatch(
+      /<script|<link|https?:\/\/(?!github\.com\/ludicolijn1985-blip\/codefossil)/,
+    );
+    expect(html).toContain('class="badge fix-badge"');
+  });
+
+  it('draws only symbols', async () => {
+    const result = await fossil(repo?.root ?? '', 'why', 'src/tax.ts', '--html', 'tax.html');
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('--html draws the history of a symbol');
+  });
+});
+
+describe('codefossil lens', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write(
+      'src/tax.ts',
+      "import { round } from './round.js';\nexport function rate() {\n  return round(0.21);\n}\n",
+    );
+    await repo.write('src/round.ts', 'export function round(n: number) {\n  return n;\n}\n');
+    await repo.commit('Add tax (#3)');
+    await repo.write(
+      'src/round.ts',
+      'export function round(n: number) {\n  return Math.round(n);\n}\n',
+    );
+    await repo.commit('fix: round properly');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('summarises every function of a file in one line', async () => {
+    const root = repo?.root ?? '';
+    const text = await fossil(root, 'lens', join(root, 'src/round.ts'));
+    expect(text.stdout).toMatch(/^ +1 {2}round {2}born \d{4} · 1 change · 1 fix · 1 caller\n$/);
+
+    const json = JSON.parse((await fossil(root, 'lens', 'src/tax.ts', '--json')).stdout) as {
+      path: string;
+      symbols: { qualifiedName: string; born: { subject: string; issues: string[] } | null }[];
+    };
+    expect(json.path).toBe('src/tax.ts');
+    expect(json.symbols.map((s) => s.qualifiedName)).toEqual(['rate']);
+    expect(json.symbols[0]?.born?.subject).toBe('Add tax (#3)');
+  });
+});
+
+describe('codefossil site', () => {
+  let repo: FixtureRepo | undefined;
+
+  beforeEach(async () => {
+    repo = await createFixtureRepo();
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.21;\n}\n');
+    await repo.commit('Add rate <script>alert(1)</script>');
+    await repo.write('src/tax.ts', 'export function rate() {\n  return 0.09;\n}\n');
+    await repo.commit('fix: wrong rate');
+  });
+
+  afterEach(async () => {
+    await repo?.cleanup();
+  });
+
+  it('writes an overview whose every link leads to a written page', async () => {
+    const root = repo?.root ?? '';
+    const result = await fossil(root, 'site', 'out', '--name', 'acme/shop');
+    expect(result.code).toBe(0);
+
+    const index = readFileSync(join(root, 'out', 'index.html'), 'utf8');
+    expect(index).toContain('<h1>acme/shop</h1>');
+    expect(index).toContain('Fixed most often');
+    expect(index).not.toContain('<script>');
+    const links = [...index.matchAll(/href="(stories\/[^"]+)"/g)].map((m) => m[1] ?? '');
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) expect(existsSync(join(root, 'out', link))).toBe(true);
+    const page = readFileSync(join(root, 'out', links[0] ?? ''), 'utf8');
+    expect(page).toContain('href="../index.html"');
   });
 });

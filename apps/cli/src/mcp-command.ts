@@ -103,8 +103,9 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     name: 'impact',
     title: 'What depends on this?',
     description:
-      'List what depends on a symbol, file or dependency, directly and transitively through ' +
-      'imports, and which dependents are tests. File-level: importing the defining file counts.' +
+      'List what depends on a symbol, file or dependency, directly and transitively, and which ' +
+      'dependents are tests. For a symbol: the functions that call it (statically resolved calls; ' +
+      'calls through variables or callbacks are not seen), then the files importing its file.' +
       UNTRUSTED,
     input: { target, depth: limit(10) },
     args: ({ target, depth }) => [
@@ -140,7 +141,8 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     title: 'Historical hotspots',
     description:
       'Code files where history concentrates: change frequency × churn × fix commits, with risk ' +
-      'components. Useful before touching a fragile area.' +
+      'components. Useful before touching a fragile area. With `symbols`, the functions, methods ' +
+      'and classes fixed most often instead (`since` does not apply then).' +
       UNTRUSTED,
     input: {
       limit: limit(100),
@@ -148,11 +150,13 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
         .string()
         .regex(/^\d{4}-\d{2}-\d{2}$/, 'an ISO date such as 2025-01-01')
         .optional(),
+      symbols: z.boolean().optional(),
     },
-    args: ({ limit, since }) => [
+    args: ({ limit, since, symbols }) => [
       'hotspots',
       ...(limit ? ['--limit', String(limit)] : []),
       ...(since ? ['--since', since] : []),
+      ...(symbols ? ['--symbols'] : []),
     ],
   }),
   tool({
@@ -164,6 +168,35 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
       UNTRUSTED,
     input: { limit: limit(200) },
     args: ({ limit }) => ['dead-intent', ...(limit ? ['--limit', String(limit)] : [])],
+  }),
+  tool({
+    name: 'lens',
+    title: 'History of every function in a file',
+    description:
+      'One line of history per function, class and method of a file (repository-relative path), ' +
+      'as JSON: when it was born (followed back through moves), how often it changed, its fixes, ' +
+      'callers and latest change. Useful before editing a file.' +
+      UNTRUSTED,
+    input: { path: target },
+    args: ({ path }) => ['lens', '--json', '--', path],
+  }),
+  tool({
+    name: 'fossils',
+    title: 'Oldest surviving code',
+    description:
+      'The oldest functions, methods and classes still present, with the commit that introduced ' +
+      'them (followed back through copies and moves) and what changed since; or, with order ' +
+      '`untouched`, the code that has gone longest without a change.' +
+      UNTRUSTED,
+    input: {
+      limit: limit(100),
+      order: z.enum(['introduced', 'untouched']).optional(),
+    },
+    args: ({ limit, order }) => [
+      'fossils',
+      ...(limit ? ['--limit', String(limit)] : []),
+      ...(order ? ['--order', order] : []),
+    ],
   }),
   tool({
     name: 'change_report',

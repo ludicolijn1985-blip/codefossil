@@ -23,7 +23,9 @@ import { parsePositiveInteger, parseSince } from './options.js';
 import { registerDoctorCommand } from './doctor-command.js';
 import { registerReportCommand } from './report-command.js';
 import { openIndexedWorkspace } from './auto-index.js';
+import { registerLensCommand } from './lens-command.js';
 import { registerMcpCommand } from './mcp-command.js';
+import { registerSiteCommand } from './site-command.js';
 import { registerServeCommand } from './serve-command.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { VERSION } from './version.js';
@@ -138,7 +140,8 @@ export function createProgram(io: CliIO): Command {
     .action(async (options: IndexCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
       const maxRequests = parsePositiveInteger(options.githubMaxRequests, '--github-max-requests');
-      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+      // Indexing a repository for the first time creates its workspace, as `init` would.
+      await withWorkspace(initWorkspace(repoPath()), async (ws) => {
         const plan = await planGitHubSync(ws, io, {
           offline: options.offline === true,
           maxRequests,
@@ -267,6 +270,8 @@ export function createProgram(io: CliIO): Command {
   registerDoctorCommand(program, io, repoPath);
   registerServeCommand(program, io, repoPath);
   registerMcpCommand(program, io, repoPath);
+  registerLensCommand(program, io, repoPath);
+  registerSiteCommand(program, io, repoPath);
 
   return program;
 }

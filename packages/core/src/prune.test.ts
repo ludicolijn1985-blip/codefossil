@@ -28,7 +28,11 @@ function snapshot(db: FossilDb) {
                         s.current, (SELECT count(*) FROM symbol_versions v WHERE v.symbol_id = s.id) AS versions,
                         (SELECT group_concat(c.sha) FROM relations r JOIN commits c ON c.id = r.target_id
                          WHERE r.source_type = 'symbol' AND r.source_id = s.id
-                           AND r.relation = 'INTRODUCED_BY') AS introducedBy
+                           AND r.relation = 'INTRODUCED_BY') AS introducedBy,
+                        (SELECT group_concat(of.path || ':' || o.stable_key) FROM relations r
+                         JOIN symbols o ON o.id = r.target_id JOIN files of ON of.id = o.file_id
+                         WHERE r.source_type = 'symbol' AND r.source_id = s.id
+                           AND r.relation = 'COPIED_FROM') AS copiedFrom
                       FROM symbols s JOIN files f ON f.id = s.file_id ORDER BY f.path, s.stable_key`),
     relations: rows(sql`SELECT relation, evidence_type AS level, count(*) AS n FROM relations
                         GROUP BY relation, evidence_type ORDER BY relation, evidence_type`),
@@ -36,6 +40,8 @@ function snapshot(db: FossilDb) {
     imports:
       rows(sql`SELECT f.path, i.specifier, i.line FROM imports i JOIN files f ON f.id = i.file_id
                       ORDER BY f.path, i.line`),
+    calls: rows(sql`SELECT f.path, c.callee, c.line FROM calls c JOIN files f ON f.id = c.file_id
+                    ORDER BY f.path, c.line, c.callee`),
   };
 }
 
@@ -178,6 +184,33 @@ describe('pruning history that HEAD no longer reaches', () => {
     for (const sha of shas) {
       expect(findCommitBySha(fossil.db, result.repositoryId, sha)).toBeDefined();
     }
+  });
+
+  it('re-derives a copy whose source file the abandoned branch touched', async () => {
+    const helper = [
+      'export function round(n) {',
+      '  const scaled = n * 100;',
+      '  return Math.round(scaled) / 100;',
+      '}',
+      '',
+    ].join('\n');
+    await repo.write('src/money.js', helper);
+    await repo.commit('Add round');
+    await repo.write('src/report.js', helper);
+    await repo.commit('Copy round into the report');
+    await repo.write('src/main.js', "import { round } from './money.js';\nround(1);\n");
+    await repo.commit('Call round');
+
+    await repo.git('checkout', '-q', '-b', 'tweak');
+    await repo.write('src/money.js', `${helper}export function floor(n) {\n  return n;\n}\n`);
+    await repo.commit('Add floor');
+    await runIndex(fossil.db, repo.root, { now });
+    await repo.git('checkout', '-q', 'main');
+
+    const result = await runIndex(fossil.db, repo.root, { now });
+
+    expect(result.commitsPruned).toBe(1);
+    await expectSameAsFreshIndex();
   });
 
   it('keeps saved investigations and the evidence they cite', async () => {

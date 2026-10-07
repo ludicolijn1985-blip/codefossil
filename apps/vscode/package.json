@@ -1,0 +1,80 @@
+{
+  "name": "codefossil-vscode",
+  "displayName": "CODEFOSSIL — why code exists",
+  "description": "See above every function when it was born, how often it changed and broke, and who calls it, from your Git history, with evidence.",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "publisher": "codefossil",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ludicolijn1985-blip/codefossil"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "git",
+    "history",
+    "blame",
+    "code archaeology",
+    "codelens"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:python",
+    "onLanguage:go",
+    "onLanguage:rust"
+  ],
+  "main": "./dist/extension.cjs",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codefossil.showHistory",
+        "title": "Show the history of this function",
+        "category": "CODEFOSSIL"
+      },
+      {
+        "command": "codefossil.restart",
+        "title": "Restart",
+        "category": "CODEFOSSIL"
+      }
+    ],
+    "configuration": {
+      "title": "CODEFOSSIL",
+      "properties": {
+        "codefossil.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a line of history above every function, class and method."
+        },
+        "codefossil.command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "The command that starts `codefossil mcp`, as program and arguments (no shell), e.g. `[\"node\", \"/path/to/codefossil.js\", \"mcp\"]`. Empty: `npx --yes codefossil mcp`."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "1.100.0"
+  }
+}

@@ -9,7 +9,9 @@ import {
 import { analyzeDeadIntent, DEAD_INTENT_CONFIDENCE } from './dead-intent.js';
 import { DEFECT_CONFIDENCE } from './defects.js';
 import { analyzeHotspots } from './hotspots.js';
-import { analyzeFragileSymbols } from './fragile.js';
+import { analyzeFossils } from './fossils.js';
+import { buildSymbolStory } from './story.js';
+import { analyzeFixedSymbols, analyzeFragileSymbols } from './fragile.js';
 import { buildReport } from './report.js';
 
 const now = () => new Date('2026-09-26T12:00:00.000Z');
@@ -300,6 +302,148 @@ export function other() {
         fixes: [{ sha: fix, subject: 'fix: crash on padded input (#12)' }],
       });
       expect(later.symbolsTouched).toBe(1);
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('fossils', () => {
+  it('dates code from its origin, follows copies, and orders by age or by silence', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const parse = 'export function parse(s: string) {\n  return s.trim();\n}\n';
+      const helper = (n: number) => `export function helper() {\n  return ${String(n)};\n}\n`;
+      await repo.write('src/old.ts', `${parse}\n${helper(1)}`);
+      const born = await repo.commit('Add parser and helper');
+      await repo.write('src/old.ts', helper(1));
+      await repo.write('src/new.ts', parse);
+      const moved = await repo.commit('Move the parser');
+      await repo.write('src/old.ts', helper(2));
+      const tuned = await repo.commit('Tune helper');
+      await repo.write('src/later.ts', 'export function later() {\n  return 0;\n}\n');
+      await repo.commit('Add later');
+      await repo.write('test/old.test.ts', 'export function check() {\n  return 1;\n}\n');
+      await repo.commit('Add a test');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+
+      const report = analyzeFossils(fossil.db, repositoryId);
+
+      expect(report).toMatchObject({ order: 'introduced', withOrigin: 3, unchanged: 2 });
+      // Same introduction: ties go by path (src/new.ts before src/old.ts), then line.
+      expect(report.fossils.map((f) => f.symbol.qualifiedName)).toEqual([
+        'parse',
+        'helper',
+        'later',
+      ]);
+      const copied = report.fossils.find((f) => f.symbol.qualifiedName === 'parse');
+      expect(copied).toMatchObject({
+        symbol: { path: 'src/new.ts' },
+        introduced: { sha: born, confidence: 0.9 },
+        copied: { fromPath: 'src/old.ts', commit: { sha: moved } },
+        changesSince: 0,
+        lastChange: null,
+      });
+      expect(report.fossils.find((f) => f.symbol.qualifiedName === 'helper')).toMatchObject({
+        changesSince: 1,
+        lastChange: { sha: tuned },
+      });
+
+      // Longest without a change first: parse (copied, then untouched) before helper (tuned later).
+      const silent = analyzeFossils(fossil.db, repositoryId, { order: 'untouched', limit: 2 });
+      expect(silent.fossils.map((f) => f.symbol.qualifiedName)).toEqual(['parse', 'helper']);
+      expect(
+        analyzeFossils(fossil.db, repositoryId, { includeTests: true }).fossils.map(
+          (f) => f.symbol.qualifiedName,
+        ),
+      ).toContain('check');
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('fixed symbols', () => {
+  it('ranks current functions by the fix commits that changed them, leaving tests out', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const fn = (name: string, body: string) =>
+        `export function ${name}() {\n  return ${body};\n}\n`;
+      await repo.write('src/a.ts', fn('fragile', '1') + fn('steady', '1'));
+      await repo.commit('Add functions');
+      await repo.write('src/a.ts', fn('fragile', '2') + fn('steady', '1'));
+      await repo.commit('fix: fragile returned the wrong value');
+      await repo.write('src/a.ts', fn('fragile', '3') + fn('steady', '2'));
+      await repo.commit('fix: fragile again, and touch steady');
+      await repo.write('src/a.ts', fn('fragile', '3') + fn('steady', '3'));
+      await repo.commit('Tune steady');
+      await repo.write('test/a.test.ts', fn('check', '1'));
+      await repo.commit('Add test');
+      await repo.write('test/a.test.ts', fn('check', '2'));
+      await repo.commit('fix: test');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+
+      const report = analyzeFixedSymbols(fossil.db, repositoryId);
+
+      expect(report.considered).toBe(2);
+      expect(report.symbols.map((s) => [s.symbol.qualifiedName, s.fixes.length])).toEqual([
+        ['fragile', 2],
+        ['steady', 1],
+      ]);
+      expect(report.symbols[0]).toMatchObject({ priorChanges: 3, level: 'INFERRED' });
+      expect(
+        analyzeFixedSymbols(fossil.db, repositoryId, { includeTests: true }).symbols.map(
+          (s) => s.symbol.qualifiedName,
+        ),
+      ).toContain('check');
+    } finally {
+      fossil.close();
+      await repo.cleanup();
+    }
+  });
+});
+
+describe('symbol story', () => {
+  it('tells a symbol’s life: birth, move, changes and fixes, oldest first', async () => {
+    const repo = await createFixtureRepo();
+    const fossil = openDatabase(IN_MEMORY);
+    try {
+      const parse = (body: string) => `export function parse(s: string) {\n  ${body}\n}\n`;
+      const keep = 'export function keep() {\n  return 0;\n}\n';
+      await repo.write('src/old.ts', `${parse('return s;')}\n${keep}`);
+      const born = await repo.commit('Add parser');
+      await repo.write('src/old.ts', keep);
+      await repo.write('src/new.ts', parse('return s;'));
+      const moved = await repo.commit('Move the parser');
+      await repo.write('src/new.ts', parse('return s.trim();'));
+      const fixed = await repo.commit('fix: crash on padded input');
+      const { repositoryId } = await runIndex(fossil.db, repo.root, { now });
+      const symbol = fossil.sqlite
+        .prepare(
+          "select s.id from symbols s join files f on f.id = s.file_id where f.path = 'src/new.ts' and s.name = 'parse'",
+        )
+        .get() as { id: number };
+
+      const story = buildSymbolStory(fossil.db, repositoryId, symbol.id);
+
+      expect(story?.events.map((e) => [e.kind, e.sha, e.fix !== null])).toEqual([
+        ['introduced', born, false],
+        ['copied', moved, false],
+        ['changed', fixed, true],
+      ]);
+      expect(story).toMatchObject({
+        symbol: { qualifiedName: 'parse', path: 'src/new.ts', current: true },
+        copiedFrom: [{ path: 'src/old.ts', qualifiedName: 'parse' }],
+        introduction: { level: 'DERIVED', confidence: 0.9 },
+        fixes: 1,
+        authors: 1,
+        callers: 0,
+      });
+      expect(buildSymbolStory(fossil.db, repositoryId, 999_999)).toBeNull();
     } finally {
       fossil.close();
       await repo.cleanup();

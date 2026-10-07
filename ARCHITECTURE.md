@@ -166,3 +166,27 @@ symbol -> callers -> modules -> tests -> routes -> packages
 ```
 
 Return direct and transitive dependencies with path explanations.
+
+**Call graph.** While reading imports at HEAD, the dependency indexer also records each file's
+call sites (`calls` table) and the names each import binds (`import { a as b }`, `import * as u`,
+`const u = require()`, Python `import m as u` and `from m import f`, Go package names). Per call
+site the parser notes the callee as a name path (`utils.flatten`, `this.save`, `*.listen`), the
+innermost symbol whose source range contains it, whether the first name is declared inside that
+symbol (a parameter, variable or inner function), and whether it is the method's own object
+(`this` outside nested functions, `self`, a Go receiver). After the import edges are rebuilt, a
+call is recorded as `CALLS` (caller symbol, or the file for module-level code, to the callee)
+only when exactly one definition fits, by the first rule its first name allows:
+
+| First name of the callee | Rule                                                                                                                                                               | Level        |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| The method's own object  | `this.validate()` in `Cart.total` → `Cart.validate` in the file                                                                                                    | DERIVED 1.0  |
+| A parameter or local     | only the qualified-name rule below                                                                                                                                 | INFERRED 0.6 |
+| Bound by an import       | `sum()` from `import { sum }`, `utils.sum()` from `import * as utils`: the definition in the file the import resolved to — never a same-named definition elsewhere | DERIVED 0.95 |
+| Anything else            | a definition of that name in the calling file                                                                                                                      | DERIVED 1.0  |
+| (fallback for `a.b()`)   | one definition named `a.b` in the repository                                                                                                                       | INFERRED 0.6 |
+
+Each edge cites its call site as `ast_node` evidence (`path@sha#Lline`); a rebuild reuses the
+evidence row of an unchanged call site, so its id stays stable. Calls whose receiver is an
+expression (`getApp().listen()`), that fit several definitions, or whose calling symbol is not in
+the index are not recorded. `impact`
+walks `CALLS` backwards for callers, then `CONTAINS`/`IMPORTS` for files.

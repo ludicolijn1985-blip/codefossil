@@ -32,6 +32,10 @@ const GRAMMARS = [
   ['tree-sitter-python', ['tree-sitter-python.wasm']],
   ['tree-sitter-go', ['tree-sitter-go.wasm']],
   ['tree-sitter-rust', ['tree-sitter-rust.wasm']],
+  ['tree-sitter-java', ['tree-sitter-java.wasm']],
+  ['tree-sitter-c-sharp', ['tree-sitter-c_sharp.wasm']],
+  ['tree-sitter-ruby', ['tree-sitter-ruby.wasm']],
+  ['tree-sitter-php', ['tree-sitter-php.wasm']],
 ];
 
 function versionOf(name) {

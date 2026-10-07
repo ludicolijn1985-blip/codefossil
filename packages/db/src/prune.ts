@@ -29,8 +29,8 @@ const ids = (rows: readonly { id: number }[]): number[] => rows.map((row) => row
  *   their symbols, which the symbol indexer rebuilds from the remaining
  *   changes, re-marked as pending here. A file left without history that is
  *   absent from HEAD is removed.
- * - The import snapshot is dropped and the graph marked unindexed: unchanged
- *   files would otherwise keep import evidence located at the old HEAD.
+ * - The import and call snapshot is dropped and the graph marked unindexed: unchanged
+ *   files would otherwise keep evidence located at the old HEAD.
  * - Evidence that only the removed records cited is removed; evidence a saved
  *   investigation still cites is kept.
  *
@@ -102,9 +102,9 @@ export function pruneUnreachableCommits(
 
     tx.run(sql`DELETE FROM relations WHERE ${doomed}`);
     tx.run(sql`DELETE FROM symbols WHERE id IN ${symbols}`);
-    tx.run(
-      sql`DELETE FROM imports WHERE file_id IN (SELECT id FROM files WHERE repository_id = ${repositoryId})`,
-    );
+    const repositoryFiles = sql`(SELECT id FROM files WHERE repository_id = ${repositoryId})`;
+    tx.run(sql`DELETE FROM imports WHERE file_id IN ${repositoryFiles}`);
+    tx.run(sql`DELETE FROM calls WHERE file_id IN ${repositoryFiles}`);
     tx.run(sql`UPDATE repositories SET graph_indexed_sha = NULL WHERE id = ${repositoryId}`);
     for (const file of kept) {
       const span = spans.get(file.id);
@@ -132,9 +132,10 @@ interface AffectedFile {
 }
 
 /**
- * Files the pruned commits touched, closed over renames: symbols move along a
- * rename, so both sides of every rename involving an affected file are rebuilt
- * together.
+ * Files the pruned commits touched, closed over renames (symbols move along a
+ * rename, so both sides are rebuilt together) and over copies (a symbol
+ * `COPIED_FROM` a rebuilt symbol is re-derived with it, since its source may
+ * no longer exist).
  */
 function affectedFiles(db: FossilDb, repositoryId: number, pruned: SQL): AffectedFile[] {
   const found = new Map<number, AffectedFile>();
@@ -165,7 +166,13 @@ function affectedFiles(db: FossilDb, repositoryId: number, pruned: SQL): Affecte
                      WHERE file_id IN ${jsonList(current.map((f) => f.id))} AND status = 'renamed') OR
             id IN (SELECT fc.file_id FROM file_changes fc JOIN files f ON f.id = fc.file_id
                    WHERE f.repository_id = ${repositoryId} AND fc.status = 'renamed'
-                     AND fc.previous_path IN ${jsonList(current.map((f) => f.path))}))`,
+                     AND fc.previous_path IN ${jsonList(current.map((f) => f.path))}) OR
+            id IN (SELECT copy.file_id FROM relations r
+                   JOIN symbols copy ON copy.id = r.source_id
+                   JOIN symbols origin ON origin.id = r.target_id
+                   WHERE r.repository_id = ${repositoryId} AND r.relation = 'COPIED_FROM'
+                     AND r.source_type = 'symbol' AND r.target_type = 'symbol'
+                     AND origin.file_id IN ${jsonList(current.map((f) => f.id))}))`,
     );
     if (!add(linked)) return [...found.values()];
   }

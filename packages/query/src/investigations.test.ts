@@ -134,9 +134,11 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
       'src/checkout.test.ts via src/checkout.ts (test)',
     ]);
     expect(impact.answer).toBe(
-      '1 file depends on function calculateVAT (src/payment/vat.ts:2) directly and 2 transitively (1 of them tests).',
+      'No call to it was resolved. 1 file imports the file that defines it directly and 2 transitively (1 of them tests).',
     );
-    expect(impact.caveats[0]).toMatch(/^File-level analysis/);
+    expect(impact.callers).toEqual({ direct: [], transitive: [] });
+    expect(impact.caveats[0]).toMatch(/^Calls are resolved at HEAD only where one definition fits/);
+    expect(impact.caveats[1]).toMatch(/^Files are counted when they import/);
     expect(impact.direct[0]?.evidenceIds.length).toBeGreaterThan(0);
   });
 
@@ -267,6 +269,11 @@ describe('isTestPath', () => {
     ['__tests__/x.js', true],
     ['src/contest.ts', false],
     ['src/latest.ts', false],
+    ['src/test/java/com/acme/CartTest.java', true],
+    ['Shop.Tests/CartTests.cs', true],
+    ['tests/Unit/CartSpec.php', true],
+    ['src/main/java/com/acme/Latest.java', false],
+    ['src/latest.java', false],
   ])('%s → %s', (path, expected) => {
     expect(isTestPath(path)).toBe(expected);
   });

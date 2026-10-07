@@ -35,9 +35,13 @@
       "esbuild"
     ],
     "ignoredBuiltDependencies": [
+      "tree-sitter-c-sharp",
       "tree-sitter-go",
+      "tree-sitter-java",
       "tree-sitter-javascript",
+      "tree-sitter-php",
       "tree-sitter-python",
+      "tree-sitter-ruby",
       "tree-sitter-rust",
       "tree-sitter-typescript"
     ]

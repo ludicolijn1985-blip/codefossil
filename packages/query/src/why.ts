@@ -110,6 +110,48 @@ function historyStatement(
   };
 }
 
+/** Longest copy chain followed; real chains are a few moves long. */
+const MAX_COPY_HOPS = 10;
+
+type SymbolRecord = Extract<EntityRecord, { type: 'symbol' }>;
+
+interface CopyHop {
+  /** The copy. */
+  readonly from: EntityRef;
+  readonly row: ReturnType<typeof linked>[number]['row'];
+  /** What it was copied from. */
+  readonly source: SymbolRecord;
+}
+
+/** The `COPIED_FROM` links from a symbol back to code that was not itself copied. */
+export function copyChain(
+  db: FossilDb,
+  repositoryId: number,
+  start: EntityRef,
+): { hops: CopyHop[]; origin: EntityRef } {
+  const hops: CopyHop[] = [];
+  const seen = new Set([start.id]);
+  let current = start;
+  while (hops.length < MAX_COPY_HOPS) {
+    const link = linked(db, repositoryId, current, 'COPIED_FROM', 'out').find(
+      (l) => l.record.type === 'symbol',
+    );
+    if (link?.record.type !== 'symbol' || seen.has(link.record.id)) break;
+    hops.push({ from: current, row: link.row, source: link.record });
+    seen.add(link.record.id);
+    current = { type: 'symbol', id: link.record.id };
+  }
+  return { hops, origin: current };
+}
+
+/** The earliest commit recorded as changing a symbol: for a copy, the one that made it. */
+function firstChange(db: FossilDb, repositoryId: number, ref: EntityRef): CommitRecord | null {
+  const commits = linked(db, repositoryId, ref, 'MODIFIES', 'in').flatMap(({ record }) =>
+    record.type === 'commit' ? [record] : [],
+  );
+  return commits.sort((a, b) => a.committedAt.localeCompare(b.committedAt))[0] ?? null;
+}
+
 function whySymbol(
   db: FossilDb,
   repositoryId: number,
@@ -128,15 +170,41 @@ function whySymbol(
     evidenceIds: containment?.row.provenanceJson.evidenceIds ?? [],
   });
 
-  const introduction = linked(db, repositoryId, ref, 'INTRODUCED_BY', 'out').find(
+  // Copied or moved code was born elsewhere: follow the copies back to the original.
+  const { hops, origin } = copyChain(db, repositoryId, ref);
+  let copiedIn: CommitRecord | null = null;
+  for (const [index, hop] of hops.entries()) {
+    const copyCommit = firstChange(db, repositoryId, hop.from);
+    if (index === 0) copiedIn = copyCommit;
+    const evidenceId = copyCommit ? commitEvidence(db, repositoryId, copyCommit) : undefined;
+    const { source } = hop;
+    parts.statements.push({
+      text:
+        `${index === 0 ? 'It' : 'That'} was copied, with identical content, from ${source.kind} ` +
+        `${source.qualifiedName} in ${source.path}${copyCommit ? ` in ${describeCommit(copyCommit)}` : ''}.`,
+      role: 'copied from',
+      level: hop.row.evidenceType,
+      confidence: hop.row.confidence,
+      evidenceIds: [
+        ...hop.row.provenanceJson.evidenceIds,
+        ...(evidenceId === undefined ? [] : [evidenceId]),
+      ],
+    });
+  }
+  if (hops.length > 0) {
+    parts.caveats.push('The change count covers the time since it was copied into this file.');
+  }
+
+  const introduction = linked(db, repositoryId, origin, 'INTRODUCED_BY', 'out').find(
     (l) => l.record.type === 'commit',
   );
-  let introducedBy: CommitRecord | null = null;
+  let introducedBy: CommitRecord | null = copiedIn;
   if (introduction?.record.type === 'commit') {
-    introducedBy = introduction.record;
-    const evidenceId = commitEvidence(db, repositoryId, introducedBy);
+    const born = introduction.record;
+    introducedBy ??= born;
+    const evidenceId = commitEvidence(db, repositoryId, born);
     parts.statements.push({
-      text: `It was introduced in ${describeCommit(introducedBy)}.`,
+      text: `${hops.length > 0 ? 'That code' : 'It'} was introduced in ${describeCommit(born)}.`,
       role: 'introducing commit',
       level: introduction.row.evidenceType,
       confidence: introduction.row.confidence,
@@ -145,7 +213,7 @@ function whySymbol(
         ...(evidenceId === undefined ? [] : [evidenceId]),
       ],
     });
-    const context = commitContext(db, repositoryId, introducedBy, introduction.row);
+    const context = commitContext(db, repositoryId, born, introduction.row);
     parts.statements.push(...context.statements);
     parts.related.push(...context.related);
   } else {

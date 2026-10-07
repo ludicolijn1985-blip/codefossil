@@ -205,7 +205,9 @@ describe('robustness against hostile input', () => {
     const source = `${'['.repeat(depth)}${']'.repeat(depth)};\nfunction after() {}\n`;
     const result = await extractor.extract(source, 'javascript');
     expect(result?.symbols.map((s) => s.stableKey)).toEqual(['function:after']);
-  });
+    // This checks that nothing recurses on the input; parsing 200,000 nested nodes alone takes
+    // seconds on a slow CI runner, so the time limit is generous rather than a speed target.
+  }, 30_000);
 });
 
 describe('members defined through values', () => {
@@ -283,5 +285,59 @@ describe('limits and grammar selection', () => {
     ['Makefile', null],
   ])('%s uses %s', (path, grammar) => {
     expect(grammarForPath(path)).toBe(grammar);
+  });
+});
+
+describe('modules wrapped in a function (IIFE and UMD)', () => {
+  it('treats the wrapper body as module level', async () => {
+    const iife = [
+      '(function () {',
+      '  function helper() {}',
+      '  var VERSION = "1";',
+      '  exports.parse = function parse() {};',
+      '  Lib.prototype.run = function () {};',
+      '  function outer() {',
+      '    function local() {}',
+      '  }',
+      '})();',
+    ].join('\n');
+    expect(await keys('javascript', iife)).toEqual([
+      'function:helper L2-2',
+      'variable:VERSION L3-3',
+      'function:parse L4-4',
+      'method:Lib.run L5-5',
+      'function:outer L6-8',
+    ]);
+    expect(await keys('javascript', '!function () {\n  function bang() {}\n}();\n')).toEqual([
+      'function:bang L2-2',
+    ]);
+    expect(
+      await keys('javascript', '(function () {\n  function called() {}\n}).call(this);\n'),
+    ).toEqual(['function:called L2-2']);
+  });
+
+  it('reads the factory of a UMD module', async () => {
+    const umd = [
+      '(function (root, factory) {',
+      '  if (typeof define === "function") define([], factory);',
+      '  else root.lib = factory();',
+      '})(this, function () {',
+      '  function slugify(s) { return s; }',
+      '  return { slugify: slugify };',
+      '});',
+    ].join('\n');
+    expect(await keys('javascript', umd)).toEqual(['function:slugify L5-5']);
+  });
+
+  it('keeps functions inside ordinary calls and callbacks local', async () => {
+    expect(
+      await keys('javascript', 'setup(function () {\n  function inCallback() {}\n});\n'),
+    ).toEqual([]);
+    expect(
+      await keys(
+        'javascript',
+        'function f() {\n  (function () {\n    function nested() {}\n  })();\n}\n',
+      ),
+    ).toEqual(['function:f L1-5']);
   });
 });

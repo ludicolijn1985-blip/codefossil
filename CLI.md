@@ -41,15 +41,42 @@ statements, each with its evidence level, confidence and cited evidence; its ove
 is that of its weakest statement. Missing evidence is stated, not filled in. `--json` returns the
 API.md investigation shape.
 
+codefossil why res.send --html res-send.html
+Also write a one-page history of a symbol as self-contained HTML (no scripts, no external
+resources, all repository text escaped): its birth followed back through copies, every change on
+a timeline, which changes read as fixes, linked issues and pull requests, and its callers.
+
+codefossil site fossil-site [--limit n] [--name acme/shop]
+Write a static website about the repository's history: an overview of the oldest code, code
+untouched the longest, functions fixed most often, hotspots and dead-intent candidates, and a
+one-page history for every function it names. No scripts or external resources; open
+`fossil-site/index.html` or host the folder anywhere.
+
 codefossil impact calculateVAT [--depth n]
-Show direct and transitive dependents with distances, routes and which are tests (file-level:
-dependents import the file that defines a symbol).
+Show what depends on a target, with distances, routes and which are tests. For a symbol: the
+functions (or files, at module level) that call it, directly and through other calls, then the
+files that import its file. A call resolves at HEAD only where one definition fits: the method's
+own class for `this`/`self` (DERIVED), the definition an import binds (DERIVED, 0.95), a definition
+in the calling file (DERIVED), or, for `a.b()` and for names that are parameters or locals, a
+unique qualified name anywhere (INFERRED, 0.6). Ambiguous calls are left out, never guessed.
 
 codefossil hotspots [--since date] [--limit n] [--order hotspot|risk] [--tests] [--generated] [--json]
 Rank files by historical change: hotspot score (change frequency × churn × defect commits) and
 risk (change frequency × import centrality × bug density × test reach inverse), each shown with
 its components and the defect commits behind it. Tests and lockfiles/generated files are left out
 unless `--tests` / `--generated` is given.
+
+codefossil hotspots --symbols [--limit n] [--tests] [--json]
+Rank functions, methods and classes instead: by the fix commits that changed them, then by all
+their changes, with the latest fixes. Fix commits are inferences unless an issue labelled as a bug
+links them.
+
+codefossil fossils [--order introduced|untouched] [--limit n] [--tests] [--json]
+The oldest functions, methods and classes still present, with the commit that introduced each one
+and what changed since; `--order untouched` lists the code that has gone longest without a change.
+Code copied or moved to another file with identical content is dated from its original (the copy
+is DERIVED at confidence 0.9). Only origins the indexed history establishes are dated; older code
+is counted, never guessed. Tests, examples and docs are left out unless `--tests` is given.
 
 codefossil dead-intent [--limit n] [--stale-days n] [--json]
 List code changed by commits (or linked issues and pull requests) that speak of workarounds,
@@ -107,7 +134,7 @@ Serve the JSON API (see API.md) on this machine only.
 
 codefossil mcp
 Serve this repository to AI coding agents over the Model Context Protocol (stdio). Tools: `why`,
-`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent` and `change_report`, each the
+`impact`, `timeline`, `symbols`, `hotspots`, `dead_intent`, `fossils`, `lens` and `change_report`, each the
 command of the same name, read-only and offline. The index is brought up to date before the first
 answer; progress goes to stderr. Use `--repo <path>` when the client cannot set the directory.
 

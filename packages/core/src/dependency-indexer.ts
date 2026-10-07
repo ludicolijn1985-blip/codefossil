@@ -1,5 +1,6 @@
 import {
   deleteEvidenceOfType,
+  deleteFileCalls,
   deleteFileImports,
   deleteRelationsByProducer,
   ensureFile,
@@ -10,6 +11,7 @@ import {
   markDependenciesStale,
   recordEvidence,
   recordRelation,
+  replaceFileCalls,
   replaceFileImports,
   setGraphIndexedSha,
   setImportResolution,
@@ -32,7 +34,13 @@ import {
   minimumVersion,
   type TsConfig,
 } from '@codefossil/graph';
-import { grammarForPath, SymbolExtractor, type ParsedImport } from '@codefossil/parser';
+import {
+  grammarForPath,
+  SymbolExtractor,
+  type ParsedCall,
+  type ParsedImport,
+} from '@codefossil/parser';
+import { rebuildCallEdges, type ImportBinding, type ImportBindings } from './call-graph.js';
 import { detectLanguage } from '@codefossil/shared';
 
 export const IMPORT_RESOLVER_PRODUCER = 'import-resolver@0.1.0';
@@ -56,6 +64,9 @@ export interface DependencyIndexResult {
   readonly dependencyEdges: number;
   readonly builtinImports: number;
   readonly unresolvedImports: number;
+  /** Distinct call sites at HEAD, and the `CALLS` edges resolved from them. */
+  readonly calls: number;
+  readonly callEdges: number;
 }
 
 const UNCHANGED: DependencyIndexResult = {
@@ -69,12 +80,19 @@ const UNCHANGED: DependencyIndexResult = {
   dependencyEdges: 0,
   builtinImports: 0,
   unresolvedImports: 0,
+  calls: 0,
+  callEdges: 0,
 };
+
+interface ParsedFile {
+  readonly imports: readonly ParsedImport[];
+  readonly calls: readonly ParsedCall[];
+}
 
 interface Snapshot {
   readonly headFiles: ReadonlySet<string>;
-  /** Freshly parsed imports per path; null when the file could not be parsed. */
-  readonly parsed: ReadonlyMap<string, readonly ParsedImport[] | null>;
+  /** Freshly parsed imports and calls per path; null when the file could not be parsed. */
+  readonly parsed: ReadonlyMap<string, ParsedFile | null>;
   /** Paths that changed but no longer exist at HEAD. */
   readonly removed: readonly string[];
   readonly manifests: readonly Manifest[];
@@ -112,14 +130,19 @@ export async function indexDependencies(
   return db.transaction((tx) => {
     for (const path of snapshot.removed) {
       const file = findFileByPath(tx, repositoryId, path);
-      if (file) deleteFileImports(tx, file.id);
+      if (file) {
+        deleteFileImports(tx, file.id);
+        deleteFileCalls(tx, file.id);
+      }
     }
     for (const [path, found] of snapshot.parsed) {
       const file = ensureFile(tx, repositoryId, path, detectLanguage(path));
-      replaceFileImports(tx, repositoryId, file, headSha, found ?? []);
+      replaceFileImports(tx, repositoryId, file, headSha, found?.imports ?? []);
+      replaceFileCalls(tx, file.id, headSha, found?.calls ?? []);
     }
     const dependencies = writeManifests(tx, repositoryId, headSha, snapshot.manifests, observedAt);
-    const edges = rebuildImportEdges(tx, repositoryId, snapshot, observedAt);
+    const { bindings, ...edges } = rebuildImportEdges(tx, repositoryId, snapshot, observedAt);
+    const callGraph = rebuildCallEdges(tx, repositoryId, bindings, observedAt);
     setGraphIndexedSha(tx, repositoryId, headSha);
     return {
       mode: changed ? 'incremental' : 'full',
@@ -129,6 +152,7 @@ export async function indexDependencies(
       parseFailures: snapshot.parseFailures,
       dependencies,
       ...edges,
+      ...callGraph,
     };
   });
 }
@@ -146,7 +170,7 @@ async function readSnapshot(
   const manifestPaths = [...headFiles].filter(isManifestPath);
   const requests = [...toParse, ...manifestPaths].map((path) => ({ path, revision: headSha }));
 
-  const parsed = new Map<string, readonly ParsedImport[] | null>();
+  const parsed = new Map<string, ParsedFile | null>();
   const manifests: Manifest[] = [];
   const manifestErrors: string[] = [];
   const parseFailures: string[] = [];
@@ -165,7 +189,7 @@ async function readSnapshot(
       } else if (grammar) {
         parsed.set(
           request.path,
-          await parseImports(extractor, grammar, content, () => parseFailures.push(request.path)),
+          await parseFile(extractor, grammar, content, () => parseFailures.push(request.path)),
         );
       }
     }
@@ -214,16 +238,17 @@ async function readTsConfigs(
   return configs;
 }
 
-async function parseImports(
+async function parseFile(
   extractor: SymbolExtractor,
   grammar: NonNullable<ReturnType<typeof grammarForPath>>,
   content: Buffer | null,
   onFailure: () => void,
-): Promise<readonly ParsedImport[] | null> {
-  // Binary, oversized or unreadable content has no imports to report.
+): Promise<ParsedFile | null> {
+  // Binary, oversized or unreadable content has no imports or calls to report.
   if (!content || content.includes(0)) return null;
   try {
-    return (await extractor.extract(content.toString('utf8'), grammar))?.imports ?? null;
+    const result = await extractor.extract(content.toString('utf8'), grammar);
+    return result ? { imports: result.imports, calls: result.calls } : null;
   } catch {
     // One unparseable file must not stop the graph; it is reported and contributes no edges.
     onFailure();
@@ -326,7 +351,7 @@ function rebuildImportEdges(
 ): Pick<
   DependencyIndexResult,
   'importEdges' | 'dependencyEdges' | 'builtinImports' | 'unresolvedImports'
-> {
+> & { readonly bindings: ImportBindings } {
   deleteRelationsByProducer(db, repositoryId, IMPORT_RESOLVER_PRODUCER);
   const resolve = createResolver({
     files: snapshot.headFiles,
@@ -336,6 +361,7 @@ function rebuildImportEdges(
   const edges = new Map<string, Edge>();
   let builtinImports = 0;
   let unresolvedImports = 0;
+  const bindings = new Map<number, Map<string, ImportBinding>>();
 
   const addEdge = (
     item: RepositoryImport,
@@ -366,11 +392,13 @@ function rebuildImportEdges(
       ...(item.names ? { names: item.names } : {}),
     });
     setImportResolution(db, item.id, resolution.kind, describe(resolution));
+    const targetFileIds: number[] = [];
 
     if (resolution.kind === 'files') {
       for (const path of resolution.paths) {
         if (path === item.path) continue;
         const target = ensureFile(db, repositoryId, path, detectLanguage(path));
+        targetFileIds.push(target.id);
         addEdge(item, { type: 'file', id: target.id }, resolution.confidence, resolution.method);
       }
     } else if (resolution.kind === 'dependency') {
@@ -388,6 +416,17 @@ function rebuildImportEdges(
     } else {
       unresolvedImports++;
     }
+    // Every bound name is recorded, also when it points outside the repository: a call
+    // through it then reaches no repository definition of the same name.
+    const fileBindings = bindings.get(item.fileId) ?? new Map<string, ImportBinding>();
+    for (const binding of item.bindings ?? []) {
+      fileBindings.set(binding.local, {
+        imported: binding.imported,
+        targetFileIds,
+        confidence: resolution.kind === 'files' ? resolution.confidence : 0,
+      });
+    }
+    bindings.set(item.fileId, fileBindings);
   }
 
   let importEdges = 0;
@@ -410,5 +449,5 @@ function rebuildImportEdges(
     if (edge.target.type === 'file') importEdges++;
     else dependencyEdges++;
   }
-  return { importEdges, dependencyEdges, builtinImports, unresolvedImports };
+  return { importEdges, dependencyEdges, builtinImports, unresolvedImports, bindings };
 }

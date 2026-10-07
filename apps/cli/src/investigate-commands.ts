@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Option, type Command } from 'commander';
 import { getInvestigation, listInvestigations } from '@codefossil/db';
@@ -21,7 +22,9 @@ import {
   formatTimeline,
   formatWhy,
 } from './format-investigation.js';
+import { buildSymbolStory } from '@codefossil/analyzers';
 import { whyWithSummary } from './ai-commands.js';
+import { storyHtml } from './story-html.js';
 import { resolveOne } from './graph-commands.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { openIndexedWorkspace } from './auto-index.js';
@@ -75,6 +78,26 @@ function answer(
     return;
   }
   io.stdout(result.kind === 'why' ? formatWhy(result, savedId) : formatImpact(result, savedId));
+}
+
+/** Write the one-page HTML history of a symbol (`why --html`). */
+async function writeStoryPage(
+  ws: Workspace,
+  io: CliIO,
+  match: TargetMatch,
+  file: string,
+): Promise<void> {
+  if (match.ref.type !== 'symbol') {
+    throw new CliError(
+      `--html draws the history of a symbol; "${match.label}" is a ${match.ref.type}.`,
+    );
+  }
+  const story = buildSymbolStory(ws.fossil.db, ws.repositoryId, match.ref.id);
+  if (!story) throw new CliError(`${match.label} is no longer in the index.`);
+  const path = resolve(io.cwd, file);
+  await writeFile(path, storyHtml(story, io.now?.() ?? new Date()), 'utf8');
+  io.stderr(`Wrote ${path}
+`);
 }
 
 /** Answer a plain-words question; words may also be paths relative to the current directory. */
@@ -198,9 +221,11 @@ export function registerInvestigationCommands(
       '--summarize',
       'add a summary by the AI layer, citing the same evidence (if configured)',
     )
-    .action(async (target: string, options: AskOptions) => {
+    .option('--html <file>', 'also write a one-page history of a symbol as shareable HTML')
+    .action(async (target: string, options: AskOptions & { html?: string }) => {
       await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const match = resolveOne(ws, io, target);
+        if (options.html !== undefined) await writeStoryPage(ws, io, match, options.html);
         if (options.summarize) await whyWithSummary(ws, io, match, options);
         else answer(ws, io, 'why', match, options);
       });
