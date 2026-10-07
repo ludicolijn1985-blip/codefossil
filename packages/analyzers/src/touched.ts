@@ -3,6 +3,7 @@ import {
   analysisFiles,
   currentFileCoverage,
   currentSymbolOrigins,
+  incomingRelations,
   symbolChangeCommits,
   symbolsChangedIn,
   type FossilDb,
@@ -30,6 +31,11 @@ export interface TouchedSymbol {
    * after the file's last indexed commit; null without one.
    */
   readonly coverage: { readonly hit: number; readonly found: number } | null;
+  /**
+   * Functions whose calls to it were resolved at HEAD (DERIVED, or INFERRED
+   * by name), itself left out: what the change can break directly.
+   */
+  readonly callers: number;
 }
 
 export interface TouchedReport {
@@ -50,6 +56,17 @@ const ORDER: Readonly<Record<TouchKind, number>> = {
 
 const coveredShare = (s: TouchedSymbol) =>
   s.coverage && s.coverage.found > 0 ? s.coverage.hit / s.coverage.found : 2;
+
+/** The distinct symbols with a resolved call to a symbol, recursion left out. */
+function callerCount(db: FossilDb, repositoryId: number, symbolId: number): number {
+  const callers = new Set<number>();
+  for (const row of incomingRelations(db, repositoryId, { type: 'symbol', id: symbolId })) {
+    if (row.relation === 'CALLS' && row.sourceType === 'symbol' && row.sourceId !== symbolId) {
+      callers.add(row.sourceId);
+    }
+  }
+  return callers.size;
+}
 
 /**
  * The current functions, methods and classes a range of commits changes:
@@ -112,6 +129,7 @@ export function analyzeTouchedSymbols(
       change,
       from: bornHere && copied ? { qualifiedName: copied.qualifiedName, path: copied.path } : null,
       coverage: lines && found > 0 ? { hit: lines.hit.filter(inSymbol).length, found } : null,
+      callers: callerCount(db, repositoryId, s.symbolId),
     };
   });
   symbols.sort(

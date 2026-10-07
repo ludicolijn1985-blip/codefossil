@@ -125,7 +125,7 @@ const CHANGE_LABEL = {
 } as const;
 
 function touchedRow(item: NonNullable<RepositoryReport['touched']>['symbols'][number]): string {
-  const { symbol, from, coverage } = item;
+  const { symbol, from, coverage, callers } = item;
   const where = `${mdCode(symbol.qualifiedName)} ${mdCode(`${symbol.path}:${String(symbol.startLine)}`)}`;
   const origin = from
     ? ` from ${from.path === symbol.path ? mdCode(from.qualifiedName) : mdCode(`${from.path} ${from.qualifiedName}`)}`
@@ -133,7 +133,7 @@ function touchedRow(item: NonNullable<RepositoryReport['touched']>['symbols'][nu
   const lines = coverage
     ? `${String(coverage.hit)} / ${String(coverage.found)}${coverage.hit === 0 ? ' ⚠️' : ''}`
     : '—';
-  return `| ${where} | ${CHANGE_LABEL[item.change]}${origin} | ${lines} |`;
+  return `| ${where} | ${CHANGE_LABEL[item.change]}${origin} | ${callers > 0 ? String(callers) : '—'} | ${lines} |`;
 }
 
 function touchedSection(report: RepositoryReport): string[] {
@@ -143,10 +143,12 @@ function touchedSection(report: RepositoryReport): string[] {
   return [
     `### Functions this change touches (${String(touched.total)})`,
     '',
-    '| Function | Change | Lines run in tests |',
-    '| --- | --- | ---: |',
+    '| Function | Change | Callers | Lines run in tests |',
+    '| --- | --- | ---: | ---: |',
     ...touched.symbols.map(touchedRow),
     ...(hidden > 0 ? ['', `_${plural(hidden, 'more symbol')} not shown._`] : []),
+    '',
+    '_Callers are the functions whose calls to it were resolved at HEAD; calls through dynamic dispatch are not counted._',
     '',
     touched.withCoverage > 0
       ? '_Lines run in tests come from the coverage report in the working tree, for files not committed since it was written._'

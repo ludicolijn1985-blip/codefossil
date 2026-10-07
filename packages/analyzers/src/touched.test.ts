@@ -27,7 +27,7 @@ describe('analyzeTouchedSymbols', () => {
     const before = (await repo.git('rev-parse', 'HEAD')).trim();
     await repo.write(
       'src/a.ts',
-      `${fn('keep', 'return 3;')}${fn('renamed', 'return 2;')}${fn('fresh')}`,
+      `${fn('keep', 'return 3;')}${fn('renamed', 'return 2;')}${fn('fresh', 'return keep();')}`,
     );
     await repo.commit('Change keep, rename old, add fresh');
     const range = (await repo.git('rev-list', `${before}..HEAD`)).trim().split('\n');
@@ -50,5 +50,7 @@ describe('analyzeTouchedSymbols', () => {
       ['keep', 'changed', null, '1/1'],
     ]);
     expect(report).toMatchObject({ total: 3, withCoverage: 3 });
+    // fresh calls keep: a change to keep can break fresh.
+    expect(report.symbols.map((s) => s.callers)).toEqual([0, 0, 1]);
   });
 });

@@ -11,6 +11,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
   most, and whether they still commit; the lens (`codefossil lens`, MCP, VS Code) adds
   "mostly Ada (left 2020)" when one person made at least half of them, and the history page names
   the main authors. People are matched across name spellings and email addresses, as in `owners`.
+- **Callers in the PR comment.** The functions a change touches are listed with how many functions
+  call them (calls resolved at HEAD), so a small edit to widely used code stands out.
 
 ## [0.3.0] - 2026-10-07
 
