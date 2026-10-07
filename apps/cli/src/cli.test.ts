@@ -13,6 +13,7 @@ import { startFakeGitHub, type FakeGitHub } from '@codefossil/providers/testing'
 import { graphDocumentSchema } from '@codefossil/query';
 import type { CliIO } from './io.js';
 import { runCli } from './run.js';
+import { VERSION } from './version.js';
 
 interface Captured {
   readonly code: number;
@@ -1034,7 +1035,7 @@ describe('fossil CLI outside a repository', () => {
 
   it('prints its version', async () => {
     const result = await fossil(plain, '--version');
-    expect(result).toMatchObject({ code: 0, stdout: '0.1.0\n' });
+    expect(result).toMatchObject({ code: 0, stdout: `${VERSION}\n` });
   });
 });
 

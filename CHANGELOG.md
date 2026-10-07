@@ -3,7 +3,7 @@
 All notable changes to CODEFOSSIL. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-07
 
 ### Added
 
@@ -87,4 +87,5 @@ First public release.
 - **Local UI and API.** A loopback-only JSON API (`codefossil serve`) and a local web UI.
 - **Optional AI layer** (Ollama or Anthropic), off by default, held to the evidence it is shown.
 
+[0.2.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.1.0
