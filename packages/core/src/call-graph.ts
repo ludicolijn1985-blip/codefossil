@@ -133,12 +133,17 @@ function resolveCall(
   const binding = bindings.get(head);
   if (binding) {
     // `sum()` from `import { sum }`, `utils.sum()` from `import * as utils`.
+    // `sum()` from `import { sum }`; `utils.sum()` from `import * as utils`; and
+    // `Rates.vat()` from a bound class (`import { Rates }`, Java `import a.Rates`).
+    const named = binding.imported !== '*' && binding.imported !== 'default';
     const member =
-      path.length === 1 && binding.imported !== '*' && binding.imported !== 'default'
+      path.length === 1 && named
         ? binding.imported
         : path.length >= 2 && binding.imported === '*'
           ? rest.join('.')
-          : null;
+          : path.length >= 2 && named
+            ? [binding.imported, ...rest].join('.')
+            : null;
     if (member === null) return null;
     const target = only(binding.targetFileIds.flatMap((fileId) => index.inFile(fileId, member)));
     return derived(

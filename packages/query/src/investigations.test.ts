@@ -269,6 +269,11 @@ describe('isTestPath', () => {
     ['__tests__/x.js', true],
     ['src/contest.ts', false],
     ['src/latest.ts', false],
+    ['src/test/java/com/acme/CartTest.java', true],
+    ['Shop.Tests/CartTests.cs', true],
+    ['tests/Unit/CartSpec.php', true],
+    ['src/main/java/com/acme/Latest.java', false],
+    ['src/latest.java', false],
   ])('%s → %s', (path, expected) => {
     expect(isTestPath(path)).toBe(expected);
   });

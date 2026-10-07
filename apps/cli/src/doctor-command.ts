@@ -29,6 +29,10 @@ const SAMPLES: readonly (readonly [GrammarId, string])[] = [
   ['python', 'def f():\n    pass\n'],
   ['go', 'package p\nfunc F() {}\n'],
   ['rust', 'pub fn f() {}'],
+  ['java', 'class A { void f() {} }'],
+  ['csharp', 'class A { void F() {} }'],
+  ['ruby', 'def f\nend\n'],
+  ['php', '<?php function f() {}'],
 ];
 
 function nodeCheck(): Check {

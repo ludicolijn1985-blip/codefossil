@@ -238,6 +238,62 @@ describe('call graph', () => {
     ]);
   });
 
+  it('resolves Java and PHP calls through imported classes', async () => {
+    const r = fixture();
+    await r.write(
+      'src/main/java/com/acme/tax/Rates.java',
+      lines(
+        'package com.acme.tax;',
+        'public class Rates {',
+        '  public static int vat(int x) { return x; }',
+        '}',
+      ),
+    );
+    await r.write(
+      'src/main/java/com/acme/shop/Cart.java',
+      lines(
+        'package com.acme.shop;',
+        'import com.acme.tax.Rates;',
+        'public class Cart {',
+        '  public int total(int x) { return Rates.vat(x) + this.fee(); }',
+        '  int fee() { return 1; }',
+        '}',
+      ),
+    );
+    await r.write(
+      'src/Tax/Money.php',
+      lines(
+        '<?php',
+        'namespace App\\Tax;',
+        'class Money {',
+        '  public static function of($x) { return $x; }',
+        '}',
+      ),
+    );
+    await r.write(
+      'src/Shop/Till.php',
+      lines(
+        '<?php',
+        'namespace App\\Shop;',
+        'use App\\Tax\\Money as M;',
+        'class Till {',
+        '  public function ring($x) { return M::of($x) + $this->round($x); }',
+        '  private function round($x) { return $x; }',
+        '}',
+      ),
+    );
+    await r.commit('Shop');
+
+    await runIndex(fossil.db, r.root, { now });
+
+    expect(edges().map(line)).toEqual([
+      'Cart.total -> Cart.fee [DERIVED 1 same-class]',
+      'Cart.total -> Rates.vat [DERIVED 0.9 import-binding]',
+      'Till.ring -> Money.of [DERIVED 0.9 import-binding]',
+      'Till.ring -> Till.round [DERIVED 1 same-class]',
+    ]);
+  });
+
   it('keeps evidence ids stable across rebuilds and adds no duplicates', async () => {
     const r = fixture();
     await r.write(

@@ -525,3 +525,70 @@ describe('Rust resolution', () => {
     expect(resolve('src/lib.rs', 'rust', ref('rand::Rng', 'use')).kind).toBe('unresolved');
   });
 });
+
+describe('Java, C#, Ruby and PHP resolution', () => {
+  it('resolves Java classes and packages by path, platform classes as built-in', () => {
+    const resolve = resolverFor([
+      'src/main/java/com/acme/tax/Rates.java',
+      'src/main/java/com/acme/tax/Vat.java',
+      'src/main/java/com/acme/shop/Cart.java',
+      'a/util/Dup.java',
+      'b/util/Dup.java',
+    ]);
+    const from = 'src/main/java/com/acme/shop/Cart.java';
+    expect(resolve(from, 'java', ref('com.acme.tax.Rates'))).toEqual({
+      kind: 'files',
+      paths: ['src/main/java/com/acme/tax/Rates.java'],
+      confidence: 0.9,
+      method: 'java-class-path',
+    });
+    expect(resolve(from, 'java', ref('com.acme.tax.Rates.Inner'))).toMatchObject({
+      paths: ['src/main/java/com/acme/tax/Rates.java'],
+    });
+    expect(resolve(from, 'java', ref('com.acme.tax.*'))).toMatchObject({
+      kind: 'files',
+      paths: ['src/main/java/com/acme/tax/Rates.java', 'src/main/java/com/acme/tax/Vat.java'],
+    });
+    expect(resolve(from, 'java', ref('java.util.List'))).toEqual({ kind: 'builtin' });
+    expect(resolve(from, 'java', ref('util.Dup')).kind).toBe('unresolved');
+    expect(resolve(from, 'java', ref('org.junit.Test')).kind).toBe('unresolved');
+  });
+
+  it('leaves C# namespaces unresolved except the platform', () => {
+    const resolve = resolverFor(['Shop/Cart.cs']);
+    expect(resolve('Shop/Cart.cs', 'csharp', ref('System.Linq'))).toEqual({ kind: 'builtin' });
+    expect(resolve('Shop/Cart.cs', 'csharp', ref('Acme.Tax'))).toEqual({
+      kind: 'unresolved',
+      reason: 'C# namespaces are not tied to files',
+    });
+  });
+
+  it('resolves Ruby relative requires, the load path and the standard library', () => {
+    const resolve = resolverFor(['lib/shop/cart.rb', 'lib/shop/tax/rates.rb', 'lib/shop.rb']);
+    expect(resolve('lib/shop/cart.rb', 'ruby', ref('./tax/rates', 'require'))).toMatchObject({
+      paths: ['lib/shop/tax/rates.rb'],
+      confidence: 1,
+    });
+    expect(resolve('bin/run.rb', 'ruby', ref('shop/cart', 'require'))).toMatchObject({
+      paths: ['lib/shop/cart.rb'],
+      method: 'ruby-load-path',
+    });
+    expect(resolve('bin/run.rb', 'ruby', ref('json', 'require'))).toEqual({ kind: 'builtin' });
+    expect(resolve('bin/run.rb', 'ruby', ref('rails', 'require')).kind).toBe('unresolved');
+  });
+
+  it('resolves PHP requires and namespaced classes by their PSR-4 path', () => {
+    const resolve = resolverFor(['src/Tax/Rates.php', 'src/Shop/Cart.php', 'src/helpers.php']);
+    expect(resolve('src/Shop/Cart.php', 'php', ref('./../helpers.php', 'require'))).toMatchObject({
+      paths: ['src/helpers.php'],
+      method: 'php-require',
+    });
+    expect(resolve('src/Shop/Cart.php', 'php', ref('App\\Tax\\Rates'))).toEqual({
+      kind: 'files',
+      paths: ['src/Tax/Rates.php'],
+      confidence: 0.9,
+      method: 'php-class-path',
+    });
+    expect(resolve('src/Shop/Cart.php', 'php', ref('Vendor\\Lib\\Thing')).kind).toBe('unresolved');
+  });
+});

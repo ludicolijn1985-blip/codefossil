@@ -185,8 +185,9 @@ unless you allow it, and every AI claim is INFERRED and capped at confidence 0.6
 
 ## Languages
 
-Symbols and imports: **TypeScript, JavaScript (ES modules, CommonJS and prototype style), Python,
-Go and Rust**, parsed with Tree-sitter. History, hotspots and timelines work for any file in any
+Symbols, calls and imports: **TypeScript, JavaScript (ES modules, CommonJS, prototype style and
+IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. C#
+`using` directives name namespaces, which are not tied to files, so they stay unresolved. History, hotspots and timelines work for any file in any
 language. Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`.
 
 More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTING.md).

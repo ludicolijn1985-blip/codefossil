@@ -7,8 +7,10 @@ import { traverse, weakestLevel } from './traverse.js';
 /** Paths that are tests by the usual conventions of the supported languages. */
 const TEST_PATH =
   /(^|\/)(tests?|__tests__|spec)\/|[._-](test|spec)\.[a-z]+$|(^|\/)test_[^/]+\.py$|_test\.go$/i;
+/** `CartTest.java`, `CartTests.cs`, `CartSpec.php`: case matters (`latest.java` is no test). */
+const TEST_CLASS = /[a-z0-9](Tests?|Spec)\.(java|kt|cs|php)$/;
 
-export const isTestPath = (path: string): boolean => TEST_PATH.test(path);
+export const isTestPath = (path: string): boolean => TEST_PATH.test(path) || TEST_CLASS.test(path);
 
 export interface Dependent {
   readonly key: string;

@@ -1,6 +1,13 @@
 import type { GrammarId, ImportReference } from '@codefossil/parser';
 import { resolveEcmascript } from './ecmascript.js';
 import { GoPackages, resolveGo } from './go.js';
+import {
+  resolveCsharp,
+  resolveJava,
+  resolvePhp,
+  resolveRuby,
+  SuffixIndex,
+} from './jvm-and-scripts.js';
 import { LayoutIndex, type RepositoryLayout, type Resolution } from './layout.js';
 import { PythonModules, resolvePython } from './python.js';
 import { resolveRust } from './rust.js';
@@ -23,6 +30,15 @@ export function createResolver(layout: RepositoryLayout): ImportResolver {
   let python: PythonModules | undefined;
   let go: GoPackages | undefined;
   let tsconfigs: TsConfigIndex | undefined;
+  const suffixes = new Map<string, SuffixIndex>();
+  const sourcesOf = (extension: string) => {
+    let found = suffixes.get(extension);
+    if (!found) {
+      found = new SuffixIndex(layout.files, extension);
+      suffixes.set(extension, found);
+    }
+    return found;
+  };
   return (fromPath, grammar, ref) => {
     switch (grammar) {
       case 'typescript':
@@ -38,6 +54,14 @@ export function createResolver(layout: RepositoryLayout): ImportResolver {
         return resolveGo(index, go, fromPath, ref);
       case 'rust':
         return resolveRust(index, fromPath, ref);
+      case 'java':
+        return resolveJava(sourcesOf('.java'), ref);
+      case 'csharp':
+        return resolveCsharp(ref);
+      case 'ruby':
+        return resolveRuby(index, sourcesOf('.rb'), fromPath, ref);
+      case 'php':
+        return resolvePhp(index, sourcesOf('.php'), fromPath, ref);
     }
   };
 }

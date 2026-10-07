@@ -42,6 +42,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
   import it.
 - **Wrapped modules.** Definitions inside a module-level IIFE (`(function () { … })()`,
   `!function () { … }()`, `.call(this)`) or a UMD factory are symbols, as at the top of a file.
+- **Java, C#, Ruby and PHP.** Symbols, history, call sites and imports for four more languages.
+  Java imports resolve to class files and packages by path, Ruby `require`/`require_relative` and
+  PHP `require`/`use` (PSR-4 paths) to repository files, standard libraries count as built-in;
+  C# namespaces stay unresolved since they are not tied to files.
 - **Import resolution.** Go `replace` directives that point at a directory of the repository
   resolve to its packages. Python imports from the standard library are recognised as built-in
   (including modules removed in 3.12 and 3.13), and well-known import names that differ from their
