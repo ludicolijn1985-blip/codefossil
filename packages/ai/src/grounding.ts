@@ -140,13 +140,12 @@ export function gatherGrounding(
   const commitEvidence = commitEvidenceIds(db, repositoryId);
   for (const commit of commitsMentioning(db, repositoryId, keywords, MAX_COMMITS)) {
     const id = commitEvidence.get(commit.sha);
-    if (id === undefined || evidence.has(id)) continue;
-    evidence.set(id, {
-      id,
-      type: 'commit',
-      locator: commit.sha,
-      excerpt: clip(`${commit.subject}\n\n${commit.body}`),
-    });
+    if (id === undefined) continue;
+    // A commit an investigation cited may carry only its subject: its words matched, so show all of it.
+    const excerpt = clip(`${commit.subject}\n\n${commit.body}`);
+    const known = evidence.get(id);
+    if (known && (known.excerpt?.length ?? 0) >= excerpt.length) continue;
+    evidence.set(id, { id, type: 'commit', locator: commit.sha, excerpt });
   }
 
   if (evidence.size === 0) return null;
