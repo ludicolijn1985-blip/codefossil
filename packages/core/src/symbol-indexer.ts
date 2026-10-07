@@ -14,6 +14,7 @@ import {
   recordRelation,
   saveParsedBlob,
   setCurrentSymbols,
+  trimParseCache,
   upsertSymbol,
   type FossilDb,
   type PendingSymbolChange,
@@ -31,6 +32,12 @@ export const SYMBOL_INDEXER_PRODUCER = 'symbol-indexer@0.1.0';
 
 /** Parsed file versions written per database transaction. */
 const DEFAULT_BATCH_SIZE = 200;
+
+/**
+ * Parse results kept per repository (about 1–2 KB each). Enough for the
+ * history of a large project; the oldest go first beyond it.
+ */
+export const MAX_PARSE_CACHE_ROWS = 200_000;
 
 /** A commit's changes are written in one transaction up to this many batches. */
 const MAX_BATCHES_PER_COMMIT = 25;
@@ -270,6 +277,7 @@ export async function indexSymbols(
       }
     }
     if (batch.length > 0) flush(null);
+    trimParseCache(db, repositoryId, extractionVersion(), MAX_PARSE_CACHE_ROWS);
 
     if (headSha) {
       await reconcileWithHead(db, repositoryId, root, headSha, touchedFiles, extractor, observedAt);

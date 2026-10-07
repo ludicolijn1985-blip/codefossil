@@ -126,6 +126,18 @@ describe('fossil CLI', () => {
     expect(again).toMatchObject({ commitsIndexed: 0, commitsSkipped: 6 });
   });
 
+  it('gc trims the parse cache and compacts the index', async () => {
+    await fossil(root(), 'index');
+    const result = await fossil(root(), 'gc', '--max-cache', '0', '--json');
+    expect(result.code).toBe(0);
+    const gc = JSON.parse(result.stdout) as { cacheEntriesRemoved: number; bytesAfter: number };
+    expect(gc.cacheEntriesRemoved).toBeGreaterThan(0);
+    expect(gc.bytesAfter).toBeGreaterThan(0);
+    expect((await fossil(root(), 'gc', '--max-cache', 'many')).code).not.toBe(0);
+    // Answers still work after compaction.
+    expect((await fossil(root(), 'status')).code).toBe(0);
+  });
+
   it('accepts --since and rejects an invalid date', async () => {
     await fossil(root(), 'init');
     const bad = await fossil(root(), 'index', '--since', 'last tuesday');

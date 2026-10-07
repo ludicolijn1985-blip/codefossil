@@ -376,3 +376,25 @@ export function saveParsedBlob(
     })
     .run();
 }
+
+/**
+ * Keep the parse cache bounded: drop results of other extraction versions,
+ * then the oldest entries beyond `maxRows`. Returns how many were removed.
+ */
+export function trimParseCache(
+  db: FossilDb,
+  repositoryId: number,
+  version: string,
+  maxRows: number,
+): number {
+  const stale = db
+    .delete(parsedBlobs)
+    .where(and(eq(parsedBlobs.repositoryId, repositoryId), ne(parsedBlobs.version, version)))
+    .run().changes;
+  const excess = db.run(
+    sql`DELETE FROM parsed_blobs WHERE repository_id = ${repositoryId} AND rowid IN (
+          SELECT rowid FROM parsed_blobs WHERE repository_id = ${repositoryId}
+          ORDER BY rowid DESC LIMIT -1 OFFSET ${maxRows})`,
+  ).changes;
+  return stale + excess;
+}
