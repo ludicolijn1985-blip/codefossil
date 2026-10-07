@@ -152,6 +152,35 @@ describe('pruning history that HEAD no longer reaches', () => {
     await expectSameAsFreshIndex();
   });
 
+  it('keeps a move with edits when only the file it reached is rebuilt', async () => {
+    // total moves from cart.js to sum.js with an edit; cart.js keeps other code, so no git rename.
+    await repo.write('src/cart.js', 'export const empty = [];\n');
+    await repo.write(
+      'src/sum.js',
+      'export function total(items) {\n  return items.reduce((s, i) => s + i, 0) || 0;\n}\n',
+    );
+    await repo.commit('Move total to sum.js');
+    await repo.git('checkout', '-q', '-b', 'tweak');
+    await repo.write(
+      'src/sum.js',
+      'export function total(items) {\n  return items.reduce((s, i) => s + i, 1);\n}\n',
+    );
+    await repo.commit('Tweak only sum.js');
+    await runIndex(fossil.db, repo.root, { now });
+
+    await repo.git('checkout', '-q', 'main');
+    const result = await runIndex(fossil.db, repo.root, { now });
+
+    expect(result.commitsPruned).toBe(1);
+    const moved = snapshot(fossil.db).symbols.find(
+      (s) =>
+        (s as { key: string }).key === 'function:total' &&
+        (s as { path: string }).path === 'src/sum.js',
+    ) as { copiedFrom: string | null } | undefined;
+    expect(moved?.copiedFrom).toBe('src/cart.js:function:total');
+    await expectSameAsFreshIndex();
+  });
+
   it('re-adds a branch when it is checked out again', async () => {
     await repo.git('checkout', '-q', '-b', 'feature');
     await repo.write('src/feature.js', 'export function feature() {}\n');

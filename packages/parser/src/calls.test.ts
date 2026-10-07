@@ -214,6 +214,34 @@ describe('local names and self in calls', () => {
     ]);
   });
 
+  it('does not trust a stated type that a shadowing declaration or another callback may hide', async () => {
+    const source = [
+      'function f(items) {',
+      '  const item = new Item();',
+      '  items.forEach((item) => item.save());',
+      '}',
+      "app.get('/a', (req) => {",
+      '  const store = new MemStore();',
+      '  store.get();',
+      '});',
+      "app.get('/b', (req) => {",
+      '  const store = req.store;',
+      '  store.get();',
+      '});',
+    ].join('\n');
+
+    expect(await sites('javascript', source)).toEqual([
+      'function:f Item',
+      'function:f items.forEach',
+      // `item` is declared twice in f: the callback's parameter may be the one called.
+      'function:f item.save',
+      '- app.get',
+      '- MemStore',
+      // Declared inside callbacks, not at module level: no type for `store`.
+      '- store.get',
+    ]);
+  });
+
   it('does not keep locals passed by name, which name no definition', async () => {
     expect(await sites('javascript', 'function f(cb, xs) {\n  xs.forEach(cb);\n}\n')).toEqual([
       'function:f xs.forEach',

@@ -25,6 +25,9 @@ export const SYMBOL_INDEXER_PRODUCER = 'symbol-indexer@0.1.0';
 /** Parsed file versions written per database transaction. */
 const DEFAULT_BATCH_SIZE = 200;
 
+/** A commit's changes are written in one transaction up to this many batches. */
+const MAX_BATCHES_PER_COMMIT = 25;
+
 /** Parsed versions whose symbol hashes are kept to diff their children against. */
 const MAX_CACHED_VERSIONS = 20_000;
 
@@ -240,7 +243,15 @@ export async function indexSymbols(
         }
         batch.push({ change, result, previous });
       }
-      if (batch.length >= batchSize) flush(pending[index + 1]?.commitId ?? null);
+      const nextCommitId = pending[index + 1]?.commitId ?? null;
+      // Cut batches between commits, so a commit's renames and moves are read in one
+      // transaction; only a huge commit is split (its lineage then spans transactions).
+      if (
+        batch.length >= batchSize &&
+        (nextCommitId !== change.commitId || batch.length >= batchSize * MAX_BATCHES_PER_COMMIT)
+      ) {
+        flush(nextCommitId);
+      }
     }
     if (batch.length > 0) flush(null);
 
@@ -600,6 +611,9 @@ function noteRemoved(
   kept: ReadonlySet<string>,
   lineage: CommitLineage,
 ): void {
+  // Without the parent version only a deleted file (`kept` empty) says what this change removed:
+  // the stored current flags may come from another branch.
+  if (!previous && kept.size > 0) return;
   for (const row of fileSymbolRows(db, fileId)) {
     const before = previous ? previous.has(row.stableKey) : row.current;
     if (!before || kept.has(row.stableKey)) continue;
@@ -633,49 +647,96 @@ function resolveLineage(
   observedAt: string,
   totals: Totals,
 ): void {
-  const used = new Set<number>();
   const removed = lineage.removed.filter(isLineageCandidate);
-  for (const born of lineage.born.filter(isLineageCandidate)) {
-    const open = removed.filter((r) => !used.has(r.symbolId) && r.kind === born.kind);
-    const renamed = open.filter((r) => r.fileId === born.fileId && r.shape === born.shape);
-    const moved = open.filter(
-      (r) => r.fileId !== born.fileId && r.qualifiedName === born.qualifiedName,
-    );
-    const match =
-      renamed.length === 1 && renamed[0]
-        ? { source: renamed[0], method: 'renamed', level: 'DERIVED', confidence: COPY_CONFIDENCE }
-        : moved.length === 1 && moved[0]
-          ? {
-              source: moved[0],
-              method: 'moved-with-edits',
-              level: 'INFERRED',
-              confidence: MOVED_WITH_EDITS_CONFIDENCE,
-            }
-          : null;
-    if (!match) continue;
-    used.add(match.source.symbolId);
-    const symbolRef = { type: 'symbol', id: born.symbolId } as const;
-    deleteRelation(db, repositoryId, {
-      source: symbolRef,
-      relation: 'INTRODUCED_BY',
-      target: { type: 'commit', id: lineage.commitId },
-    });
-    recordRelation(db, {
-      repositoryId,
-      source: symbolRef,
-      relation: 'COPIED_FROM',
-      target: { type: 'symbol', id: match.source.symbolId },
-      evidenceType: match.level,
-      confidence: match.confidence * born.confidence,
-      provenance: {
-        producer: SYMBOL_INDEXER_PRODUCER,
-        method: match.method,
-        evidenceIds: [born.evidenceId],
-        observedAt,
-      },
-    });
-    totals.symbolsIntroduced--;
-    if (match.method === 'renamed') totals.symbolsRenamed++;
-    else totals.symbolsMoved++;
+  const born = lineage.born.filter(isLineageCandidate);
+  const used = new Set<number>();
+  const matched = new Set<number>();
+  // Renames first (identical but for the name), then moves: a weaker reading never takes a
+  // removed symbol that a stronger one explains.
+  for (const rule of LINEAGE_RULES) {
+    const candidates = new Map<number, LineageSymbol[]>();
+    const claims = new Map<number, number>();
+    for (const b of born) {
+      if (matched.has(b.symbolId)) continue;
+      const fits = removed.filter(
+        (r) => !used.has(r.symbolId) && r.kind === b.kind && rule.fits(b, r),
+      );
+      candidates.set(b.symbolId, fits);
+      for (const r of fits) claims.set(r.symbolId, (claims.get(r.symbolId) ?? 0) + 1);
+    }
+    for (const b of born) {
+      const fits = candidates.get(b.symbolId) ?? [];
+      const source = fits.length === 1 ? fits[0] : undefined;
+      // Unambiguous on both sides: one candidate, claimed by this symbol only.
+      if (!source || claims.get(source.symbolId) !== 1) continue;
+      used.add(source.symbolId);
+      matched.add(b.symbolId);
+      writeLineage(db, repositoryId, lineage.commitId, b, source, rule, observedAt);
+      totals.symbolsIntroduced--;
+      if (rule.method === 'renamed') totals.symbolsRenamed++;
+      else totals.symbolsMoved++;
+    }
   }
+}
+
+interface LineageRule {
+  readonly method: 'renamed' | 'moved-with-edits';
+  readonly level: 'DERIVED' | 'INFERRED';
+  readonly confidence: number;
+  readonly fits: (born: LineageSymbol, removed: LineageSymbol) => boolean;
+}
+
+const LINEAGE_RULES: readonly LineageRule[] = [
+  {
+    method: 'renamed',
+    level: 'DERIVED',
+    confidence: COPY_CONFIDENCE,
+    fits: (born, removed) =>
+      removed.fileId === born.fileId && removed.shape !== null && removed.shape === born.shape,
+  },
+  {
+    method: 'moved-with-edits',
+    level: 'INFERRED',
+    confidence: MOVED_WITH_EDITS_CONFIDENCE,
+    fits: (born, removed) =>
+      removed.fileId !== born.fileId && removed.qualifiedName === born.qualifiedName,
+  },
+];
+
+/** Replace a born symbol's introduction with its lineage to the removed one. */
+function writeLineage(
+  db: FossilDb,
+  repositoryId: number,
+  commitId: number,
+  born: BornSymbol,
+  source: LineageSymbol,
+  rule: LineageRule,
+  observedAt: string,
+): void {
+  const symbolRef = { type: 'symbol', id: born.symbolId } as const;
+  deleteRelation(db, repositoryId, {
+    source: symbolRef,
+    relation: 'INTRODUCED_BY',
+    target: { type: 'commit', id: commitId },
+  });
+  recordRelation(db, {
+    repositoryId,
+    source: symbolRef,
+    relation: 'COPIED_FROM',
+    target: { type: 'symbol', id: source.symbolId },
+    evidenceType: rule.level,
+    confidence: rule.confidence * born.confidence,
+    provenance: {
+      producer: SYMBOL_INDEXER_PRODUCER,
+      method: rule.method,
+      evidenceIds: [born.evidenceId],
+      observedAt,
+      // What the removed side was, so the reading can be checked against history.
+      details: {
+        removedFrom: source.fileId,
+        removedQualifiedName: source.qualifiedName,
+        ...(rule.method === 'renamed' ? { shapeHash: born.shape } : {}),
+      },
+    },
+  });
 }

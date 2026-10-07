@@ -135,7 +135,8 @@ interface AffectedFile {
  * Files the pruned commits touched, closed over renames (symbols move along a
  * rename, so both sides are rebuilt together) and over copies (a symbol
  * `COPIED_FROM` a rebuilt symbol is re-derived with it, since its source may
- * no longer exist).
+ * no longer exist). A move with edits is read from both files of its commit,
+ * so the file it left is rebuilt along with the file it reached.
  */
 function affectedFiles(db: FossilDb, repositoryId: number, pruned: SQL): AffectedFile[] {
   const found = new Map<number, AffectedFile>();
@@ -172,7 +173,14 @@ function affectedFiles(db: FossilDb, repositoryId: number, pruned: SQL): Affecte
                    JOIN symbols origin ON origin.id = r.target_id
                    WHERE r.repository_id = ${repositoryId} AND r.relation = 'COPIED_FROM'
                      AND r.source_type = 'symbol' AND r.target_type = 'symbol'
-                     AND origin.file_id IN ${jsonList(current.map((f) => f.id))}))`,
+                     AND origin.file_id IN ${jsonList(current.map((f) => f.id))}) OR
+            id IN (SELECT origin.file_id FROM relations r
+                   JOIN symbols copy ON copy.id = r.source_id
+                   JOIN symbols origin ON origin.id = r.target_id
+                   WHERE r.repository_id = ${repositoryId} AND r.relation = 'COPIED_FROM'
+                     AND r.source_type = 'symbol' AND r.target_type = 'symbol'
+                     AND json_extract(r.provenance_json, '$.method') = 'moved-with-edits'
+                     AND copy.file_id IN ${jsonList(current.map((f) => f.id))}))`,
     );
     if (!add(linked)) return [...found.values()];
   }

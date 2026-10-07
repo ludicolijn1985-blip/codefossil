@@ -349,6 +349,42 @@ describe('indexSymbols at the edges of the evidence', () => {
     ]);
   });
 
+  it('does not guess when two new symbols could both be the renamed one', async () => {
+    const r = fixture();
+    const fn = (name: string) => `export function ${name}() {\n  return 1;\n}\n`;
+    await r.write('src/one.ts', fn('a'));
+    await r.commit('Add a');
+    await r.write('src/one.ts', `${fn('b')}${fn('c')}`);
+    await r.commit('Split a');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsRenamed: 0, symbolsMoved: 0 });
+  });
+
+  it('prefers a rename in the file over a move from it', async () => {
+    const r = fixture();
+    const body = (name: string) => `export function ${name}(x: number) {\n  return x * 2;\n}\n`;
+    await r.write('src/a.ts', body('double'));
+    await r.write('src/b.ts', 'export const b = 1;\n');
+    await r.commit('Add double');
+    // `double` is renamed in a.ts; a different `double` appears in b.ts.
+    await r.write('src/a.ts', body('twice'));
+    await r.write(
+      'src/b.ts',
+      'export const b = 1;\nexport function double(x: number) {\n  return x + x;\n}\n',
+    );
+    await r.commit('Rename double, add another');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsRenamed: 1, symbolsMoved: 0 });
+    const twice = symbolsOf(result.repositoryId, 'src/a.ts').find((s) => s.name === 'twice');
+    const [link] = lineageOf(result.repositoryId, twice?.id ?? 0);
+    expect(link?.provenanceJson.method).toBe('renamed');
+    expect(link?.provenanceJson.details).toMatchObject({ removedQualifiedName: 'double' });
+  });
+
   it('skips binary content and unsupported languages without failing', async () => {
     const r = fixture();
     await r.write('fake.ts', new Uint8Array([0x00, 0x01, 0x02]));

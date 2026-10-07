@@ -163,10 +163,28 @@ function classOf(key: string): string | null {
   return dot > 0 ? qualifiedName.slice(0, dot) : null;
 }
 
+/** No type: the name was given two different types, so neither can be trusted. */
+const AMBIGUOUS: readonly string[] = [];
+
 function addType(map: Map<string, Map<string, readonly string[]>>, key: string, typed: TypedName) {
   const names = map.get(key) ?? new Map<string, readonly string[]>();
-  names.set(typed.name, typed.type);
+  const known = names.get(typed.name);
+  names.set(
+    typed.name,
+    known === undefined || known.join('.') === typed.type.join('.') ? typed.type : AMBIGUOUS,
+  );
   map.set(key, names);
+}
+
+/** Node types that start a new function scope, in the supported grammars. */
+const FUNCTION_SCOPE = /function|lambda|method|arrow/;
+
+/** Whether a declaration sits outside every function: module code, not a callback or block in one. */
+function isModuleLevel(node: Node): boolean {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (FUNCTION_SCOPE.test(parent.type)) return false;
+  }
+  return true;
 }
 
 /**
@@ -197,7 +215,9 @@ export function callCollector(
   /** Stated types: of locals per calling symbol, of fields per class, of module-level names. */
   const localTypes = new Map<string, Map<string, readonly string[]>>();
   const fieldTypes = new Map<string, Map<string, readonly string[]>>();
-  const moduleTypes = new Map<string, readonly string[]>();
+  const moduleTypes = new Map<string, Map<string, readonly string[]>>();
+  /** How often each symbol declares a name: a type is only trusted for a name declared once. */
+  const declarations = new Map<string, Map<string, number>>();
   const sites: CallSite[] = [];
   const typedNames = spec.typedNames ?? {};
   const types = new Set([
@@ -213,8 +233,9 @@ export function callCollector(
         const owningClass = owner ? classOf(owner.key) : null;
         if (owningClass) addType(fieldTypes, owningClass, typed);
       } else if (!owner || parseKey(owner.key).qualifiedName === typed.name) {
-        // A module-level name: no symbol, or the variable's own symbol, encloses it.
-        moduleTypes.set(typed.name, typed.type);
+        // A module-level name (no symbol, or the variable's own, encloses it) — unless it is
+        // declared in a callback or other function that is not itself a symbol.
+        if (isModuleLevel(node)) addType(moduleTypes, '', typed);
       } else {
         addType(localTypes, owner.key, typed);
       }
@@ -248,8 +269,13 @@ export function callCollector(
       const declared = localField === null ? node : node.childForFieldName(localField);
       if (owner && declared && owner.range.start !== node.startIndex) {
         const names = locals.get(owner.key) ?? new Set<string>();
-        for (const name of identifiers(declared)) names.add(name);
+        const counts = declarations.get(owner.key) ?? new Map<string, number>();
+        for (const name of identifiers(declared)) {
+          names.add(name);
+          counts.set(name, (counts.get(name) ?? 0) + 1);
+        }
         locals.set(owner.key, names);
+        declarations.set(owner.key, counts);
       }
     }
     const rule = spec.calls[node.type];
@@ -282,14 +308,17 @@ export function callCollector(
         owningClass && site.callee.length >= 3
           ? fieldTypes.get(owningClass)?.get(second)
           : undefined;
-      return type ? { type, replaces: 2 } : null;
+      return type && type.length > 0 ? { type, replaces: 2 } : null;
     }
+    // A local declared twice in the symbol (a callback parameter shadowing a variable) may be
+    // either declaration at the call, so its type is not used.
+    const declaredOnce = (owner: string) => (declarations.get(owner)?.get(head) ?? 0) <= 1;
     const type = local
-      ? site.caller
+      ? site.caller && declaredOnce(site.caller)
         ? localTypes.get(site.caller)?.get(head)
         : undefined
-      : moduleTypes.get(head);
-    return type ? { type, replaces: 1 } : null;
+      : moduleTypes.get('')?.get(head);
+    return type && type.length > 0 ? { type, replaces: 1 } : null;
   };
 
   const result = (): ParsedCall[] => {
