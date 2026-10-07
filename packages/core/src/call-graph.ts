@@ -33,6 +33,15 @@ export type ImportBindings = ReadonlyMap<number, ReadonlyMap<string, ImportBindi
 const IMPORT_BINDING_CONFIDENCE = 0.95;
 /** Only the full qualified name ties the call to a definition (`res.send()` on a parameter). */
 const QUALIFIED_NAME_CONFIDENCE = 0.6;
+/**
+ * A call through a name whose type the source states (`const r = new Rates()`,
+ * `repo: Repo`): the name may be reassigned, or hold a subclass.
+ */
+const STATED_TYPE_FACTOR = 0.9;
+/** A function passed by name is used by the caller; that it gets called is inferred. */
+const PASSED_AS_VALUE_CONFIDENCE = 0.8;
+/** What a function passed by name can be. */
+const FUNCTION_KINDS: ReadonlySet<string> = new Set(['function', 'method']);
 
 interface Resolved {
   readonly target: CallableSymbol;
@@ -158,6 +167,37 @@ function resolveCall(
 }
 
 /**
+ * Resolve a call site, weighing how it was read: through a stated type
+ * (a little less sure), or as a function passed by name (INFERRED: a use,
+ * probably a call later).
+ */
+function resolveSite(
+  call: RepositoryCall,
+  caller: CallableSymbol | null,
+  index: SymbolIndex,
+  bindings: ReadonlyMap<string, ImportBinding>,
+): Resolved | null {
+  const resolved = resolveCall(call, caller, index, bindings);
+  if (!resolved) return null;
+  const typed =
+    call.written === null
+      ? resolved
+      : {
+          ...resolved,
+          confidence: resolved.confidence * STATED_TYPE_FACTOR,
+          method: `${resolved.method}+stated-type`,
+        };
+  if (call.via !== 'reference') return typed;
+  if (!FUNCTION_KINDS.has(typed.target.kind)) return null;
+  return {
+    ...typed,
+    level: 'INFERRED',
+    confidence: Math.min(typed.confidence, PASSED_AS_VALUE_CONFIDENCE),
+    method: `${typed.method}+passed-as-value`,
+  };
+}
+
+/**
  * Rebuild `CALLS` edges from the call sites stored for HEAD, each edge citing
  * its call site. Calls whose calling symbol is no longer in the index are
  * skipped, never attributed to the file; module-level calls come from the file.
@@ -179,7 +219,7 @@ export function rebuildCallEdges(
   for (const call of calls) {
     const caller = call.callerKey === null ? null : index.caller(call.fileId, call.callerKey);
     if (caller === undefined) continue;
-    const resolved = resolveCall(call, caller, index, bindings.get(call.fileId) ?? none);
+    const resolved = resolveSite(call, caller, index, bindings.get(call.fileId) ?? none);
     if (!resolved || resolved.target.id === caller?.id) continue;
     const source: EntityRef = caller
       ? { type: 'symbol', id: caller.id }
@@ -196,7 +236,10 @@ export function rebuildCallEdges(
   const cited = new Set<number>();
   for (const { source, resolved, call } of edges.values()) {
     const locator = `${call.path}@${call.sha}#L${String(call.line)}`;
-    const excerpt = `call ${call.callee}`;
+    const excerpt =
+      call.via === 'reference'
+        ? `passes ${call.written ?? call.callee}`
+        : `call ${call.written ?? call.callee}`;
     const evidenceId =
       previous.get(`${locator} ${excerpt}`) ??
       recordEvidence(db, {

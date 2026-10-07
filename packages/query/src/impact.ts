@@ -1,4 +1,10 @@
-import { entityKey, loadEntityRecords, type FossilDb } from '@codefossil/db';
+import {
+  entityKey,
+  importBindingsByEvidence,
+  loadEntityRecords,
+  type EntityRecord,
+  type FossilDb,
+} from '@codefossil/db';
 import type { EntityRef, EvidenceLevel } from '@codefossil/shared';
 import { describeEntities } from './describe.js';
 import { CALLERS_ROUTE, IMPACT_ROUTE } from './routes.js';
@@ -92,6 +98,43 @@ function bestDependents(
   );
 }
 
+/**
+ * Import paths from a symbol, without those through a file whose imports of
+ * the defining file name only other things (`import { b } from './a'` does not
+ * use `a`). A statement binding no names, the whole module (`*`) or its
+ * default export may use anything, so it is kept.
+ */
+function importersOfSymbol(
+  db: FossilDb,
+  symbol: EntityRecord | undefined,
+  paths: ReturnType<typeof traverse>['paths'],
+): { paths: ReturnType<typeof traverse>['paths']; skipped: number } {
+  if (symbol?.type !== 'symbol') return { paths, skipped: 0 };
+  const name = symbol.qualifiedName.split('.')[0] ?? '';
+  // paths are [symbol, defining file, importer, ...]; edges[1] is the importer's IMPORTS edge.
+  const evidenceIds = paths.flatMap((path) => path.edges[1]?.provenance.evidenceIds ?? []);
+  const bindings = importBindingsByEvidence(db, evidenceIds);
+  const uses = (ids: readonly number[]): boolean =>
+    ids.length === 0 ||
+    ids.some((id) => {
+      const bound = bindings.get(id);
+      return (
+        bound === undefined ||
+        bound === null ||
+        bound.some((b) => b.imported === '*' || b.imported === 'default' || b.imported === name)
+      );
+    });
+  const skippedFiles = new Set<string>();
+  const kept = paths.filter((path) => {
+    const edge = path.edges[1];
+    const importer = path.nodes[2];
+    if (!edge || !importer || uses(edge.provenance.evidenceIds)) return true;
+    skippedFiles.add(entityKey(importer));
+    return false;
+  });
+  return { paths: kept, skipped: skippedFiles.size };
+}
+
 const plural = (n: number, one: string, many: string) => `${String(n)} ${n === 1 ? one : many}`;
 
 /**
@@ -135,7 +178,8 @@ export function analyzeImpact(
   };
 
   const definedIn = target.type === 'symbol' ? result.paths[0]?.nodes[1] : undefined;
-  const all = bestDependents(result.paths, extraHop, new Set(['file']), label, isTest);
+  const importers = importersOfSymbol(db, records.get(entityKey(target)), result.paths);
+  const all = bestDependents(importers.paths, extraHop, new Set(['file']), label, isTest);
   const direct = all.filter((d) => d.distance === 1);
   const transitive = all.filter((d) => d.distance > 1);
   const tests = all.filter((d) => d.isTest).length;
@@ -155,10 +199,19 @@ export function analyzeImpact(
   if (target.type === 'symbol') {
     caveats.unshift(
       'Calls are resolved at HEAD only where one definition fits: in the same file or class, a ' +
-        'uniquely named definition in an imported file, or a unique qualified name (INFERRED). ' +
-        'Calls through variables, callbacks and dynamic dispatch are not seen, so callers can be missing.',
-      'Files are counted when they import the file that defines the symbol, whether or not they call it.',
+        'uniquely named definition in an imported file, a name whose type the code states ' +
+        '(`new Repo()`, `repo: Repo`), or a unique qualified name (INFERRED). Functions passed by ' +
+        'name count as INFERRED callers. Other calls through variables and dynamic dispatch are not ' +
+        'seen, so callers can be missing.',
+      'Files are counted when they import the defining file and do not name only other things ' +
+        'from it; one importing the whole module counts whether or not it uses the symbol.',
     );
+    if (importers.skipped > 0) {
+      caveats.push(
+        `${plural(importers.skipped, 'file imports', 'files import')} only other names from the ` +
+          'defining file and is left out, with what depends on it through that import.',
+      );
+    }
   }
 
   const fileSentence =

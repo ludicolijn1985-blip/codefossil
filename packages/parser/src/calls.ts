@@ -1,6 +1,6 @@
 import type { Node } from 'web-tree-sitter';
 import type { Collector, SymbolRange } from './extract.js';
-import { visitNodes, type LanguageSpec } from './spec.js';
+import { visitNodes, type LanguageSpec, type TypedName } from './spec.js';
 
 /** A call as written in source, before resolution. */
 export interface ParsedCall {
@@ -22,6 +22,15 @@ export interface ParsedCall {
   readonly local: boolean;
   /** The first name is the object the calling method belongs to (`this`, `self`, a Go receiver). */
   readonly self: boolean;
+  /**
+   * How the callee was found: null for a plain call; `type` when a name's
+   * stated type stands in for it (`r.vat()` with `r = new Rates()` is
+   * `Rates.vat`); `reference` for a function passed by name, not called
+   * (`items.map(format)`).
+   */
+  readonly via: 'type' | 'reference' | null;
+  /** The callee as written, when a stated type replaced its first name(s). */
+  readonly written: string | null;
 }
 
 /** Node types that are a plain name, in any supported grammar. */
@@ -120,6 +129,44 @@ interface CallSite {
   readonly caller: string | null;
   readonly line: number;
   readonly self: boolean;
+  readonly reference: boolean;
+}
+
+/** Argument node types that pass a function by name. */
+const REFERENCE_TYPES: ReadonlySet<string> = new Set([
+  'identifier',
+  'member_expression',
+  'attribute',
+]);
+
+/** Kinds whose own qualified name is the class that `this` refers to inside them. */
+const CLASS_KINDS: ReadonlySet<string> = new Set([
+  'class',
+  'interface',
+  'struct',
+  'trait',
+  'impl',
+  'enum',
+]);
+
+/** `method:Cart.total#2` → kind `method`, qualified name `Cart.total`. */
+function parseKey(key: string): { kind: string; qualifiedName: string } {
+  const colon = key.indexOf(':');
+  return { kind: key.slice(0, colon), qualifiedName: key.slice(colon + 1).replace(/#\d+$/, '') };
+}
+
+/** The class a symbol belongs to: itself for a class, else its container (`Cart` for `Cart.total`). */
+function classOf(key: string): string | null {
+  const { kind, qualifiedName } = parseKey(key);
+  if (CLASS_KINDS.has(kind)) return qualifiedName;
+  const dot = qualifiedName.lastIndexOf('.');
+  return dot > 0 ? qualifiedName.slice(0, dot) : null;
+}
+
+function addType(map: Map<string, Map<string, readonly string[]>>, key: string, typed: TypedName) {
+  const names = map.get(key) ?? new Map<string, readonly string[]>();
+  names.set(typed.name, typed.type);
+  map.set(key, names);
 }
 
 /**
@@ -147,10 +194,54 @@ export function callCollector(
 ): Collector<ParsedCall[]> {
   const enclosing = new Enclosing(ranges);
   const locals = new Map<string, Set<string>>();
+  /** Stated types: of locals per calling symbol, of fields per class, of module-level names. */
+  const localTypes = new Map<string, Map<string, readonly string[]>>();
+  const fieldTypes = new Map<string, Map<string, readonly string[]>>();
+  const moduleTypes = new Map<string, readonly string[]>();
   const sites: CallSite[] = [];
-  const types = new Set([...Object.keys(spec.calls), ...Object.keys(spec.locals)]);
+  const typedNames = spec.typedNames ?? {};
+  const types = new Set([
+    ...Object.keys(spec.calls),
+    ...Object.keys(spec.locals),
+    ...Object.keys(typedNames),
+  ]);
+
+  const noteTypes = (node: Node, typing: (node: Node) => readonly TypedName[]) => {
+    const owner = enclosing.at(node.startIndex);
+    for (const typed of typing(node)) {
+      if (typed.field) {
+        const owningClass = owner ? classOf(owner.key) : null;
+        if (owningClass) addType(fieldTypes, owningClass, typed);
+      } else if (!owner || parseKey(owner.key).qualifiedName === typed.name) {
+        // A module-level name: no symbol, or the variable's own symbol, encloses it.
+        moduleTypes.set(typed.name, typed.type);
+      } else {
+        addType(localTypes, owner.key, typed);
+      }
+    }
+  };
+
+  /** Functions passed by name in a call's arguments. */
+  const noteReferences = (node: Node, caller: string | null) => {
+    const args = spec.callArguments ? node.childForFieldName(spec.callArguments) : null;
+    for (const arg of args?.namedChildren ?? []) {
+      if (!REFERENCE_TYPES.has(arg.type)) continue;
+      const path = calleePath(arg, spec);
+      const head = path?.[0];
+      if (!path || !head || path.includes('*')) continue;
+      sites.push({
+        callee: path,
+        caller,
+        line: arg.startPosition.row + 1,
+        self: path.length > 1 && spec.isSelf(node, head),
+        reference: true,
+      });
+    }
+  };
 
   const visit = (node: Node) => {
+    const typing = typedNames[node.type];
+    if (typing) noteTypes(node, typing);
     const localField = spec.locals[node.type];
     if (localField !== undefined) {
       const owner = enclosing.at(node.startIndex);
@@ -162,15 +253,43 @@ export function callCollector(
       }
     }
     const rule = spec.calls[node.type];
-    const callee = rule ? calleeOf(node, rule, spec) : null;
+    if (!rule) return;
+    const callee = calleeOf(node, rule, spec);
     const head = callee?.[0];
-    if (!callee || !head || spec.ignoredCallees.has(callee.join('.'))) return;
+    if (callee && spec.ignoredCallees.has(callee.join('.'))) return;
+    const caller = enclosing.at(node.startIndex)?.key ?? null;
+    noteReferences(node, caller);
+    if (!callee || !head) return;
     sites.push({
       callee,
-      caller: enclosing.at(node.startIndex)?.key ?? null,
+      caller,
       line: node.startPosition.row + 1,
       self: callee.length > 1 && spec.isSelf(node, head),
+      reference: false,
     });
+  };
+
+  /** The stated type standing in for a call's first name(s), and how many names it replaces. */
+  const statedType = (
+    site: CallSite,
+    local: boolean,
+  ): { type: readonly string[]; replaces: number } | null => {
+    const [head = '', second = ''] = site.callee;
+    if (site.callee.length < 2) return null;
+    if (site.self) {
+      const owningClass = site.caller ? classOf(site.caller) : null;
+      const type =
+        owningClass && site.callee.length >= 3
+          ? fieldTypes.get(owningClass)?.get(second)
+          : undefined;
+      return type ? { type, replaces: 2 } : null;
+    }
+    const type = local
+      ? site.caller
+        ? localTypes.get(site.caller)?.get(head)
+        : undefined
+      : moduleTypes.get(head);
+    return type ? { type, replaces: 1 } : null;
   };
 
   const result = (): ParsedCall[] => {
@@ -179,8 +298,32 @@ export function callCollector(
       const head = site.callee[0] ?? '';
       const local =
         !site.self && site.caller !== null && (locals.get(site.caller)?.has(head) ?? false);
-      const key = `${site.caller ?? ''}\0${site.callee.join('.')}\0${String(site.self)}\0${String(local)}`;
-      if (!byKey.has(key)) byKey.set(key, { ...site, local });
+      const stated = statedType(site, local);
+      const call: ParsedCall = stated
+        ? {
+            callee: [...stated.type, ...site.callee.slice(stated.replaces)],
+            caller: site.caller,
+            line: site.line,
+            local: false,
+            self: false,
+            via: site.reference ? 'reference' : 'type',
+            written: site.callee.join('.'),
+          }
+        : {
+            callee: site.callee,
+            caller: site.caller,
+            line: site.line,
+            local,
+            self: site.self,
+            via: site.reference ? 'reference' : null,
+            written: null,
+          };
+      // A local passed by name (a parameter, a variable) names no definition: nothing to keep.
+      if (site.reference && call.local) continue;
+      const key = [call.caller ?? '', call.callee.join('.'), call.self, call.local, call.via].join(
+        '\0',
+      );
+      if (!byKey.has(key)) byKey.set(key, call);
     }
     return [...byKey.values()];
   };

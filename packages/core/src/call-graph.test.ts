@@ -343,4 +343,57 @@ describe('call graph', () => {
     expect(edges()).toEqual([]);
     expect(evidenceOfCalls()).toEqual([]);
   });
+
+  it('follows calls through stated types and functions passed by name', async () => {
+    const r = fixture();
+    await r.write(
+      'src/repo.ts',
+      lines(
+        'export class Repo {',
+        '  save() {',
+        '    return 1;',
+        '  }',
+        '}',
+        'export const config = { retries: 3 };',
+      ),
+    );
+    await r.write(
+      'src/format.ts',
+      lines('export function format(n: number) {', '  return String(n);', '}'),
+    );
+    await r.write(
+      'src/cart.ts',
+      lines(
+        "import { Repo, config } from './repo.js';",
+        "import { format } from './format.js';",
+        'export class Cart {',
+        '  constructor(private repo: Repo) {}',
+        '  checkout(items: number[]) {',
+        '    this.repo.save();',
+        '    const backup = new Repo();',
+        '    backup.save();',
+        '    return items.map(format).concat([config]);',
+        '  }',
+        '}',
+      ),
+    );
+    await r.commit('Cart');
+
+    await runIndex(fossil.db, r.root, { now });
+
+    expect(edges().map(line)).toEqual([
+      'Cart.checkout -> Repo [DERIVED 0.95 import-binding]',
+      'Cart.checkout -> Repo.save [DERIVED 0.855 import-binding+stated-type]',
+      // Passed by name: a use, its call inferred. `config` is not a function, so no edge.
+      'Cart.checkout -> format [INFERRED 0.8 import-binding+passed-as-value]',
+    ]);
+    const excerpts = fossil.sqlite
+      .prepare(
+        "select excerpt from evidence where json_extract(metadata_json, '$.snapshot') = 'calls' order by excerpt",
+      )
+      .all()
+      .map((row) => (row as { excerpt: string }).excerpt);
+    // Evidence quotes the call as written.
+    expect(excerpts).toEqual(['call Repo', 'call this.repo.save', 'passes format']);
+  });
 });

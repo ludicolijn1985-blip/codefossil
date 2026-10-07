@@ -8,6 +8,8 @@ export interface NewCall {
   readonly line: number;
   readonly local: boolean;
   readonly self: boolean;
+  readonly via: 'type' | 'reference' | null;
+  readonly written: string | null;
 }
 
 /** Replace the calls recorded for a file with those observed in `sha`. */
@@ -27,6 +29,8 @@ export function replaceFileCalls(
         line: call.line,
         localHead: call.local,
         selfReceiver: call.self,
+        via: call.via,
+        written: call.written,
         sha,
       })
       .run();
@@ -45,6 +49,8 @@ export interface RepositoryCall {
   readonly line: number;
   readonly localHead: boolean;
   readonly selfReceiver: boolean;
+  readonly via: 'type' | 'reference' | null;
+  readonly written: string | null;
   readonly sha: string;
 }
 
@@ -59,6 +65,8 @@ export function listRepositoryCalls(db: FossilDb, repositoryId: number): Reposit
       line: calls.line,
       localHead: calls.localHead,
       selfReceiver: calls.selfReceiver,
+      via: calls.via,
+      written: calls.written,
       sha: calls.sha,
     })
     .from(calls)

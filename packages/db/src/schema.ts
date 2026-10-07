@@ -450,6 +450,14 @@ export const calls = sqliteTable(
     localHead: integer('local_head', { mode: 'boolean' }).notNull().default(false),
     /** The callee's first name is the caller's own object (`this`, `self`, a Go receiver). */
     selfReceiver: integer('self_receiver', { mode: 'boolean' }).notNull().default(false),
+    /**
+     * Null for a plain call; `type` when a stated type stood in for the callee's
+     * first name (`r.vat()` read as `Rates.vat`); `reference` for a function
+     * passed by name rather than called.
+     */
+    via: text('via', { enum: ['type', 'reference'] }),
+    /** The callee as written, when a stated type replaced part of it. */
+    written: text('written'),
     /** The commit the file was read at, for evidence locators. */
     sha: text('sha').notNull(),
   },

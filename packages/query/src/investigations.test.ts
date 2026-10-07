@@ -122,7 +122,8 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
   });
 
   it('measures impact with distances, routes and tests', () => {
-    const impact = analyzeImpact(fossil.db, scenario.repositoryId, symbol('calculateVAT'));
+    // checkout.ts imports RATE from vat.ts; api.ts and the test import checkout.ts.
+    const impact = analyzeImpact(fossil.db, scenario.repositoryId, symbol('RATE'));
     expect(impact.definedIn?.label).toBe('src/payment/vat.ts');
     expect(impact.direct.map((d) => d.label)).toEqual(['src/checkout.ts']);
     expect(
@@ -140,6 +141,16 @@ describe('investigations on the ARCHITECTURE.md scenario', () => {
     expect(impact.caveats[0]).toMatch(/^Calls are resolved at HEAD only where one definition fits/);
     expect(impact.caveats[1]).toMatch(/^Files are counted when they import/);
     expect(impact.direct[0]?.evidenceIds.length).toBeGreaterThan(0);
+  });
+
+  it('leaves out files that import only other names from the defining file', () => {
+    // checkout.ts imports RATE, not calculateVAT, from vat.ts.
+    const impact = analyzeImpact(fossil.db, scenario.repositoryId, symbol('calculateVAT'));
+    expect(impact.direct).toEqual([]);
+    expect(impact.transitive).toEqual([]);
+    expect(impact.caveats.at(-1)).toMatch(
+      /^1 file imports only other names from the defining file/,
+    );
   });
 
   it('reports no dependents plainly', () => {

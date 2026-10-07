@@ -292,3 +292,27 @@ export function setGraphIndexedSha(db: FossilDb, repositoryId: number, sha: stri
     .where(eq(repositories.id, repositoryId))
     .run();
 }
+
+/**
+ * The names each import statement binds, by the evidence row recorded for it
+ * (the evidence an `IMPORTS` edge cites). Null for a statement that binds no
+ * names (`import './polyfill'`), whose use of the module is unknown.
+ */
+export function importBindingsByEvidence(
+  db: FossilDb,
+  evidenceIds: readonly number[],
+): Map<number, readonly { local: string; imported: string }[] | null> {
+  const result = new Map<number, readonly { local: string; imported: string }[] | null>();
+  if (evidenceIds.length === 0) return result;
+  for (const row of db
+    .select({ evidenceId: imports.evidenceId, bindings: imports.bindingsJson })
+    .from(imports)
+    .where(inArray(imports.evidenceId, [...new Set(evidenceIds)]))
+    .all()) {
+    if (row.evidenceId === null) continue;
+    const bindings = row.bindings && row.bindings.length > 0 ? row.bindings : null;
+    // Two statements citing one row cannot happen, but a statement without names wins: unknown use.
+    result.set(row.evidenceId, result.has(row.evidenceId) ? null : bindings);
+  }
+  return result;
+}

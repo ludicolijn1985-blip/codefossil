@@ -235,8 +235,13 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 
 - **Static calls only.** `impact` lists callers from calls resolved at HEAD where one definition
   fits: the method's own class, the definition an import binds, one in the calling file, or a
-  unique qualified name (INFERRED). Calls through variables, callbacks and dynamic dispatch are not
-  seen, and files are still counted when they import the defining file.
+  unique qualified name (INFERRED). Calls through a name whose type the code states
+  (`const r = new Repo()`, `repo: Repo`, `this.repo = new Repo()`, Python `r = Repo()`) are read as
+  calls on that type, and a function passed by name (`app.get('/', handler)`) counts as an
+  INFERRED caller; in TypeScript, JavaScript and Python. Other calls through variables, and
+  dynamic dispatch, are not seen. Files count when they import the defining file and do not name
+  only other things from it; one importing the whole module counts whether or not it uses the
+  symbol.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
 - **HEAD only.** Only history reachable from HEAD is indexed. When HEAD leaves the indexed

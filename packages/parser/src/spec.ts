@@ -93,6 +93,52 @@ export interface LanguageSpec {
    * a Go method's receiver.
    */
   readonly isSelf: (call: Node, receiver: string) => boolean;
+  /**
+   * Nodes that state the type of a name: a local (`const r = new Rates()`,
+   * `repo: Repo`) or a field of the enclosing class (`this.log = new Logger()`).
+   * A call through such a name (`r.vat()`) is then read as a call on the type
+   * (`Rates.vat`).
+   */
+  readonly typedNames?: Readonly<Record<string, (node: Node) => readonly TypedName[]>>;
+  /**
+   * The field of a call node holding its arguments. A function passed there by
+   * name (`items.map(format)`) is a use of it, recorded as a reference.
+   */
+  readonly callArguments?: string;
+}
+
+/** A name whose type the source states. */
+export interface TypedName {
+  readonly name: string;
+  /** A field of the enclosing class (`this.repo`, `self.repo`) rather than a local. */
+  readonly field: boolean;
+  /** The type as a name path: `Repo`, `models.Repo`. */
+  readonly type: readonly string[];
+}
+
+/** Node types naming a type or a constructor, in the supported grammars. */
+const TYPE_NAMES: ReadonlySet<string> = new Set(['identifier', 'type_identifier']);
+
+/**
+ * A type as a name path: `Repo`, `m.Money` (`nested_type_identifier`, a member
+ * or attribute), the name of a generic (`Tax<number>`). Null for anything else.
+ */
+export function typePath(node: Node | null, depth = 0): string[] | null {
+  if (!node || depth > 4) return null;
+  if (TYPE_NAMES.has(node.type)) return [node.text];
+  if (node.type === 'generic_type') return typePath(node.childForFieldName('name'), depth + 1);
+  const [objectField, nameField] =
+    node.type === 'nested_type_identifier'
+      ? ['module', 'name']
+      : node.type === 'member_expression'
+        ? ['object', 'property']
+        : node.type === 'attribute'
+          ? ['object', 'attribute']
+          : [null, null];
+  if (!objectField || !nameField) return null;
+  const head = typePath(node.childForFieldName(objectField), depth + 1);
+  const name = node.childForFieldName(nameField);
+  return head && name ? [...head, name.text] : null;
 }
 
 /**

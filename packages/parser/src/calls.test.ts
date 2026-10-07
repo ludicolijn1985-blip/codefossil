@@ -38,8 +38,11 @@ describe('call extraction', () => {
       ['round', 'function:total', 4],
       ['this.validate', 'method:Cart.checkout', 8],
       ['Receipt', 'method:Cart.checkout', 9],
+      // Passed by name, not called: kept as references.
+      ['this.items', 'method:Cart.checkout', 9],
       ['total', 'method:Cart.checkout', 9],
       ['*.listen', null, 12],
+      ['handler', null, 12],
       ['app.get', null, 12],
       ['*.start', null, 13],
       ['getApp', null, 13],
@@ -143,5 +146,77 @@ describe('local names and self in calls', () => {
         'impl A {\n    fn m(&self, v: V) {\n        self.n();\n        v.w();\n    }\n}\nfn free() {\n    helper();\n}\n',
       ),
     ).toEqual(['self.n self', 'v.w local', 'helper']);
+  });
+
+  const sites = async (grammar: GrammarId, source: string) =>
+    (await extractor.extract(source, grammar))?.calls.map(
+      ({ callee, caller, via, written }) =>
+        `${caller ?? '-'} ${callee.join('.')}${via ? ` (${via}${written ? ` ${written}` : ''})` : ''}`,
+    );
+
+  it('reads calls through names whose TypeScript type is stated', async () => {
+    const source = [
+      'const shared = new Cache();',
+      'class Cart {',
+      '  private db: Db;',
+      '  constructor(private repo: Repo) {',
+      '    this.log = new Logger();',
+      '  }',
+      '  total(rates: m.Rates) {',
+      '    const tax = new Tax();',
+      '    tax.apply(rates.vat());',
+      '    this.repo.save();',
+      '    this.log.info();',
+      '    this.db.query();',
+      '    shared.get();',
+      '    this.refresh();',
+      '  }',
+      '}',
+    ].join('\n');
+
+    expect(await sites('typescript', source)).toEqual([
+      'variable:shared Cache',
+      'method:Cart.constructor Logger',
+      'method:Cart.total Tax',
+      'method:Cart.total Tax.apply (type tax.apply)',
+      'method:Cart.total m.Rates.vat (type rates.vat)',
+      'method:Cart.total Repo.save (type this.repo.save)',
+      'method:Cart.total Logger.info (type this.log.info)',
+      'method:Cart.total Db.query (type this.db.query)',
+      'method:Cart.total Cache.get (type shared.get)',
+      'method:Cart.total this.refresh',
+    ]);
+  });
+
+  it('reads Python calls through constructed and annotated names', async () => {
+    const source = [
+      'class Cart:',
+      '    def __init__(self, repo: Repo):',
+      '        self.log = Logger()',
+      '        self.repo = repo',
+      '    def total(self):',
+      '        r = Rates()',
+      '        r.vat()',
+      '        self.log.info()',
+      '        sorted(self.items, key=len)',
+      '        map(fmt, [])',
+    ].join('\n');
+
+    expect(await sites('python', source)).toEqual([
+      'method:Cart.__init__ Logger',
+      'method:Cart.total Rates',
+      'method:Cart.total Rates.vat (type r.vat)',
+      'method:Cart.total Logger.info (type self.log.info)',
+      'method:Cart.total self.items (reference)',
+      'method:Cart.total sorted',
+      'method:Cart.total fmt (reference)',
+      'method:Cart.total map',
+    ]);
+  });
+
+  it('does not keep locals passed by name, which name no definition', async () => {
+    expect(await sites('javascript', 'function f(cb, xs) {\n  xs.forEach(cb);\n}\n')).toEqual([
+      'function:f xs.forEach',
+    ]);
   });
 });

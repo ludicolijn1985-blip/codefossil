@@ -1,5 +1,6 @@
 import { pythonImports } from './python-imports.js';
 import { ancestorOf, type LanguageSpec } from '../spec.js';
+import { pythonTypedNames } from './typed-names.js';
 
 const FUNCTIONS = new Set(['function_definition']);
 
@@ -26,6 +27,8 @@ export const python: LanguageSpec = {
     function_definition: 'name',
     class_definition: 'name',
   },
+  typedNames: pythonTypedNames,
+  callArguments: 'arguments',
   isSelf: (call, receiver) => {
     if (receiver !== 'self') return false;
     const fn = ancestorOf(call, FUNCTIONS);

@@ -1,6 +1,7 @@
 import { ecmascriptImports } from './ecmascript-imports.js';
 import type { Node } from 'web-tree-sitter';
 import { ancestorOf, type LanguageSpec } from '../spec.js';
+import { ecmascriptTypedNames } from './typed-names.js';
 
 /** Where a `const`/`let`/`var` declaration counts as a module-level symbol. */
 const MODULE_LEVEL = new Set(['program', 'export_statement']);
@@ -207,6 +208,8 @@ export const ecmascript: LanguageSpec = {
     arrow_function: 'parameter',
     catch_clause: 'parameter',
   },
+  typedNames: ecmascriptTypedNames,
+  callArguments: 'arguments',
   // `this` is the object only up to the nearest non-arrow function: the method itself, or
   // a function assigned as one (`X.prototype.m = function () {}`).
   isSelf: (call, receiver) => {
