@@ -1,6 +1,7 @@
 import {
   entityKey,
   importBindingsByEvidence,
+  listFileSymbols,
   loadEntityRecords,
   type EntityRecord,
   type FossilDb,
@@ -110,7 +111,22 @@ function importersOfSymbol(
   paths: ReturnType<typeof traverse>['paths'],
 ): { paths: ReturnType<typeof traverse>['paths']; skipped: number } {
   if (symbol?.type !== 'symbol') return { paths, skipped: 0 };
-  const name = symbol.qualifiedName.split('.')[0] ?? '';
+  const qualified = symbol.qualifiedName;
+  // Names the defining file defines: a binding naming one of them (other than the symbol)
+  // names something else; a binding naming none (a submodule, an alias) may reach anything.
+  const definingFile = paths[0]?.nodes[1];
+  const defined = new Set(
+    definingFile?.type === 'file'
+      ? listFileSymbols(db, definingFile.id).map((s) => s.qualifiedName)
+      : [],
+  );
+  const reaches = (imported: string): boolean =>
+    imported === '*' ||
+    imported === 'default' ||
+    imported === qualified ||
+    qualified.startsWith(`${imported}.`) ||
+    imported.startsWith(`${qualified}.`) ||
+    !defined.has(imported);
   // paths are [symbol, defining file, importer, ...]; edges[1] is the importer's IMPORTS edge.
   const evidenceIds = paths.flatMap((path) => path.edges[1]?.provenance.evidenceIds ?? []);
   const bindings = importBindingsByEvidence(db, evidenceIds);
@@ -118,11 +134,7 @@ function importersOfSymbol(
     ids.length === 0 ||
     ids.some((id) => {
       const bound = bindings.get(id);
-      return (
-        bound === undefined ||
-        bound === null ||
-        bound.some((b) => b.imported === '*' || b.imported === 'default' || b.imported === name)
-      );
+      return bound === undefined || bound === null || bound.some((b) => reaches(b.imported));
     });
   const skippedFiles = new Set<string>();
   const kept = paths.filter((path) => {
