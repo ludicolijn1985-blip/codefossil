@@ -182,6 +182,59 @@ describe('fossil CLI', () => {
     expect(index.stdout).toContain('GitLab acme/sub/shop: offline, linked stored data');
   });
 
+  it('connects Bitbucket and Azure Repos repositories', async () => {
+    await fossil(root(), 'init');
+    const bitbucket = await fossil(
+      root(),
+      'connect',
+      'bitbucket',
+      'acme/shop',
+      '--no-verify',
+      '--json',
+    );
+    expect(JSON.parse(bitbucket.stdout)).toEqual({
+      provider: 'bitbucket',
+      repository: 'acme/shop',
+      verified: false,
+    });
+    expect((await fossil(root(), 'connect', 'bitbucket', 'shop')).stderr).toContain(
+      'not a workspace/repository slug',
+    );
+
+    const azure = await fossil(
+      root(),
+      'connect',
+      'azure',
+      'acme/Shop Project/shop',
+      '--no-verify',
+      '--json',
+    );
+    expect(JSON.parse(azure.stdout)).toEqual({
+      provider: 'azure',
+      repository: 'Shop Project/shop',
+      apiUrl: 'https://dev.azure.com/acme',
+      verified: false,
+    });
+    // Azure DevOps Server: the collection URL is explicit, the path is project/repository.
+    expect(
+      (
+        await fossil(
+          root(),
+          'connect',
+          'azure',
+          'acme/Shop/shop',
+          '--api-url',
+          'https://tfs.example/tfs/Main',
+          '--no-verify',
+        )
+      ).stderr,
+    ).toContain('not a project/repository path');
+
+    const index = await fossil(root(), 'index', '--offline');
+    expect(index.stdout).toContain('Bitbucket acme/shop: offline, linked stored data');
+    expect(index.stdout).toContain('Azure Repos Shop Project/shop: offline, linked stored data');
+  });
+
   it('connects Jira and Linear, validating the site and project keys', async () => {
     await fossil(root(), 'init');
     const jira = await fossil(

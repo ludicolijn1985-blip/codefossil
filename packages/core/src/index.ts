@@ -9,3 +9,4 @@ export * from './symbol-indexer.js';
 export * from './typescript-calls.js';
 export * from './tracker-sync.js';
 export * from './gitlab-sync.js';
+export * from './hosted-sync.js';

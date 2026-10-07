@@ -19,7 +19,7 @@ export type IssueRow = typeof issues.$inferSelect;
 export type PullRequestRow = typeof pullRequests.$inferSelect;
 
 /** Code hosts whose issues and pull (merge) requests are synced. */
-export type CodeHost = 'github' | 'gitlab';
+export type CodeHost = 'github' | 'gitlab' | 'bitbucket' | 'azure';
 
 export interface NewConnection {
   readonly repositoryId: number;
@@ -537,6 +537,22 @@ export function trackerIssueIds(
       .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, provider)))
       .all()
       .map((row) => [row.key, row.id]),
+  );
+}
+
+/** The state (`open`, `closed`) and closing time of each issue of a provider, by issue id. */
+export function issueStates(
+  db: FossilDb,
+  repositoryId: number,
+  provider: CodeHost,
+): Map<number, { state: string; closedAt: string | null }> {
+  return new Map(
+    db
+      .select({ id: issues.id, state: issues.state, closedAt: issues.closedAt })
+      .from(issues)
+      .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, provider)))
+      .all()
+      .map((row) => [row.id, { state: row.state, closedAt: row.closedAt }]),
   );
 }
 

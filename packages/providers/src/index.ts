@@ -7,3 +7,6 @@ export * from './trackers/http.js';
 export * from './trackers/jira.js';
 export * from './trackers/linear.js';
 export * from './gitlab/client.js';
+export * from './hosted.js';
+export * from './bitbucket/client.js';
+export * from './azure/client.js';

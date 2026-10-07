@@ -11,6 +11,13 @@ and the project uses [Semantic Versioning](https://semver.org/).
   most, and whether they still commit; the lens (`codefossil lens`, MCP, VS Code) adds
   "mostly Ada (left 2020)" when one person made at least half of them, and the history page names
   the main authors. People are matched across name spellings and email addresses, as in `owners`.
+- **Bitbucket and Azure Repos.** `codefossil connect bitbucket` and `connect azure` sync pull
+  requests and link them to their commits (FACT), from `workspace/repo`, `org/project/repo` or the
+  origin remote. Work items linked to Azure pull requests are read; one linked to a completed pull
+  request and closed counts as resolved by it (DERIVED 0.8), and a commit closing a Bug work item
+  (`Fixes #12`) counts as a fix.
+  Credentials (`BITBUCKET_TOKEN`, `AZURE_DEVOPS_TOKEN`) come from the environment and are never
+  stored.
 - **Callers in the PR comment.** The functions a change touches are listed with how many functions
   call them (calls resolved at HEAD), so a small edit to widely used code stands out.
 

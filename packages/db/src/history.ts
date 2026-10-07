@@ -1,4 +1,4 @@
-import { and, asc, eq, max, or, sql } from 'drizzle-orm';
+import { and, asc, eq, like, max, or, sql } from 'drizzle-orm';
 import type { FossilDb } from './client.js';
 import { preparedFor } from './prepared.js';
 import { commitParents, commits, fileChanges, files } from './schema.js';
@@ -36,6 +36,27 @@ export function findCommitBySha(
   sha: string,
 ): CommitRow | undefined {
   return statements(db).findCommitBySha.get({ repositoryId, sha });
+}
+
+/**
+ * The one commit whose sha starts with an abbreviated sha, as Bitbucket
+ * reports merge commits (12 hex digits); undefined when none or several match.
+ * Shorter prefixes are refused: in a partial history they can match the wrong
+ * commit uniquely.
+ */
+export function findCommitByShaPrefix(
+  db: FossilDb,
+  repositoryId: number,
+  prefix: string,
+): CommitRow | undefined {
+  if (!/^[0-9a-f]{12,64}$/.test(prefix)) return undefined;
+  const matches = db
+    .select()
+    .from(commits)
+    .where(and(eq(commits.repositoryId, repositoryId), like(commits.sha, `${prefix}%`)))
+    .limit(2)
+    .all();
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /** SHAs of every commit already stored for a repository. */

@@ -171,6 +171,8 @@ adds new commits. Without `comment` the report goes to the job summary. See [ACT
 ```bash
 codefossil connect github                              # GITHUB_TOKEN, GH_TOKEN or `gh auth login`
 codefossil connect gitlab                              # GITLAB_TOKEN; group/name or the origin remote
+codefossil connect bitbucket                           # BITBUCKET_TOKEN; workspace/repo or the origin remote
+codefossil connect azure                               # AZURE_DEVOPS_TOKEN; org/project/repo or the origin remote
 codefossil connect jira https://acme.atlassian.net     # JIRA_API_TOKEN (+ JIRA_EMAIL for Cloud)
 codefossil connect linear                              # LINEAR_API_KEY
 codefossil index                                       # syncs incrementally; tokens are never stored
@@ -179,7 +181,10 @@ codefossil index                                       # syncs incrementally; to
 Now `why` can say "introduced by PR #412, which resolves issue #398". The issues GitHub and GitLab
 record as closed by a merged pull or merge request are FACT; closing keywords are DERIVED. Jira and
 Linear issues are linked by the key commits name (`PROJ-123`), and a commit naming a bug ticket
-counts as a fix. Hotspots count issues labelled as bugs instead of relying on commit wording.
+counts as a fix. Bitbucket pull requests and Azure Repos pull requests are linked to their commits
+(FACT); a work item linked to a completed Azure pull request and closed counts as resolved by it
+(DERIVED 0.8), and a commit closing a Bug work item (`Fixes #12`) counts as a fix. Hotspots count issues labelled as bugs
+instead of relying on commit wording.
 
 ## In your editor
 
@@ -301,7 +306,10 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   (`other/repo#12`) are linked once read (public ones only, up to 50 new ones per sync, each
   re-read weekly); pull requests of other repositories are not. GitLab works the same way within
   one project (no cross-project references); Jira and Linear issues are linked only by key, for
-  projects (teams) the token can see.
+  projects (teams) the token can see. Bitbucket Cloud is supported, not Bitbucket Server or Data
+  Center; Bitbucket records no merge time, so a merge is dated by its merge commit. Azure Repos
+  work items are read only when linked to a pull request; `#12` in a commit names a work item read
+  that way.
 - **Owners.** Authorship of changes stands in for knowledge; people are matched across name
   spellings and shared email addresses (and `.mailmap`), not across different emails.
 

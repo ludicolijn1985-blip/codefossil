@@ -70,11 +70,19 @@ export function issueReference(item: {
 export const GITHUB_CLOSING_METHOD = 'github-closing-reference';
 /** The same for GitLab: the issues a merge request closes (`closes_issues`). */
 export const GITLAB_CLOSING_METHOD = 'gitlab-closes-issues';
+/**
+ * A work item linked to an Azure Repos pull request that was completed while
+ * the work item is closed: recorded links, but resolution is a reading.
+ */
+export const AZURE_WORK_ITEM_METHOD = 'azure-linked-work-item';
 
 /** How a resolution link was established, for answers that cite it. */
 export function resolutionBasis(method: string, confidence: number): string {
   if (method === GITHUB_CLOSING_METHOD) return 'linked as closing on GitHub';
   if (method === GITLAB_CLOSING_METHOD) return 'linked as closing on GitLab';
+  if (method === AZURE_WORK_ITEM_METHOD) {
+    return `work item linked on Azure DevOps and closed; confidence ${confidence.toFixed(2)}`;
+  }
   return `closing keyword; confidence ${confidence.toFixed(2)}`;
 }
 
@@ -86,8 +94,9 @@ export function lineageKind(method: string): LineageKind {
 }
 
 /**
- * How a pull or merge request is written: `PR #12` on GitHub, `MR !12` on
- * GitLab; in running text (`long`) `pull request #12`, `merge request !12`.
+ * How a pull or merge request is written: `PR #12` on GitHub and Bitbucket,
+ * `MR !12` on GitLab, `PR !12` on Azure Repos; in running text (`long`)
+ * `pull request #12`, `merge request !12`.
  */
 export function pullRequestReference(
   item: { readonly number: number | string; readonly provider?: string },
@@ -95,5 +104,6 @@ export function pullRequestReference(
 ): string {
   const gitlab = item.provider === 'gitlab';
   const noun = options.long ? (gitlab ? 'merge request' : 'pull request') : gitlab ? 'MR' : 'PR';
-  return `${noun} ${gitlab ? '!' : '#'}${String(item.number)}`;
+  const bang = gitlab || item.provider === 'azure';
+  return `${noun} ${bang ? '!' : '#'}${String(item.number)}`;
 }

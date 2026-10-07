@@ -24,8 +24,15 @@ import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { LINEAR_API_URL, validateApiUrl } from '@codefossil/providers';
 import { JIRA_EMAIL_ENV, JIRA_TOKEN_ENV, LINEAR_TOKEN_ENV, planTrackerSync } from './trackers.js';
-import { formatGitLabIndex, formatTrackers } from './format-github.js';
+import { formatGitLabIndex, formatHostedIndex, formatTrackers } from './format-github.js';
 import { connectGitLab, GITLAB_TOKEN_ENV, planGitLabSync } from './gitlab.js';
+import {
+  AZURE_TOKEN_ENV,
+  BITBUCKET_TOKEN_ENV,
+  connectAzure,
+  connectBitbucket,
+  planHostedSync,
+} from './hosted.js';
 import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
@@ -184,7 +191,16 @@ export function createProgram(io: CliIO): Command {
           offline: options.offline === true,
           maxRequests,
         });
-        for (const note of [...plan.notes, ...gitlabPlan.notes, ...trackerPlan.notes]) {
+        const hostedPlan = planHostedSync(ws, io, {
+          offline: options.offline === true,
+          maxRequests,
+        });
+        for (const note of [
+          ...plan.notes,
+          ...gitlabPlan.notes,
+          ...hostedPlan.notes,
+          ...trackerPlan.notes,
+        ]) {
           io.stderr(`Note: ${note}\n`);
         }
         const fromRepository = options.typescriptFromRepo === true;
@@ -205,6 +221,7 @@ export function createProgram(io: CliIO): Command {
           ...(plan.factory ? { github: plan.factory } : {}),
           ...(trackerPlan.factory ? { trackers: trackerPlan.factory } : {}),
           ...(gitlabPlan.factory ? { gitlab: gitlabPlan.factory } : {}),
+          ...(hostedPlan.factory ? { hosts: hostedPlan.factory } : {}),
           ...(typescript ? { typescript: true } : {}),
           ...(fromRepository ? { typescriptFromRepository: true } : {}),
         });
@@ -217,6 +234,7 @@ export function createProgram(io: CliIO): Command {
           formatIndexResult(result, seconds) +
             formatGitHubIndex(result.github) +
             formatGitLabIndex(result.gitlab) +
+            formatHostedIndex(result.hosts) +
             formatTrackers(result.trackers),
         );
       });
@@ -317,6 +335,69 @@ export function createProgram(io: CliIO): Command {
         io.stdout(
           `Connected to GitLab project ${connection.name}${options.verify ? '' : ' (not verified)'}.\n` +
             'Next: run `codefossil index` to sync issues and merge requests.\n',
+        );
+      });
+    });
+
+  connect
+    .command('bitbucket')
+    .description(
+      'Link to a Bitbucket Cloud repository (workspace/repo, or the origin remote): pull requests ' +
+        `are synced and linked. Credentials come from ${BITBUCKET_TOKEN_ENV} (an access token) or ` +
+        'BITBUCKET_EMAIL with BITBUCKET_API_TOKEN, and are never stored.',
+    )
+    .argument('[slug]', 'workspace/repository; defaults to the origin remote')
+    .option('--no-verify', 'save the connection without checking access')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (slug: string | undefined, options: ConnectCommandOptions) => {
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const connection = await connectBitbucket(ws, io, slug, { verify: options.verify });
+        const repository = `${connection.owner}/${connection.name}`;
+        if (options.json) {
+          writeJson(io, { provider: 'bitbucket', repository, verified: options.verify });
+          return;
+        }
+        io.stdout(
+          `Connected to Bitbucket repository ${repository}${options.verify ? '' : ' (not verified)'}.\n` +
+            'Next: run `codefossil index` to sync pull requests.\n',
+        );
+      });
+    });
+
+  connect
+    .command('azure')
+    .description(
+      'Link to an Azure Repos repository (organization/project/repository, or the origin ' +
+        'remote): pull requests and their linked work items are synced and linked. The token ' +
+        `comes from ${AZURE_TOKEN_ENV} and is never stored.`,
+    )
+    .argument('[path]', 'organization/project/repository; defaults to the origin remote')
+    .option(
+      '--api-url <url>',
+      'collection URL of Azure DevOps Server (https://host/tfs/Collection); then pass project/repository',
+    )
+    .option('--no-verify', 'save the connection without checking access')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (path: string | undefined, options: ConnectCommandOptions) => {
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const connection = await connectAzure(ws, io, path, {
+          ...(options.apiUrl ? { apiUrl: options.apiUrl } : {}),
+          verify: options.verify,
+        });
+        const repository = `${connection.owner}/${connection.name}`;
+        if (options.json) {
+          writeJson(io, {
+            provider: 'azure',
+            repository,
+            apiUrl: connection.apiUrl,
+            verified: options.verify,
+          });
+          return;
+        }
+        io.stdout(
+          `Connected to Azure Repos repository ${repository} at ${connection.apiUrl}` +
+            `${options.verify ? '' : ' (not verified)'}.\n` +
+            'Next: run `codefossil index` to sync pull requests and linked work items.\n',
         );
       });
     });

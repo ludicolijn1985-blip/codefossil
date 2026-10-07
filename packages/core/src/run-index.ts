@@ -4,12 +4,23 @@ import {
   type FossilDb,
   type ProviderConnectionRow,
 } from '@codefossil/db';
-import type { GitHubClient, GitLabClient, TrackerClient } from '@codefossil/providers';
+import type {
+  GitHubClient,
+  GitLabClient,
+  PullRequestHost,
+  PullRequestHostClient,
+  TrackerClient,
+} from '@codefossil/providers';
 import { indexCoverage, type CoverageIndexResult } from './coverage.js';
 import { indexDependencies, type DependencyIndexResult } from './dependency-indexer.js';
 import { indexRepository, type IndexOptions, type IndexResult } from './git-indexer.js';
 import { syncGitHub, type GitHubSyncResult } from './github-sync.js';
 import { linkGitLabReferences, syncGitLab, type GitLabSyncResult } from './gitlab-sync.js';
+import {
+  linkHostedReferences,
+  syncHostedPullRequests,
+  type HostedSyncResult,
+} from './hosted-sync.js';
 import { linkGitHubReferences, type LinkResult } from './reference-linker.js';
 import { indexSymbols, type SymbolIndexResult } from './symbol-indexer.js';
 import {
@@ -45,6 +56,21 @@ export interface RunIndexOptions extends IndexOptions {
   readonly trackers?: (connection: ProviderConnectionRow) => TrackerClient | null;
   /** Creates a client for a connected GitLab project; omit it to stay offline. */
   readonly gitlab?: (connection: ProviderConnectionRow) => GitLabClient | null;
+  /** Creates a client for a connected Bitbucket or Azure Repos repository; omit it to stay offline. */
+  readonly hosts?: (connection: ProviderConnectionRow) => PullRequestHostClient | null;
+}
+
+export interface HostedIndexResult {
+  readonly provider: PullRequestHost;
+  /** `workspace/repository` (Bitbucket) or `project/repository` (Azure). */
+  readonly repository: string;
+  /** Null when the run was offline. */
+  readonly sync: HostedSyncResult | null;
+  readonly links: {
+    readonly pullRequestCommits: number;
+    readonly resolutions: number;
+    readonly references: number;
+  };
 }
 
 export interface GitLabIndexResult {
@@ -85,6 +111,8 @@ export interface RunIndexResult extends IndexResult {
   readonly trackers: readonly TrackerIndexResult[];
   /** Null when the repository is not connected to GitLab. */
   readonly gitlab: GitLabIndexResult | null;
+  /** Connected Bitbucket and Azure Repos repositories. */
+  readonly hosts: readonly HostedIndexResult[];
 }
 
 /**
@@ -139,6 +167,16 @@ export async function runIndex(
     gitlab = { project: gitlabConnection.name, sync, links };
   }
 
+  const hosts: HostedIndexResult[] = [];
+  for (const host of listProviderConnections(db, history.repositoryId)) {
+    if (host.provider !== 'bitbucket' && host.provider !== 'azure') continue;
+    const client = options.hosts?.(host) ?? null;
+    const sync = client ? await syncHostedPullRequests(db, host, client, clock) : null;
+    const observedAt = (options.now ?? (() => new Date()))().toISOString();
+    const links = linkHostedReferences(db, history.repositoryId, host.provider, observedAt);
+    hosts.push({ provider: host.provider, repository: `${host.owner}/${host.name}`, sync, links });
+  }
+
   const trackers: TrackerIndexResult[] = [];
   for (const tracker of listProviderConnections(db, history.repositoryId)) {
     if (tracker.provider !== 'jira' && tracker.provider !== 'linear') continue;
@@ -148,5 +186,5 @@ export async function runIndex(
     const links = linkTrackerReferences(db, history.repositoryId, tracker.provider, observedAt);
     trackers.push({ provider: tracker.provider, sync, links });
   }
-  return { ...history, symbols, dependencies, coverage, github, gitlab, trackers };
+  return { ...history, symbols, dependencies, coverage, github, gitlab, hosts, trackers };
 }

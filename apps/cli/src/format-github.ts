@@ -1,4 +1,9 @@
-import type { GitHubIndexResult, GitLabIndexResult, TrackerIndexResult } from '@codefossil/core';
+import type {
+  GitHubIndexResult,
+  GitLabIndexResult,
+  HostedIndexResult,
+  TrackerIndexResult,
+} from '@codefossil/core';
 import type { ProviderCounts } from '@codefossil/db';
 import { plural, terminalText } from './format.js';
 
@@ -82,6 +87,31 @@ export function formatTrackers(trackers: readonly TrackerIndexResult[]): string 
       return (
         `${label}: read ${plural(sync.issues, 'issue')} from ${plural(sync.projects, 'project')} ` +
         `with ${plural(sync.requests, 'request')}; ${links}.${stopped}\n`
+      );
+    })
+    .join('');
+}
+
+const HOST_LABEL = { bitbucket: 'Bitbucket', azure: 'Azure Repos' } as const;
+
+export function formatHostedIndex(results: readonly HostedIndexResult[]): string {
+  return results
+    .map((result) => {
+      const { links } = result;
+      const label = `${HOST_LABEL[result.provider]} ${terminalText(result.repository)}`;
+      const linked =
+        `${plural(links.pullRequestCommits, 'pull request → commit')}, ` +
+        `${plural(links.resolutions, 'work item resolution')}, ${plural(links.references, 'reference')}`;
+      if (!result.sync) return `${label}: offline, linked stored data (${linked}).\n`;
+      const { sync } = result;
+      const stopped = sync.stoppedEarly
+        ? `Note: ${terminalText(sync.stoppedEarly)}. Run \`codefossil index\` again later to continue.\n`
+        : '';
+      const items =
+        result.provider === 'azure' ? ` and ${plural(sync.workItems, 'linked work item')}` : '';
+      return (
+        `${label}: synced ${plural(sync.pullRequests, 'pull request')}${items} with ` +
+        `${plural(sync.requests, 'request')}; linked ${linked}.\n${stopped}`
       );
     })
     .join('');
