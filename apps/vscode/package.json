@@ -2,7 +2,7 @@
   "name": "codefossil-vscode",
   "displayName": "CODEFOSSIL — why code exists",
   "description": "See above every function when it was born, how often it changed and broke, and who calls it, from your Git history, with evidence.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "publisher": "codefossil",

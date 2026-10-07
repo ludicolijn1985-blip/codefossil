@@ -5,8 +5,26 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-07
+
 ### Added
 
+- **Who knows this code.** `codefossil owners [path]` (also an MCP tool, an API endpoint and a web
+  UI page): each file's authors by share of the lines changed and whether they still commit, files
+  whose main author left, and the bus factor. People are matched across name spellings and shared
+  email addresses. INFERRED.
+- **GitLab.** `codefossil connect gitlab` syncs issues and merge requests; the issues GitLab records
+  as closed by a merged request are FACT.
+- **Jira and Linear.** `codefossil connect jira <url>` / `connect linear`: issues named by key in
+  commits and pull requests (`PROJ-123`) are read and linked; a commit naming a bug ticket counts as
+  a fix (INFERRED).
+- **Exact TypeScript callers.** `codefossil index --typescript` resolves calls with the TypeScript
+  type checker (DERIVED 1.0), opt-in; `--typescript-from-repo` also allows the repository's own
+  compiler.
+- **The functions a change touches.** The PR report (and the Action's comment) lists them as new,
+  changed, renamed or moved, with the lines that ran in the tests.
+- **Stated types in Java, C# and Go**, like TypeScript, JavaScript and Python.
+- **`codefossil gc`** trims the parse cache and compacts the index.
 - **GitHub's own closing links.** With a token, the issues GitHub records as closed by a merged
   pull request (also ones linked by hand) are FACT, replacing that PR's keyword reading. Issues of
   other public repositories (`other/repo#12`) are read and linked; failures are reported, never
@@ -16,8 +34,7 @@ and the project uses [Semantic Versioning](https://semver.org/).
   `fossils`, `lens`, the story page and the VS Code lens say "renamed", "moved" or "copied".
 - **More callers.** Calls through names whose type the code states (`new Repo()`, `repo: Repo`,
   `this.repo = new Repo()`, Python `r = Repo()`) resolve to the type's method, and functions
-  passed by name (`app.get('/', handler)`) count as INFERRED callers, in TypeScript, JavaScript
-  and Python. `impact` leaves out files that import only other names from the defining file.
+  passed by name (`app.get('/', handler)`) count as INFERRED callers. `impact` leaves out files that import only other names from the defining file.
 - **Line coverage.** An lcov report (`coverage/lcov.info`) is read when present: hotspots use the
   uncovered share of lines, and `why` states how many of a symbol's lines ran in the tests.
 - **Installed environment.** Python import names map to declared distributions through a
@@ -31,6 +48,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **False fixes.** Fixes to type annotations and linter findings ("fix typing", "fix mypy
+  finding") no longer count as defect fixes.
+- **Hostile text.** Reference parsing stays linear on adversarial commit messages; author names
+  and server errors are printed without control characters.
 - **Commits outside HEAD's history.** The index only ever added commits, so after a reset, a
   rebase, a deleted branch, an older checkout or a CI run that restored another branch's cached
   index, answers could cite commits HEAD does not contain. Every index run (and every question
@@ -125,5 +146,6 @@ First public release.
 - **Local UI and API.** A loopback-only JSON API (`codefossil serve`) and a local web UI.
 - **Optional AI layer** (Ollama or Anthropic), off by default, held to the evidence it is shown.
 
+[0.3.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.1.0
