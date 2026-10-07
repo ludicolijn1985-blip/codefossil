@@ -5,6 +5,30 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub's own closing links.** With a token, the issues GitHub records as closed by a merged
+  pull request (also ones linked by hand) are FACT, replacing that PR's keyword reading. Issues of
+  other public repositories (`other/repo#12`) are read and linked; failures are reported, never
+  fatal.
+- **Renamed and moved symbols.** A symbol renamed in place (identical but for its name, DERIVED)
+  or moved to another file with edits (INFERRED 0.6) is followed back to its earlier self; `why`,
+  `fossils`, `lens`, the story page and the VS Code lens say "renamed", "moved" or "copied".
+- **More callers.** Calls through names whose type the code states (`new Repo()`, `repo: Repo`,
+  `this.repo = new Repo()`, Python `r = Repo()`) resolve to the type's method, and functions
+  passed by name (`app.get('/', handler)`) count as INFERRED callers, in TypeScript, JavaScript
+  and Python. `impact` leaves out files that import only other names from the defining file.
+- **Line coverage.** An lcov report (`coverage/lcov.info`) is read when present: hotspots use the
+  uncovered share of lines, and `why` states how many of a symbol's lines ran in the tests.
+- **Installed environment.** Python import names map to declared distributions through a
+  `.venv`'s `*.dist-info`; a tsconfig `extends` through a workspace package in `node_modules` is
+  followed.
+
+### Changed
+
+- **Faster branch switching.** Parse results are cached by blob, so content seen before is not
+  parsed again (Express, an old tag and back: 6.8 s instead of 10.1 s).
+
 ### Fixed
 
 - **Commits outside HEAD's history.** The index only ever added commits, so after a reset, a
