@@ -48,7 +48,7 @@ export function createResolver(layout: RepositoryLayout): ImportResolver {
         return resolveEcmascript(index, tsconfigs, fromPath, ref);
       case 'python':
         python ??= new PythonModules(layout.files);
-        return resolvePython(index, python, fromPath, ref);
+        return resolvePython(index, python, fromPath, ref, layout.pythonImports);
       case 'go':
         go ??= new GoPackages(layout.files);
         return resolveGo(index, go, fromPath, ref);

@@ -403,6 +403,27 @@ describe('Python resolution', () => {
     expect(resolve('shop/views.py', 'python', ref('nonexistent_pkg')).kind).toBe('unresolved');
   });
 
+  it('maps import names to declared distributions by what the environment installed', () => {
+    const files = ['app.py', 'pyproject.toml'];
+    const withEnvironment = createResolver({
+      files: new Set(files),
+      manifests: [
+        parseManifest('pyproject.toml', '[project]\ndependencies = ["beautifulsoup4", "attrs"]'),
+      ],
+      pythonImports: new Map([
+        ['bs4', ['beautifulsoup4']],
+        ['lxml', ['lxml']],
+      ]),
+    });
+    expect(withEnvironment('app.py', 'python', ref('bs4'))).toMatchObject({
+      kind: 'dependency',
+      name: 'beautifulsoup4',
+      method: 'installed-distribution-import-name',
+    });
+    // Installed but not declared: still unresolved.
+    expect(withEnvironment('app.py', 'python', ref('lxml')).kind).toBe('unresolved');
+  });
+
   it('recognises the standard library, including modules removed in recent versions', () => {
     expect(resolve('shop/views.py', 'python', ref('os.path'))).toEqual({ kind: 'builtin' });
     expect(resolve('shop/views.py', 'python', ref('json'))).toEqual({ kind: 'builtin' });

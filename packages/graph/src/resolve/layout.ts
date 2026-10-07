@@ -31,6 +31,12 @@ export interface RepositoryLayout {
   readonly manifests: readonly Manifest[];
   /** Parsed TypeScript configs (`tsconfig.json` and the files they extend). */
   readonly tsconfigs?: readonly TsConfig[];
+  /**
+   * Import names of installed Python distributions (`yaml` → `PyYAML`), read
+   * from a virtual environment in the working tree; checked before the
+   * built-in list of well-known renames.
+   */
+  readonly pythonImports?: ReadonlyMap<string, readonly string[]>;
 }
 
 /** The directory of a repository path; `''` for the root. */

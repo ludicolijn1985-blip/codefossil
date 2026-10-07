@@ -1,3 +1,5 @@
+import { mkdir, symlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   fileImports,
@@ -173,6 +175,34 @@ describe('indexDependencies', () => {
     expect(listDependencies(fossil.db, repositoryId)).toEqual([
       expect.objectContaining({ name: '@acme/db', internal: true, usedBy: 0 }),
     ]);
+  });
+
+  it('follows a tsconfig extends through a workspace package linked in node_modules', async () => {
+    const r = fixture();
+    await r.write(
+      'packages/tsconfig/base.json',
+      JSON.stringify({ compilerOptions: { baseUrl: '../../shared/src' } }),
+    );
+    await r.write(
+      'apps/web/tsconfig.json',
+      JSON.stringify({ extends: '@repo/tsconfig/base.json' }),
+    );
+    await r.write('apps/web/main.ts', "import { money } from 'money.js';\n");
+    await r.write('shared/src/money.ts', 'export const money = 1;\n');
+    await r.write('.gitignore', 'node_modules\n');
+    await r.commit('Workspace');
+    // The installed link is not committed, like a real node_modules.
+    await mkdir(join(r.root, 'node_modules', '@repo'), { recursive: true });
+    await symlink(
+      join(r.root, 'packages', 'tsconfig'),
+      join(r.root, 'node_modules', '@repo', 'tsconfig'),
+      'junction',
+    );
+
+    const { repositoryId } = await runIndex(fossil.db, r.root, { now });
+
+    const edge = importsOf(repositoryId, 'apps/web/main.ts').find((e) => e.relation === 'IMPORTS');
+    expect(edge?.targetId).toBe(fileId(repositoryId, 'shared/src/money.ts'));
   });
 
   it('resolves tsconfig path aliases, following extends within the repository', async () => {

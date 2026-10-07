@@ -41,6 +41,7 @@ import {
   type ParsedImport,
 } from '@codefossil/parser';
 import { rebuildCallEdges, type ImportBinding, type ImportBindings } from './call-graph.js';
+import { installedPythonImports, withPackageExtends } from './installed.js';
 import { detectLanguage } from '@codefossil/shared';
 
 export const IMPORT_RESOLVER_PRODUCER = 'import-resolver@0.1.0';
@@ -98,6 +99,8 @@ interface Snapshot {
   readonly manifests: readonly Manifest[];
   /** `tsconfig.json` files and the repository configs they extend. */
   readonly tsconfigs: readonly TsConfig[];
+  /** Import names of the distributions installed in the repository's virtual environment. */
+  readonly pythonImports: ReadonlyMap<string, readonly string[]>;
   readonly manifestErrors: readonly string[];
   readonly parseFailures: readonly string[];
 }
@@ -200,13 +203,25 @@ async function readSnapshot(
     manifestErrors.push(message),
   );
   const removed = changed ? [...changed].filter((path) => !headFiles.has(path)) : [];
-  return { headFiles, parsed, removed, manifests, tsconfigs, manifestErrors, parseFailures };
+  const pythonImports = installedPythonImports(root);
+  return {
+    headFiles,
+    parsed,
+    removed,
+    manifests,
+    tsconfigs,
+    pythonImports,
+    manifestErrors,
+    parseFailures,
+  };
 }
 
 /**
  * Read every `tsconfig*.json`/`jsconfig*.json` at HEAD, then whatever other
  * repository files their `extends` chains name. Configs outside the
- * repository (packages in `node_modules`) are never read.
+ * repository (packages installed from a registry) are never read; a package
+ * `extends` that `node_modules` links back into the repository (a workspace
+ * package) is followed.
  */
 async function readTsConfigs(
   root: string,
@@ -224,7 +239,7 @@ async function readTsConfigs(
     for await (const { request, content } of readBlobs(root, requests)) {
       if (!content) continue;
       try {
-        read.push(parseTsConfig(request.path, content.toString('utf8')));
+        read.push(withPackageExtends(root, parseTsConfig(request.path, content.toString('utf8'))));
       } catch (error) {
         if (!(error instanceof TsConfigParseError)) throw error;
         onError(error.message);
@@ -357,6 +372,7 @@ function rebuildImportEdges(
     files: snapshot.headFiles,
     manifests: snapshot.manifests,
     tsconfigs: snapshot.tsconfigs,
+    pythonImports: snapshot.pythonImports,
   });
   const edges = new Map<string, Edge>();
   let builtinImports = 0;

@@ -88,6 +88,7 @@ export function resolvePython(
   modules: PythonModules,
   fromPath: string,
   ref: ImportReference,
+  installed: ReadonlyMap<string, readonly string[]> = new Map(),
 ): Resolution {
   if (ref.specifier.startsWith('.')) return resolveRelative(index, fromPath, ref);
 
@@ -132,6 +133,11 @@ export function resolvePython(
 
   const sameName = declared([topLevel], 'declared-distribution');
   if (sameName) return sameName;
+  const installedName = installed.get(topLevel);
+  const fromEnvironment = installedName
+    ? declared(installedName, 'installed-distribution-import-name')
+    : null;
+  if (fromEnvironment) return fromEnvironment;
   const knownName = PYTHON_IMPORT_DISTRIBUTIONS[topLevel];
   const renamed = knownName ? declared(knownName, 'declared-distribution-import-name') : null;
   if (renamed) return renamed;

@@ -264,10 +264,15 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   (INFERRED, 0.6). A symbol renamed and edited in one commit, or moved under another name, still
   looks like a new one.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
-  decide from files and manifests. Python import names that differ from their distribution are
-  matched only for a curated list of well-known packages (`yaml` → PyYAML); Go `replace` directives
-  are followed to directories inside the repository. TypeScript `paths` and `baseUrl` come from the
-  nearest `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
+  decide from files and manifests. Python import names that differ from their distribution
+  (`yaml` → PyYAML) are matched through the `*.dist-info` of a virtual environment in the
+  repository (`.venv`, `venv`, `env`) and a curated list of well-known packages, always to a
+  declared distribution; Go `replace` directives are followed to directories inside the
+  repository. TypeScript `paths` and `baseUrl` come from the nearest `tsconfig.json`/
+  `jsconfig.json`; `extends` is followed within the repository, also through a workspace package
+  that `node_modules` links back into it, but not into packages installed from a registry. A
+  virtual environment or `node_modules` installed later is picked up when the next commit changes
+  the dependency graph.
 - **GitHub links.** With a token, the issues GitHub itself links to a merged pull request as closed
   by it are FACT, including ones linked by hand. Closing keywords in commits (`Fixes #12`), and in
   pull requests when GitHub cannot be asked (no token), are DERIVED at confidence 0.9: GitHub only
