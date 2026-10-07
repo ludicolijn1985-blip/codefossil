@@ -68,12 +68,14 @@ export function issueReference(item: {
  * closing keyword in text.
  */
 export const GITHUB_CLOSING_METHOD = 'github-closing-reference';
+/** The same for GitLab: the issues a merge request closes (`closes_issues`). */
+export const GITLAB_CLOSING_METHOD = 'gitlab-closes-issues';
 
 /** How a resolution link was established, for answers that cite it. */
 export function resolutionBasis(method: string, confidence: number): string {
-  return method === GITHUB_CLOSING_METHOD
-    ? 'linked as closing on GitHub'
-    : `closing keyword; confidence ${confidence.toFixed(2)}`;
+  if (method === GITHUB_CLOSING_METHOD) return 'linked as closing on GitHub';
+  if (method === GITLAB_CLOSING_METHOD) return 'linked as closing on GitLab';
+  return `closing keyword; confidence ${confidence.toFixed(2)}`;
 }
 
 /** How a symbol continues an earlier one, by the provenance method of its `COPIED_FROM` link. */
@@ -81,4 +83,17 @@ export type LineageKind = 'copied' | 'renamed' | 'moved';
 
 export function lineageKind(method: string): LineageKind {
   return method === 'renamed' ? 'renamed' : method === 'moved-with-edits' ? 'moved' : 'copied';
+}
+
+/**
+ * How a pull or merge request is written: `PR #12` on GitHub, `MR !12` on
+ * GitLab; in running text (`long`) `pull request #12`, `merge request !12`.
+ */
+export function pullRequestReference(
+  item: { readonly number: number | string; readonly provider?: string },
+  options: { readonly long?: boolean } = {},
+): string {
+  const gitlab = item.provider === 'gitlab';
+  const noun = options.long ? (gitlab ? 'merge request' : 'pull request') : gitlab ? 'MR' : 'PR';
+  return `${noun} ${gitlab ? '!' : '#'}${String(item.number)}`;
 }

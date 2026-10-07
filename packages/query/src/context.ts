@@ -8,7 +8,12 @@ import {
   type FossilDb,
   type RelationRow,
 } from '@codefossil/db';
-import { issueReference, resolutionBasis, type EntityRef } from '@codefossil/shared';
+import {
+  issueReference,
+  pullRequestReference,
+  resolutionBasis,
+  type EntityRef,
+} from '@codefossil/shared';
 import { labelOf } from './describe.js';
 import { day, firstParagraph, type RelatedEntity, type Statement } from './statements.js';
 
@@ -90,7 +95,7 @@ export function commitContext(
     const merged = record.mergedAt ? `, merged on ${day(record.mergedAt)}` : '';
     const prConfidence = base.confidence * row.confidence;
     statements.push({
-      text: `It is part of pull request #${record.number} "${record.title}"${merged}.`,
+      text: `It is part of ${pullRequestReference(record, { long: true })} "${record.title}"${merged}.`,
       role: 'pull request carrying the change',
       level: row.evidenceType,
       confidence: prConfidence,
@@ -99,14 +104,14 @@ export function commitContext(
     const prRef = { type: 'pull_request', id: record.id } as const;
     for (const resolution of linked(db, repositoryId, prRef, 'RESOLVED_BY', 'in')) {
       statements.push(
-        resolutionStatement(resolution, `pull request #${record.number}`, prConfidence),
+        resolutionStatement(resolution, pullRequestReference(record, { long: true }), prConfidence),
       );
     }
     for (const mention of linked(db, repositoryId, prRef, 'REFERENCES', 'out')) {
       related.push({
         key: entityKey(mention.record),
         label: labelOf(mention.record),
-        relation: `mentioned by pull request #${record.number}`,
+        relation: `mentioned by ${pullRequestReference(record, { long: true })}`,
       });
     }
   }

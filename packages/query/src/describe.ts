@@ -1,5 +1,5 @@
 import { entityKey, loadEntityRecords, type EntityRecord, type FossilDb } from '@codefossil/db';
-import { issueReference, type EntityRef } from '@codefossil/shared';
+import { issueReference, pullRequestReference, type EntityRef } from '@codefossil/shared';
 
 const SHORT_SHA = 7;
 
@@ -17,7 +17,7 @@ export function labelOf(record: EntityRecord): string {
     case 'issue':
       return `${issueReference(record)} ${record.title}`;
     case 'pull_request':
-      return `PR #${record.number} ${record.title}`;
+      return `${pullRequestReference(record)} ${record.title}`;
     case 'review':
       return `review by ${record.author}${record.state ? ` (${record.state.toLowerCase()})` : ''}`;
     case 'test':

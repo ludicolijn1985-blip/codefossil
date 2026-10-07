@@ -6,3 +6,4 @@ export * from './github/token.js';
 export * from './trackers/http.js';
 export * from './trackers/jira.js';
 export * from './trackers/linear.js';
+export * from './gitlab/client.js';

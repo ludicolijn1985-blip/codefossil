@@ -58,7 +58,7 @@ export function classifyDefects(
   const bugTickets = new Map<number, CommitDiscussion[]>();
   for (const discussion of discussions) {
     if (discussion.relation !== 'REFERENCES' || discussion.type !== 'issue') continue;
-    if (discussion.provider === 'github') continue;
+    if (discussion.provider !== 'jira' && discussion.provider !== 'linear') continue;
     if (!discussion.labels.some((label) => BUG_LABEL.test(label))) continue;
     bugTickets.set(discussion.commitId, [
       ...(bugTickets.get(discussion.commitId) ?? []),

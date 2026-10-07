@@ -18,6 +18,9 @@ export type ProviderConnectionRow = typeof providerConnections.$inferSelect;
 export type IssueRow = typeof issues.$inferSelect;
 export type PullRequestRow = typeof pullRequests.$inferSelect;
 
+/** Code hosts whose issues and pull (merge) requests are synced. */
+export type CodeHost = 'github' | 'gitlab';
+
 export interface NewConnection {
   readonly repositoryId: number;
   readonly provider: ProviderConnectionRow['provider'];
@@ -174,13 +177,18 @@ export function upsertPullRequest(
 }
 
 /** Pull requests whose commits, reviews and merge details are missing or older than the PR. */
-export function pendingPullRequestDetails(db: FossilDb, repositoryId: number): PullRequestRow[] {
+export function pendingPullRequestDetails(
+  db: FossilDb,
+  repositoryId: number,
+  provider: CodeHost = 'github',
+): PullRequestRow[] {
   return db
     .select()
     .from(pullRequests)
     .where(
       and(
         eq(pullRequests.repositoryId, repositoryId),
+        eq(pullRequests.provider, provider),
         or(
           isNull(pullRequests.detailsSyncedAt),
           lt(pullRequests.detailsSyncedAt, pullRequests.updatedAt),
@@ -278,11 +286,21 @@ export function findPullRequestByNumber(
     .get();
 }
 
-export function listPullRequests(db: FossilDb, repositoryId: number): PullRequestRow[] {
+/** A repository's pull (merge) requests; of one code host when `provider` is given. */
+export function listPullRequests(
+  db: FossilDb,
+  repositoryId: number,
+  provider?: CodeHost,
+): PullRequestRow[] {
   return db
     .select()
     .from(pullRequests)
-    .where(eq(pullRequests.repositoryId, repositoryId))
+    .where(
+      and(
+        eq(pullRequests.repositoryId, repositoryId),
+        provider === undefined ? undefined : eq(pullRequests.provider, provider),
+      ),
+    )
     .orderBy(asc(pullRequests.id))
     .all();
 }
@@ -344,6 +362,7 @@ export function foreignReference(repo: string, number: number): string {
 export function externalIdsByNumber(
   db: FossilDb,
   repositoryId: number,
+  provider: CodeHost = 'github',
 ): {
   readonly issues: Map<number, number>;
   readonly pullRequests: Map<number, number>;
@@ -354,7 +373,7 @@ export function externalIdsByNumber(
   const issueRows = db
     .select({ id: issues.id, externalId: issues.externalId, sourceRepo: issues.sourceRepo })
     .from(issues)
-    .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, 'github')))
+    .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, provider)))
     .all();
   return {
     issues: byNumber(issueRows.filter((row) => row.sourceRepo === '')),
@@ -368,7 +387,7 @@ export function externalIdsByNumber(
         .select({ id: pullRequests.id, externalId: pullRequests.externalId })
         .from(pullRequests)
         .where(
-          and(eq(pullRequests.repositoryId, repositoryId), eq(pullRequests.provider, 'github')),
+          and(eq(pullRequests.repositoryId, repositoryId), eq(pullRequests.provider, provider)),
         )
         .all(),
     ),
@@ -424,13 +443,18 @@ export function providerCounts(db: FossilDb, repositoryId: number): ProviderCoun
  * Merged pull requests whose closing issue links are missing or older than
  * their details (a PR edited after the last fetch).
  */
-export function pendingClosingRefs(db: FossilDb, repositoryId: number): PullRequestRow[] {
+export function pendingClosingRefs(
+  db: FossilDb,
+  repositoryId: number,
+  provider: CodeHost = 'github',
+): PullRequestRow[] {
   return db
     .select()
     .from(pullRequests)
     .where(
       and(
         eq(pullRequests.repositoryId, repositoryId),
+        eq(pullRequests.provider, provider),
         isNotNull(pullRequests.mergedAt),
         isNotNull(pullRequests.detailsSyncedAt),
         or(

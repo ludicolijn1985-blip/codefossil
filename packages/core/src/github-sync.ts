@@ -371,7 +371,7 @@ function foreignReferences(
   const texts = listCommitMessages(db, connection.repositoryId).map(
     (commit) => `${commit.subject}\n${commit.body}`,
   );
-  for (const pr of listPullRequests(db, connection.repositoryId)) {
+  for (const pr of listPullRequests(db, connection.repositoryId, 'github')) {
     for (const ref of pr.closingRefsJson ?? []) add(ref.repo, ref.number);
     texts.push(`${pr.title}\n${pr.body}`);
   }

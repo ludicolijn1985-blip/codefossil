@@ -4,11 +4,12 @@ import {
   type FossilDb,
   type ProviderConnectionRow,
 } from '@codefossil/db';
-import type { GitHubClient, TrackerClient } from '@codefossil/providers';
+import type { GitHubClient, GitLabClient, TrackerClient } from '@codefossil/providers';
 import { indexCoverage, type CoverageIndexResult } from './coverage.js';
 import { indexDependencies, type DependencyIndexResult } from './dependency-indexer.js';
 import { indexRepository, type IndexOptions, type IndexResult } from './git-indexer.js';
 import { syncGitHub, type GitHubSyncResult } from './github-sync.js';
+import { linkGitLabReferences, syncGitLab, type GitLabSyncResult } from './gitlab-sync.js';
 import { linkGitHubReferences, type LinkResult } from './reference-linker.js';
 import { indexSymbols, type SymbolIndexResult } from './symbol-indexer.js';
 import {
@@ -36,6 +37,20 @@ export interface RunIndexOptions extends IndexOptions {
    * return null) to stay offline: stored issues are still linked.
    */
   readonly trackers?: (connection: ProviderConnectionRow) => TrackerClient | null;
+  /** Creates a client for a connected GitLab project; omit it to stay offline. */
+  readonly gitlab?: (connection: ProviderConnectionRow) => GitLabClient | null;
+}
+
+export interface GitLabIndexResult {
+  /** The project path, `group/sub/name`. */
+  readonly project: string;
+  /** Null when the run was offline. */
+  readonly sync: GitLabSyncResult | null;
+  readonly links: {
+    readonly pullRequestCommits: number;
+    readonly resolutions: number;
+    readonly references: number;
+  };
 }
 
 export interface TrackerIndexResult {
@@ -62,6 +77,8 @@ export interface RunIndexResult extends IndexResult {
   readonly github: GitHubIndexResult | null;
   /** Connected Jira and Linear trackers. */
   readonly trackers: readonly TrackerIndexResult[];
+  /** Null when the repository is not connected to GitLab. */
+  readonly gitlab: GitLabIndexResult | null;
 }
 
 /**
@@ -105,6 +122,16 @@ export async function runIndex(
     const links = linkGitHubReferences(db, history.repositoryId, connection, observedAt);
     github = { owner: connection.owner, name: connection.name, sync, links };
   }
+  const gitlabConnection = getProviderConnection(db, history.repositoryId, 'gitlab');
+  let gitlab: GitLabIndexResult | null = null;
+  if (gitlabConnection) {
+    const client = options.gitlab?.(gitlabConnection) ?? null;
+    const sync = client ? await syncGitLab(db, gitlabConnection, client, clock) : null;
+    const observedAt = (options.now ?? (() => new Date()))().toISOString();
+    const links = linkGitLabReferences(db, history.repositoryId, gitlabConnection.name, observedAt);
+    gitlab = { project: gitlabConnection.name, sync, links };
+  }
+
   const trackers: TrackerIndexResult[] = [];
   for (const tracker of listProviderConnections(db, history.repositoryId)) {
     if (tracker.provider !== 'jira' && tracker.provider !== 'linear') continue;
@@ -114,5 +141,5 @@ export async function runIndex(
     const links = linkTrackerReferences(db, history.repositoryId, tracker.provider, observedAt);
     trackers.push({ provider: tracker.provider, sync, links });
   }
-  return { ...history, symbols, dependencies, coverage, github, trackers };
+  return { ...history, symbols, dependencies, coverage, github, gitlab, trackers };
 }

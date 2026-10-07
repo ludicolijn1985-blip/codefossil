@@ -85,7 +85,7 @@ export function linkGitHubReferences(
     const evidence = commitEvidenceIds(tx, repositoryId);
 
     const drafts: Draft[] = [];
-    for (const pullRequest of listPullRequests(tx, repositoryId)) {
+    for (const pullRequest of listPullRequests(tx, repositoryId, 'github')) {
       drafts.push(...pullRequestDrafts(tx, repositoryId, slug, pullRequest, lookups));
     }
     for (const commit of commits) {
@@ -135,7 +135,7 @@ function writeDrafts(
 }
 
 /** Full shas of commits that a later commit reverts. */
-function revertedShas(commits: readonly CommitMessage[]): Set<string> {
+export function revertedShas(commits: readonly CommitMessage[]): Set<string> {
   const reverted = new Set<string>();
   for (const commit of commits) {
     for (const [, sha = ''] of commit.body.matchAll(REVERT_MARKER)) {

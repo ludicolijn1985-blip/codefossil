@@ -57,6 +57,8 @@ export type EntityRecord =
       readonly number: number | string;
       /** `owner/name` for an issue of another repository; null for the indexed one. */
       readonly repo: string | null;
+      /** `github`, `gitlab`, `jira` or `linear`. */
+      readonly provider: string;
       readonly title: string;
       readonly state: string;
       readonly url: string | null;
@@ -141,6 +143,7 @@ const LOADERS: Record<EntityType, Loader> = {
         id: issues.id,
         externalId: issues.externalId,
         sourceRepo: issues.sourceRepo,
+        provider: issues.provider,
         title: issues.title,
         state: issues.state,
         url: issues.url,
@@ -164,6 +167,7 @@ const LOADERS: Record<EntityType, Loader> = {
         state: pullRequests.state,
         url: pullRequests.url,
         mergedAt: pullRequests.mergedAt,
+        provider: pullRequests.provider,
       })
       .from(pullRequests)
       .where(inArray(pullRequests.id, ids))

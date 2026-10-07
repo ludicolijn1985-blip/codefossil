@@ -24,7 +24,8 @@ import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
 import { LINEAR_API_URL, validateApiUrl } from '@codefossil/providers';
 import { JIRA_EMAIL_ENV, JIRA_TOKEN_ENV, LINEAR_TOKEN_ENV, planTrackerSync } from './trackers.js';
-import { formatTrackers } from './format-github.js';
+import { formatGitLabIndex, formatTrackers } from './format-github.js';
+import { connectGitLab, GITLAB_TOKEN_ENV, planGitLabSync } from './gitlab.js';
 import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
@@ -174,7 +175,13 @@ export function createProgram(io: CliIO): Command {
           listProviderConnections(ws.fossil.db, ws.repositoryId),
           { offline: options.offline === true, maxRequests },
         );
-        for (const note of [...plan.notes, ...trackerPlan.notes]) io.stderr(`Note: ${note}\n`);
+        const gitlabPlan = planGitLabSync(ws, io, {
+          offline: options.offline === true,
+          maxRequests,
+        });
+        for (const note of [...plan.notes, ...gitlabPlan.notes, ...trackerPlan.notes]) {
+          io.stderr(`Note: ${note}\n`);
+        }
         const typescript = options.typescript === true || typeCheckingRequested();
         // Asked for explicitly: rebuild the call graph now, even if HEAD did not move.
         if (options.typescript) forgetGraphSnapshot(ws.fossil.db, ws.repositoryId);
@@ -183,6 +190,7 @@ export function createProgram(io: CliIO): Command {
           ...(since ? { since } : {}),
           ...(plan.factory ? { github: plan.factory } : {}),
           ...(trackerPlan.factory ? { trackers: trackerPlan.factory } : {}),
+          ...(gitlabPlan.factory ? { gitlab: gitlabPlan.factory } : {}),
           ...(typescript ? { typescript: true } : {}),
         });
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
@@ -193,6 +201,7 @@ export function createProgram(io: CliIO): Command {
         io.stdout(
           formatIndexResult(result, seconds) +
             formatGitHubIndex(result.github) +
+            formatGitLabIndex(result.gitlab) +
             formatTrackers(result.trackers),
         );
       });
@@ -264,6 +273,38 @@ export function createProgram(io: CliIO): Command {
       );
     });
   }
+
+  connect
+    .command('gitlab')
+    .description(
+      'Link to a GitLab project (group/name, or the origin remote): issues and merge requests ' +
+        `are synced and linked. The token comes from ${GITLAB_TOKEN_ENV} and is never stored.`,
+    )
+    .argument('[path]', 'group/name (nested groups allowed); defaults to the origin remote')
+    .option('--api-url <url>', 'REST API URL for a self-managed GitLab: https://host/api/v4')
+    .option('--no-verify', 'save the connection without checking access')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (path: string | undefined, options: ConnectCommandOptions) => {
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
+        const connection = await connectGitLab(ws, io, path, {
+          ...(options.apiUrl ? { apiUrl: options.apiUrl } : {}),
+          verify: options.verify,
+        });
+        if (options.json) {
+          writeJson(io, {
+            provider: 'gitlab',
+            project: connection.name,
+            apiUrl: connection.apiUrl,
+            verified: options.verify,
+          });
+          return;
+        }
+        io.stdout(
+          `Connected to GitLab project ${connection.name}${options.verify ? '' : ' (not verified)'}.\n` +
+            'Next: run `codefossil index` to sync issues and merge requests.\n',
+        );
+      });
+    });
 
   connect
     .command('github')

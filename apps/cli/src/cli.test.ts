@@ -140,6 +140,36 @@ describe('fossil CLI', () => {
     expect((await fossil(root(), 'status')).code).toBe(0);
   });
 
+  it('connects GitLab projects, implying only gitlab.com', async () => {
+    await fossil(root(), 'init');
+    const ok = await fossil(root(), 'connect', 'gitlab', 'acme/sub/shop', '--no-verify', '--json');
+    expect(JSON.parse(ok.stdout)).toEqual({
+      provider: 'gitlab',
+      project: 'acme/sub/shop',
+      apiUrl: 'https://gitlab.com/api/v4',
+      verified: false,
+    });
+    expect((await fossil(root(), 'connect', 'gitlab')).stderr).toContain('not a GitLab URL');
+    expect((await fossil(root(), 'connect', 'gitlab', 'shop', '--no-verify')).stderr).toContain(
+      'not a group/name project path',
+    );
+    expect(
+      (
+        await fossil(
+          root(),
+          'connect',
+          'gitlab',
+          'a/b',
+          '--api-url',
+          'http://gitlab.example',
+          '--no-verify',
+        )
+      ).stderr,
+    ).toMatch(/https/);
+    const index = await fossil(root(), 'index', '--offline');
+    expect(index.stdout).toContain('GitLab acme/sub/shop: offline, linked stored data');
+  });
+
   it('connects Jira and Linear, validating the site and project keys', async () => {
     await fossil(root(), 'init');
     const jira = await fossil(

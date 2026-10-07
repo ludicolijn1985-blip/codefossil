@@ -1,4 +1,4 @@
-import type { GitHubIndexResult, TrackerIndexResult } from '@codefossil/core';
+import type { GitHubIndexResult, GitLabIndexResult, TrackerIndexResult } from '@codefossil/core';
 import type { ProviderCounts } from '@codefossil/db';
 import { plural } from './format.js';
 
@@ -83,4 +83,22 @@ export function formatTrackers(trackers: readonly TrackerIndexResult[]): string 
       );
     })
     .join('');
+}
+
+export function formatGitLabIndex(result: GitLabIndexResult | null): string {
+  if (!result) return '';
+  const { links } = result;
+  const linked =
+    `${plural(links.pullRequestCommits, 'merge request → commit')}, ` +
+    `${plural(links.resolutions, 'issue resolution')}, ${plural(links.references, 'reference')}`;
+  if (!result.sync) return `GitLab ${result.project}: offline, linked stored data (${linked}).\n`;
+  const { sync } = result;
+  const stopped = sync.stoppedEarly
+    ? `Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`
+    : '';
+  return (
+    `GitLab ${result.project}: synced ${plural(sync.issues, 'issue')} and ` +
+    `${plural(sync.mergeRequests, 'merge request')} with ${plural(sync.requests, 'request')}; ` +
+    `linked ${linked}.\n${stopped}`
+  );
 }
