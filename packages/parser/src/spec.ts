@@ -105,6 +105,12 @@ export interface LanguageSpec {
    * name (`items.map(format)`) is a use of it, recorded as a reference.
    */
   readonly callArguments?: string;
+  /**
+   * A bare name may be a field of the method's own class (`repo.save()` for
+   * `this.repo.save()` in Java and C#): a name that is not local is then looked
+   * up among the class's typed fields.
+   */
+  readonly implicitFields?: boolean;
 }
 
 /** A name whose type the source states. */
@@ -117,7 +123,11 @@ export interface TypedName {
 }
 
 /** Node types naming a type or a constructor, in the supported grammars. */
-const TYPE_NAMES: ReadonlySet<string> = new Set(['identifier', 'type_identifier']);
+const TYPE_NAMES: ReadonlySet<string> = new Set([
+  'identifier',
+  'type_identifier',
+  'package_identifier',
+]);
 
 /**
  * A type as a name path: `Repo`, `m.Money` (`nested_type_identifier`, a member
@@ -126,20 +136,46 @@ const TYPE_NAMES: ReadonlySet<string> = new Set(['identifier', 'type_identifier'
 export function typePath(node: Node | null, depth = 0): string[] | null {
   if (!node || depth > 4) return null;
   if (TYPE_NAMES.has(node.type)) return [node.text];
-  if (node.type === 'generic_type') return typePath(node.childForFieldName('name'), depth + 1);
-  const [objectField, nameField] =
-    node.type === 'nested_type_identifier'
-      ? ['module', 'name']
-      : node.type === 'member_expression'
-        ? ['object', 'property']
-        : node.type === 'attribute'
-          ? ['object', 'attribute']
-          : [null, null];
+  switch (node.type) {
+    // `*Rates` (Go), `Rates?` (C#): the type pointed to.
+    case 'pointer_type':
+    case 'nullable_type':
+      return typePath(node.namedChildren[0] ?? null, depth + 1);
+    // `Tax<number>`, `List<Item>`: the generic type itself.
+    case 'generic_type':
+    case 'generic_name':
+      return typePath(
+        node.childForFieldName('name') ??
+          node.namedChildren.find((child) => TYPE_NAMES.has(child.type)) ??
+          null,
+        depth + 1,
+      );
+    // Java `a.b.Rates`: every name but the last is the qualifier.
+    case 'scoped_type_identifier': {
+      const parts = node.namedChildren;
+      const head = typePath(parts[0] ?? null, depth + 1);
+      const last = parts.at(-1);
+      return head && last && parts.length > 1 ? [...head, last.text] : null;
+    }
+    default:
+      break;
+  }
+  const [objectField, nameField] = QUALIFIED_TYPES[node.type] ?? [null, null];
   if (!objectField || !nameField) return null;
   const head = typePath(node.childForFieldName(objectField), depth + 1);
   const name = node.childForFieldName(nameField);
   return head && name ? [...head, name.text] : null;
 }
+
+/** Qualified type and member nodes, each with its qualifier and name fields. */
+const QUALIFIED_TYPES: Readonly<Record<string, readonly [string, string]>> = {
+  nested_type_identifier: ['module', 'name'],
+  member_expression: ['object', 'property'],
+  attribute: ['object', 'attribute'],
+  // Go `sql.DB`, C# `Models.Rates`.
+  qualified_type: ['package', 'name'],
+  qualified_name: ['qualifier', 'name'],
+};
 
 /**
  * Visit every node of the given types under `root`, in source order. A tree

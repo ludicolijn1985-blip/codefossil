@@ -139,7 +139,8 @@ describe('local names and self in calls', () => {
         'go',
         'package a\n\nfunc (s *Server) Start(c Conf) {\n\ts.listen()\n\tc.check()\n}\n',
       ),
-    ).toEqual(['s.listen self', 'c.check local']);
+      // `c Conf` states its type, so the call reads as Conf.check.
+    ).toEqual(['s.listen self', 'Conf.check']);
     expect(
       await flags(
         'rust',
@@ -239,6 +240,77 @@ describe('local names and self in calls', () => {
       '- MemStore',
       // Declared inside callbacks, not at module level: no type for `store`.
       '- store.get',
+    ]);
+  });
+
+  it('reads Java, C# and Go calls through stated types', async () => {
+    expect(
+      await sites(
+        'java',
+        [
+          'class Cart {',
+          '  private Repo repo = new Repo();',
+          '  void total(Rates r) {',
+          '    var tax = new Tax();',
+          '    r.vat();',
+          '    tax.apply();',
+          '    repo.save();',
+          '    this.repo.load();',
+          '  }',
+          '}',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      'class:Cart Repo',
+      'method:Cart.total Tax',
+      'method:Cart.total Rates.vat (type r.vat)',
+      'method:Cart.total Tax.apply (type tax.apply)',
+      // A field used without `this.`.
+      'method:Cart.total Repo.save (type repo.save)',
+      'method:Cart.total Repo.load (type this.repo.load)',
+    ]);
+    expect(
+      await sites(
+        'csharp',
+        [
+          'class Cart {',
+          '  Repo Store { get; set; }',
+          '  void Total(Rates r) {',
+          '    var tax = new Tax();',
+          '    r.Vat();',
+          '    tax.Apply();',
+          '    Store.Save();',
+          '  }',
+          '}',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      'method:Cart.Total Tax',
+      'method:Cart.Total Rates.Vat (type r.Vat)',
+      'method:Cart.Total Tax.Apply (type tax.Apply)',
+      'method:Cart.Total Repo.Save (type Store.Save)',
+    ]);
+    expect(
+      await sites(
+        'go',
+        [
+          'package p',
+          'type Server struct { db *sql.DB }',
+          'func (s *Server) Start(r *Rates) {',
+          '\tt := Tax{}',
+          '\tvar w Worker',
+          '\tr.Vat()',
+          '\tt.Apply()',
+          '\tw.Run()',
+          '\ts.db.Query()',
+          '}',
+        ].join('\n'),
+      ),
+    ).toEqual([
+      'method:Server.Start Rates.Vat (type r.Vat)',
+      'method:Server.Start Tax.Apply (type t.Apply)',
+      'method:Server.Start Worker.Run (type w.Run)',
+      'method:Server.Start sql.DB.Query (type s.db.Query)',
     ]);
   });
 

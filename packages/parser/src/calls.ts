@@ -313,11 +313,14 @@ export function callCollector(
     // A local declared twice in the symbol (a callback parameter shadowing a variable) may be
     // either declaration at the call, so its type is not used.
     const declaredOnce = (owner: string) => (declarations.get(owner)?.get(head) ?? 0) <= 1;
+    const owningClass = site.caller ? classOf(site.caller) : null;
     const type = local
       ? site.caller && declaredOnce(site.caller)
         ? localTypes.get(site.caller)?.get(head)
         : undefined
-      : moduleTypes.get('')?.get(head);
+      : ((spec.implicitFields && owningClass
+          ? fieldTypes.get(owningClass)?.get(head)
+          : undefined) ?? moduleTypes.get('')?.get(head));
     return type && type.length > 0 ? { type, replaces: 1 } : null;
   };
 

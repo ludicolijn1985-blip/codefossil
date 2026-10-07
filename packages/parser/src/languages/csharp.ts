@@ -1,5 +1,6 @@
 import type { Node } from 'web-tree-sitter';
 import { ancestorOf, type ImportReference, type LanguageSpec } from '../spec.js';
+import { csharpTypedNames } from './typed-names.js';
 
 const MEMBERS = new Set([
   'method_declaration',
@@ -51,5 +52,7 @@ export const csharp: LanguageSpec = {
     catch_declaration: 'name',
     foreach_statement: 'left',
   },
+  typedNames: csharpTypedNames,
+  implicitFields: true,
   isSelf: (call, receiver) => receiver === 'this' && ancestorOf(call, MEMBERS) !== null,
 };

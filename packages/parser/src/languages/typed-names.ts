@@ -103,3 +103,97 @@ export const pythonTypedNames: Readonly<Record<string, (node: Node) => readonly 
     return isSelfField ? typed(left.childForFieldName('attribute')?.text, true, type) : [];
   },
 };
+
+/** The type a declaration states, or the class a `new` creates when it says `var`. */
+function declaredType(type: Node | null, value: Node | null | undefined): string[] | null {
+  const stated =
+    type && type.type !== 'implicit_type' && type.text !== 'var' ? typePath(type) : null;
+  if (stated) return stated;
+  return value?.type === 'object_creation_expression'
+    ? typePath(value.childForFieldName('type'))
+    : null;
+}
+
+/** Java: `Tax t = new Tax()`, `var v = new Vat()`, parameters `Rates r`, fields `Repo repo`. */
+export const javaTypedNames: Readonly<Record<string, (node: Node) => readonly TypedName[]>> = {
+  variable_declarator: (node) => {
+    const declaration = node.parent;
+    const field = declaration?.type === 'field_declaration';
+    if (!declaration || (!field && declaration.type !== 'local_variable_declaration')) return [];
+    return typed(
+      node.childForFieldName('name')?.text,
+      field,
+      declaredType(declaration.childForFieldName('type'), node.childForFieldName('value')),
+    );
+  },
+  formal_parameter: (node) =>
+    typed(node.childForFieldName('name')?.text, false, typePath(node.childForFieldName('type'))),
+};
+
+/** C#: locals and fields (`Repo repo = new Repo()`, `var v = new Vat()`), parameters, properties. */
+export const csharpTypedNames: Readonly<Record<string, (node: Node) => readonly TypedName[]>> = {
+  variable_declaration: (node) => {
+    const field = node.parent?.type === 'field_declaration';
+    if (!field && node.parent?.type !== 'local_declaration_statement') return [];
+    const type = node.childForFieldName('type');
+    return node.namedChildren
+      .filter((child) => child.type === 'variable_declarator')
+      .flatMap((declarator) =>
+        typed(
+          declarator.childForFieldName('name')?.text,
+          field,
+          declaredType(
+            type,
+            declarator.namedChildren.find((child) => child.type === 'object_creation_expression'),
+          ),
+        ),
+      );
+  },
+  parameter: (node) =>
+    typed(node.childForFieldName('name')?.text, false, typePath(node.childForFieldName('type'))),
+  property_declaration: (node) =>
+    typed(node.childForFieldName('name')?.text, true, typePath(node.childForFieldName('type'))),
+};
+
+/** A Go composite literal's type (`Tax{}`, `&Vat{}`). */
+function goLiteral(value: Node | null | undefined): string[] | null {
+  const literal = value?.type === 'unary_expression' ? value.childForFieldName('operand') : value;
+  return literal?.type === 'composite_literal' ? typePath(literal.childForFieldName('type')) : null;
+}
+
+/** Go: `t := Tax{}`, `u := &Vat{}`, `var w Worker`, parameters `r *Rates`, struct fields. */
+export const goTypedNames: Readonly<Record<string, (node: Node) => readonly TypedName[]>> = {
+  short_var_declaration: (node) => {
+    const names = node.childForFieldName('left')?.namedChildren ?? [];
+    const values = node.childForFieldName('right')?.namedChildren ?? [];
+    return names.flatMap((name, index) =>
+      name.type === 'identifier' ? typed(name.text, false, goLiteral(values[index])) : [],
+    );
+  },
+  var_spec: (node) => {
+    const type = typePath(node.childForFieldName('type'));
+    return node.children
+      .filter((child) => node.fieldNameForChild(node.children.indexOf(child)) === 'name')
+      .flatMap((name) => typed(name.text, false, type));
+  },
+  parameter_declaration: (node) => {
+    // A method's receiver is the object itself, already read as `self`.
+    if (
+      node.parent?.parent?.type === 'method_declaration' &&
+      node.parent === node.parent.parent.childForFieldName('receiver')
+    ) {
+      return [];
+    }
+    const type = typePath(node.childForFieldName('type'));
+    return node.children
+      .filter((child) => child.type === 'identifier')
+      .flatMap((name) => typed(name.text, false, type));
+  },
+  field_declaration: (node) => {
+    if (node.parent?.type !== 'field_declaration_list') return [];
+    const type = typePath(node.childForFieldName('type'));
+    return node.children
+      .filter((child) => child.type === 'field_identifier')
+      .flatMap((name) => typed(name.text, true, type));
+  },
+};

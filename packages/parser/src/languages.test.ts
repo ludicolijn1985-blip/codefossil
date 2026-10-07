@@ -63,7 +63,8 @@ describe('Java, C#, Ruby and PHP', () => {
       calls: [
         'method:Cart.Cart > this.init self',
         'method:Cart.total > Rates.vat',
-        'method:Cart.total > item.price local',
+        // `Item item` states its type.
+        'method:Cart.total > Item.price',
         'method:Cart.total > Thread',
         'method:Cart.total > Runnable',
         'method:Cart.total > this.go',

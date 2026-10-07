@@ -1,5 +1,6 @@
 import type { Node } from 'web-tree-sitter';
 import { ancestorOf, type ImportReference, type LanguageSpec } from '../spec.js';
+import { javaTypedNames } from './typed-names.js';
 
 const METHODS = new Set(['method_declaration', 'constructor_declaration']);
 const BODIES = new Set(['class_body', 'enum_body', 'interface_body']);
@@ -62,6 +63,8 @@ export const java: LanguageSpec = {
     lambda_expression: 'parameters',
   },
   // `this` is the declared class's object, but not inside an anonymous class body.
+  typedNames: javaTypedNames,
+  implicitFields: true,
   isSelf: (call, receiver) => {
     if (receiver !== 'this' || !ancestorOf(call, METHODS)) return false;
     return ancestorOf(call, BODIES)?.parent?.type !== 'object_creation_expression';
