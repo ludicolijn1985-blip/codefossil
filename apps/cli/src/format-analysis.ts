@@ -5,7 +5,7 @@ import type {
   HotspotReport,
   OwnershipReport,
 } from '@codefossil/analyzers';
-import { plural } from './format.js';
+import { plural, terminalText } from './format.js';
 
 const SHORT_SHA_LENGTH = 7;
 /** Defect commits shown per file in text output; JSON carries more. */
@@ -143,18 +143,18 @@ export function formatOwnership(report: OwnershipReport): string {
   const header =
     `Who wrote ${scope}: ${plural(report.filesConsidered, 'file')} with history` +
     `${report.asOf ? ` (as of ${day(report.asOf)})` : ''}.\n` +
-    `Bus factor ${String(report.busFactor)}: ${report.busFactorAuthors.join(', ') || '—'} ` +
+    `Bus factor ${String(report.busFactor)}: ${report.busFactorAuthors.map(terminalText).join(', ') || '—'} ` +
     `(INFERRED). Files at risk: ${String(report.files.filter((f) => f.atRisk).length)} shown.\n`;
   const blocks = report.files.map((file) => {
     const authors = file.authors
       .slice(0, 3)
       .map(
         (a) =>
-          `${a.author} ${percent(a.share)}${a.active ? '' : ` (inactive, last commit ${day(a.lastCommitAt)})`}`,
+          `${terminalText(a.author)} ${percent(a.share)}${a.active ? '' : ` (inactive, last commit ${day(a.lastCommitAt)})`}`,
       )
       .join(' · ');
     const more = file.authors.length > 3 ? ` · +${String(file.authors.length - 3)} more` : '';
-    return `  ${file.atRisk ? '!' : ' '} ${file.file.path}  (${plural(file.commits, 'commit')})\n      ${authors}${more}`;
+    return `  ${file.atRisk ? '!' : ' '} ${terminalText(file.file.path)}  (${plural(file.commits, 'commit')})\n      ${authors}${more}`;
   });
   return `${header}\n${blocks.join('\n')}\n\n${report.notes.map((n) => `Note: ${n}`).join('\n')}\n`;
 }

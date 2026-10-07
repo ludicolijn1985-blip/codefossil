@@ -128,6 +128,18 @@ describe('fossil CLI', () => {
     expect(again).toMatchObject({ commitsIndexed: 0, commitsSkipped: 6 });
   });
 
+  it('owners covers the whole repository for . at the root', async () => {
+    await fossil(root(), 'index');
+    const all = JSON.parse((await fossil(root(), 'owners', '.', '--json')).stdout) as {
+      scope: unknown;
+    };
+    expect(all.scope).toBeNull();
+    const scoped = JSON.parse((await fossil(root(), 'owners', 'src', '--json')).stdout) as {
+      scope: unknown;
+    };
+    expect(scoped.scope).toBe('src');
+  });
+
   it('gc trims the parse cache and compacts the index', async () => {
     await fossil(root(), 'index');
     const result = await fossil(root(), 'gc', '--max-cache', '0', '--json');

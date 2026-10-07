@@ -102,8 +102,8 @@ describe('Jira and Linear links', () => {
     const offline = await runIndex(fossil.db, repo.root, { now });
     expect(offline.trackers[0]).toMatchObject({ sync: null, links: { references: 1 } });
     await runIndex(fossil.db, repo.root, { now, trackers: () => client });
-    expect(asked).toHaveLength(2);
-    expect(asked[1]).toEqual([]);
+    // Nothing new to read: the tracker is not asked for issues at all.
+    expect(asked).toHaveLength(1);
   });
 
   it('reports a tracker failure without stopping indexing', async () => {

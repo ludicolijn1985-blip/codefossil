@@ -178,7 +178,12 @@ export function registerAnalysisCommands(
         const limit = parsePositiveInteger(options.limit, '--limit');
         const activeDays = parsePositiveInteger(options.activeDays, '--active-days');
         await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
-          const scope = path ? toRepositoryPath(ws.root, resolve(io.cwd, path)) : undefined;
+          const target = path ? resolve(io.cwd, path) : null;
+          // `owners .` at the root means the whole repository.
+          const scope =
+            target && resolve(target) !== resolve(ws.root)
+              ? toRepositoryPath(ws.root, target)
+              : undefined;
           const report = analyzeOwnership(ws.fossil.db, ws.repositoryId, {
             ...(scope ? { path: scope } : {}),
             limit,

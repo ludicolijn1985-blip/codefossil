@@ -33,6 +33,12 @@ export interface RunIndexOptions extends IndexOptions {
    */
   readonly typescript?: boolean;
   /**
+   * Also allow the TypeScript compiler the repository installed when none is
+   * installed next to codefossil. That runs the repository's code: only on an
+   * explicit request, never from the environment.
+   */
+  readonly typescriptFromRepository?: boolean;
+  /**
    * Creates a client for a connected Jira or Linear tracker; omit it (or
    * return null) to stay offline: stored issues are still linked.
    */
@@ -108,6 +114,7 @@ export async function runIndex(
     {
       ...clock,
       ...(options.typescript ? { typescript: true } : {}),
+      ...(options.typescriptFromRepository ? { typescriptFromRepository: true } : {}),
     },
   );
 

@@ -46,6 +46,7 @@ npm from installing the SQLite driver's binary. There, run
 | `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)    |
 | `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since      |
 | `codefossil hotspots --symbols`         | The functions fixed most often, with the fixes                                     |
+| `codefossil owners src/`                | Who wrote the code, files whose main author left, and the bus factor               |
 | `codefossil why res.send --html x.html` | A one-page, shareable history of a function: birth, moves, every change, fixes     |
 | `codefossil query "what depends on X?"` | The same answers from a plain-words question                                       |
 | `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests         |
@@ -53,6 +54,8 @@ npm from installing the SQLite driver's binary. There, run
 | `codefossil site fossil-site`           | A static website: oldest code, most-fixed functions, hotspots, a page per function |
 | `codefossil lens src/cart.ts`           | One line of history per function of a file (what the VS Code extension shows)      |
 | `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)               |
+| `codefossil index --typescript`         | Exact TypeScript callers from the type checker (opt-in)                            |
+| `codefossil gc`                         | Shrink the index: drop stale cached parse results, compact the database            |
 
 Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
 `#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
@@ -81,8 +84,8 @@ Cursor, in `.cursor/mcp.json` (VS Code: `.vscode/mcp.json`, with `"servers"` ins
 }
 ```
 
-The agent gets nine read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
-`dead_intent`, `fossils`, `lens` and `change_report` (what a branch's commits touch). They run
+The agent gets ten read-only tools: `why`, `impact`, `timeline`, `symbols`, `hotspots`,
+`dead_intent`, `fossils`, `lens`, `owners` and `change_report` (what a branch's commits touch). They run
 offline on your machine. Answers carry the same evidence and FACT/DERIVED/INFERRED labels as the
 CLI, so the agent can tell what is known from what is guessed.
 
@@ -155,19 +158,26 @@ changes that earlier fixes changed too:
 > ⚠️ `res.send` (method) in `lib/response.js:126`: **17 earlier fixes** among 79 earlier changes
 > (INFERRED) · 118 files depend on its file
 
-Below that come every changed file's history, hotspot and risk scores and dependents, with the
-repository's hotspots and dead-intent candidates folded away. The index is cached, so each run only
+Below that come the functions it touches — new, changed, renamed or moved, and how many of their
+lines ran in the tests when the job wrote a coverage report — and every changed file's history,
+hotspot and risk scores and dependents, with the repository's hotspots and dead-intent candidates
+folded away. The index is cached, so each run only
 adds new commits. Without `comment` the report goes to the job summary. See [ACTION.md](ACTION.md).
 
-## GitHub issues and pull requests as evidence
+## Issues and pull requests as evidence
 
 ```bash
-codefossil connect github   # token from GITHUB_TOKEN, GH_TOKEN or `gh auth login`; never stored
-codefossil index            # syncs issues, pull requests and reviews incrementally
+codefossil connect github                              # GITHUB_TOKEN, GH_TOKEN or `gh auth login`
+codefossil connect gitlab                              # GITLAB_TOKEN; group/name or the origin remote
+codefossil connect jira https://acme.atlassian.net     # JIRA_API_TOKEN (+ JIRA_EMAIL for Cloud)
+codefossil connect linear                              # LINEAR_API_KEY
+codefossil index                                       # syncs incrementally; tokens are never stored
 ```
 
-Now `why` can say "introduced by PR #412, which resolves issue #398", and hotspots count issues
-labelled as bugs instead of relying on commit wording.
+Now `why` can say "introduced by PR #412, which resolves issue #398". The issues GitHub and GitLab
+record as closed by a merged pull or merge request are FACT; closing keywords are DERIVED. Jira and
+Linear issues are linked by the key commits name (`PROJ-123`), and a commit naming a bug ticket
+counts as a fix. Hotspots count issues labelled as bugs instead of relying on commit wording.
 
 ## In your editor
 
@@ -176,7 +186,7 @@ function, class and method — `born 2011 · 78 changes · 17 fixes · 64 caller
 birth commit and latest change on hover. It talks to one local `codefossil mcp` process per
 workspace, so nothing leaves your machine. Install it from the
 [latest release](https://github.com/ludicolijn1985-blip/codefossil/releases/latest)
-(`code --install-extension codefossil-vscode-0.1.0.vsix`). Any editor can do the same with
+(`code --install-extension codefossil-vscode-0.2.0.vsix`). Any editor can do the same with
 `codefossil lens <file> --json`.
 
 ## Web UI
@@ -203,15 +213,18 @@ unless you allow it, and every AI claim is INFERRED and capped at confidence 0.6
 
 - **Local.** Everything runs on your machine: no telemetry, no upload.
 - **No code execution.** Repository content is parsed, never executed; git runs with argument
-  arrays, never a shell.
+  arrays, never a shell. The one exception needs an explicit flag: `index --typescript-from-repo`
+  may load the TypeScript compiler the repository installed.
 - **Tokens.** Tokens are read from the environment at use and never stored.
 - **Loopback API.** The API listens on loopback only, with Host-header and CSRF protection.
 
 ## Languages
 
 Symbols, calls and imports for **TypeScript, JavaScript (ES modules, CommonJS, prototype style and
-IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. History,
-hotspots and timelines work for any file in any language.
+IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. Calls
+through names whose type the code states (`new Repo()`, `repo: Repo`, struct fields) resolve in
+TypeScript, JavaScript, Python, Java, C# and Go; `index --typescript` resolves TypeScript calls
+with the type checker. History, hotspots, owners and timelines work for any file in any language.
 
 Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`. Java,
 Ruby and PHP imports resolve to repository files by path; C# `using` directives name namespaces,
@@ -237,13 +250,16 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   fits: the method's own class, the definition an import binds, one in the calling file, or a
   unique qualified name (INFERRED). Calls through a name whose type the code states
   (`const r = new Repo()`, `repo: Repo`, `this.repo = new Repo()`, Python `r = Repo()`) are read as
-  calls on that type, and a function passed by name (`app.get('/', handler)`) counts as an
-  INFERRED caller; in TypeScript, JavaScript and Python. Other calls through variables, and
-  dynamic dispatch, are not seen. Files count when they import the defining file and do not name
+  calls on that type (also Java and C# fields and `var x = new X()`, Go `x := X{}`), and a function
+  passed by name (`app.get('/', handler)`) counts as an INFERRED caller. Other calls through
+  variables, and dynamic dispatch, are not seen — except in TypeScript with `index --typescript`,
+  where the type checker resolves every call it can (files with uncommitted changes are skipped). Files count when they import the defining file and do not name
   only other things from it; one importing the whole module counts whether or not it uses the
   symbol.
-- **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
-  subjects (INFERRED). Test reach is import reach, not line coverage.
+- **Inferred defects.** Without an issue tracker, defect commits come from reverts and fix
+  wording in subjects (INFERRED); a commit naming a Jira or Linear bug ticket is INFERRED too.
+  Line coverage needs an lcov report in the working tree (`coverage/lcov.info`), written after the
+  file's last commit; without one, test reach is import reach.
 - **HEAD only.** Only history reachable from HEAD is indexed. When HEAD leaves the indexed
   history (a reset, rebase or force-push, a deleted branch, an older checkout, or a CI cache
   restored from another branch), the next index run removes the commits HEAD no longer contains,
@@ -280,8 +296,12 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   by it are FACT, including ones linked by hand. Closing keywords in commits (`Fixes #12`), and in
   pull requests when GitHub cannot be asked (no token), are DERIVED at confidence 0.9: GitHub only
   closes an issue once the change reaches the default branch. Issues of other repositories
-  (`other/repo#12`) are linked once read (up to 50 new ones per sync, each re-read weekly); pull
-  requests of other repositories are not.
+  (`other/repo#12`) are linked once read (public ones only, up to 50 new ones per sync, each
+  re-read weekly); pull requests of other repositories are not. GitLab works the same way within
+  one project (no cross-project references); Jira and Linear issues are linked only by key, for
+  projects (teams) the token can see.
+- **Owners.** Authorship of changes stands in for knowledge; people are matched across name
+  spellings and shared email addresses (and `.mailmap`), not across different emails.
 
 ## License
 

@@ -124,6 +124,14 @@ export class GitLabClient {
     });
   }
 
+  /** One merge request by its number (iid). */
+  mergeRequest(project: string, iid: number): Promise<GitLabMergeRequest> {
+    return this.http.request(
+      this.http.url(this.projectPath(project, `/merge_requests/${String(iid)}`)),
+      gitlabMergeRequestSchema,
+    );
+  }
+
   /** Shas of a merge request's commits. */
   async mergeRequestCommits(project: string, iid: number): Promise<string[]> {
     const commits = await this.list(

@@ -75,6 +75,7 @@ Risk analysis, computed from the index on each request:
 ```text
 GET  /api/repositories/:id/hotspots?since=&limit=25&tests=false&generated=false&order=hotspot|risk
 GET  /api/repositories/:id/dead-intent?limit=50&staleDays=365
+GET  /api/repositories/:id/owners?path=&limit=20&activeDays=365&tests=false
 ```
 
 - **`hotspots`** returns `{ since, orderBy, filesConsidered, hotspots, notes }`. Each hotspot
@@ -83,13 +84,19 @@ GET  /api/repositories/:id/dead-intent?limit=50&staleDays=365
     level, confidence and evidence IDs;
   - `score` and its `components` (`changeFrequency`, `churn`, `defects`);
   - `risk.score` and its components (`changeFrequency`, `dependencyCentrality`, `bugDensity`,
-    `testReachInverse`), with `dependents` and `testsReaching`;
+    `testReachInverse`), with `dependents`, `testsReaching` and `lineCoverage` (lines hit and
+    instrumented from a current coverage report, or null);
   - `classification` and `evidenceIds`.
 - **`dead-intent`** returns `{ candidates, runtimes, notes }`. Each candidate has:
   - a `target` (a symbol or file),
   - the `commits` whose wording flagged it,
   - `signals`, each with a kind, text, level and evidence IDs,
   - `classification: "INFERRED"`, `confidence` and `evidenceIds`.
+
+- **`owners`** returns `{ scope, filesConsidered, busFactor, busFactorAuthors, asOf,
+activeWindowDays, files, classification: "INFERRED", notes }`. Each file lists its `authors`
+  with `commits`, `churn`, `share`, `lastChangedAt`, `lastCommitAt` and `active`, and `atRisk`.
+  `path` must be repository-relative (no leading `/` or `..`).
 
 Unknown query keys are rejected with `400`. ARCHITECTURE.md defines every number.
 

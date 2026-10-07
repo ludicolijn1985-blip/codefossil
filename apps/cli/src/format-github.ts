@@ -1,6 +1,6 @@
 import type { GitHubIndexResult, GitLabIndexResult, TrackerIndexResult } from '@codefossil/core';
 import type { ProviderCounts } from '@codefossil/db';
-import { plural } from './format.js';
+import { plural, terminalText } from './format.js';
 
 export interface GitHubStatus extends ProviderCounts {
   readonly owner: string;
@@ -40,18 +40,20 @@ export function formatGitHubIndex(result: GitHubIndexResult | null): string {
   ];
   if (sync.closingRefsError) {
     lines.push(
-      `Note: GitHub's closing issue links could not be read (${sync.closingRefsError}); ` +
+      `Note: GitHub's closing issue links could not be read (${terminalText(sync.closingRefsError)}); ` +
         'pull requests keep their keyword-based links.\n',
     );
   }
   if (sync.foreignIssuesError) {
     lines.push(
-      `Note: issues of other repositories could not be read (${sync.foreignIssuesError}); ` +
+      `Note: issues of other repositories could not be read (${terminalText(sync.foreignIssuesError)}); ` +
         'the next sync tries again.\n',
     );
   }
   if (sync.stoppedEarly) {
-    lines.push(`Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`);
+    lines.push(
+      `Note: ${terminalText(sync.stoppedEarly)}. Run \`codefossil index\` again later to continue.\n`,
+    );
   }
   return lines.join('');
 }
@@ -76,7 +78,7 @@ export function formatTrackers(trackers: readonly TrackerIndexResult[]): string 
       const links = `${plural(tracker.links.references, 'reference')} linked`;
       if (!tracker.sync) return `${label}: offline, ${links}.\n`;
       const { sync } = tracker;
-      const stopped = sync.stoppedEarly ? ` Note: ${sync.stoppedEarly}.` : '';
+      const stopped = sync.stoppedEarly ? ` Note: ${terminalText(sync.stoppedEarly)}.` : '';
       return (
         `${label}: read ${plural(sync.issues, 'issue')} from ${plural(sync.projects, 'project')} ` +
         `with ${plural(sync.requests, 'request')}; ${links}.${stopped}\n`
@@ -94,7 +96,7 @@ export function formatGitLabIndex(result: GitLabIndexResult | null): string {
   if (!result.sync) return `GitLab ${result.project}: offline, linked stored data (${linked}).\n`;
   const { sync } = result;
   const stopped = sync.stoppedEarly
-    ? `Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`
+    ? `Note: ${terminalText(sync.stoppedEarly)}. Run \`codefossil index\` again later to continue.\n`
     : '';
   return (
     `GitLab ${result.project}: synced ${plural(sync.issues, 'issue')} and ` +

@@ -20,6 +20,8 @@ import {
   type PullRequestRow,
 } from '@codefossil/db';
 import {
+  CLOSING_WINDOW,
+  MAX_REFERENCE_TEXT,
   TrackerApiError,
   TrackerLimitError,
   type GitLabClient,
@@ -127,8 +129,11 @@ export async function syncGitLab(
     counts.mergeRequests = requests.length;
 
     for (const pending of pendingPullRequestDetails(db, connection.repositoryId, 'gitlab')) {
-      const mr = byNumber.get(pending.externalId);
-      if (!mr) continue; // listed again once it changes
+      // One left pending by an earlier, interrupted run is not listed again: read it by number.
+      const mr =
+        byNumber.get(pending.externalId) ??
+        (await client.mergeRequest(project, Number(pending.externalId)));
+
       const commitShas = await client.mergeRequestCommits(project, mr.iid);
       db.transaction((tx) => {
         savePullRequestDetails(
@@ -169,7 +174,7 @@ export async function syncGitLab(
 
 /** GitLab's default closing pattern (`Closes #12`, `Fixes #12`, `Resolves`, `Implements`). */
 const CLOSING =
-  /\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?)\s*:?\s+$/i;
+  /\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?)[ \t]*:?[ \t]+$/i;
 /** `#12` (an issue) or `!12` (a merge request), not part of a longer word, path or URL. */
 const REFERENCE = /(^|[^\w/&#!.-])([#!])(\d+)\b/g;
 
@@ -182,13 +187,15 @@ interface GitLabReference {
 /** References to the project's own issues (`#12`) and merge requests (`!12`) in text. */
 export function parseGitLabReferences(text: string): GitLabReference[] {
   const found = new Map<string, GitLabReference>();
-  for (const match of text.matchAll(REFERENCE)) {
+  for (const match of text.slice(0, MAX_REFERENCE_TEXT).matchAll(REFERENCE)) {
     const [, prefix = '', sigil = '', digits = ''] = match;
     const number = Number.parseInt(digits, 10);
     if (!Number.isSafeInteger(number) || number <= 0) continue;
     const kind = sigil === '!' ? 'merge_request' : 'issue';
     const key = `${kind}${String(number)}`;
-    const closing = kind === 'issue' && CLOSING.test(text.slice(0, match.index + prefix.length));
+    const end = match.index + prefix.length;
+    const closing =
+      kind === 'issue' && CLOSING.test(text.slice(Math.max(0, end - CLOSING_WINDOW), end));
     found.set(key, { number, kind, closing: (found.get(key)?.closing ?? false) || closing });
   }
   return [...found.values()];

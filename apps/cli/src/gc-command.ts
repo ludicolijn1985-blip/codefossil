@@ -4,7 +4,7 @@ import { Option, type Command } from 'commander';
 import { MAX_PARSE_CACHE_ROWS } from '@codefossil/core';
 import { trimParseCache } from '@codefossil/db';
 import { extractionVersion } from '@codefossil/parser';
-import { writeJson, type CliIO } from './io.js';
+import { CliError, writeJson, type CliIO } from './io.js';
 import { DATABASE_FILE, openWorkspace, withWorkspace, WORKSPACE_DIR } from './workspace.js';
 
 const MIB = 1024 * 1024;
@@ -54,8 +54,16 @@ export function registerGcCommand(program: Command, io: CliIO, repoPath: () => s
           extractionVersion(),
           options.maxCache,
         );
-        ws.fossil.sqlite.pragma('wal_checkpoint(TRUNCATE)');
-        ws.fossil.sqlite.exec('VACUUM');
+        try {
+          ws.fossil.sqlite.pragma('wal_checkpoint(TRUNCATE)');
+          ws.fossil.sqlite.exec('VACUUM');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new CliError(
+            `Could not compact the index (${message}). Stop \`codefossil serve\` and other ` +
+              'codefossil processes using it, make sure there is free disk space, and run gc again.',
+          );
+        }
         const result: GcResult = {
           cacheEntriesRemoved: removed,
           bytesBefore: before,

@@ -65,6 +65,7 @@ interface IndexCommandOptions {
   readonly offline?: boolean;
   readonly githubMaxRequests: string;
   readonly typescript?: boolean;
+  readonly typescriptFromRepo?: boolean;
   readonly json?: boolean;
 }
 
@@ -160,6 +161,10 @@ export function createProgram(io: CliIO): Command {
       '--typescript',
       `resolve TypeScript calls with the type checker (slower; may load the repository's own compiler; ${TYPESCRIPT_ENV}=1 makes it the default)`,
     )
+    .option(
+      '--typescript-from-repo',
+      "with --typescript: if no TypeScript is installed next to codefossil, load the repository's own compiler (runs its code; only for repositories you trust)",
+    )
     .addOption(new Option('--json', 'print the result as JSON'))
     .action(async (options: IndexCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
@@ -182,9 +187,18 @@ export function createProgram(io: CliIO): Command {
         for (const note of [...plan.notes, ...gitlabPlan.notes, ...trackerPlan.notes]) {
           io.stderr(`Note: ${note}\n`);
         }
-        const typescript = options.typescript === true || typeCheckingRequested();
+        const fromRepository = options.typescriptFromRepo === true;
+        const typescript = options.typescript === true || fromRepository || typeCheckingRequested();
+        if (fromRepository) {
+          io.stderr(
+            "Note: --typescript-from-repo may load the TypeScript compiler from this repository's " +
+              'node_modules, which runs its code.\n',
+          );
+        }
         // Asked for explicitly: rebuild the call graph now, even if HEAD did not move.
-        if (options.typescript) forgetGraphSnapshot(ws.fossil.db, ws.repositoryId);
+        if (options.typescript || fromRepository) {
+          forgetGraphSnapshot(ws.fossil.db, ws.repositoryId);
+        }
         const started = performance.now();
         const result = await runIndex(ws.fossil.db, ws.root, {
           ...(since ? { since } : {}),
@@ -192,6 +206,7 @@ export function createProgram(io: CliIO): Command {
           ...(trackerPlan.factory ? { trackers: trackerPlan.factory } : {}),
           ...(gitlabPlan.factory ? { gitlab: gitlabPlan.factory } : {}),
           ...(typescript ? { typescript: true } : {}),
+          ...(fromRepository ? { typescriptFromRepository: true } : {}),
         });
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         if (options.json) {

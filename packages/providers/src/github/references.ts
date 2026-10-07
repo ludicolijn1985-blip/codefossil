@@ -11,7 +11,11 @@ export interface TextReference {
 }
 
 /** GitHub's documented closing keywords. */
-const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+$/i;
+const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)[ \t]*:?[ \t]+$/i;
+/** A closing keyword sits right before its reference: only this much text before it is tested. */
+export const CLOSING_WINDOW = 24;
+/** Longest text scanned for references; commit messages and PR bodies are untrusted. */
+export const MAX_REFERENCE_TEXT = 100_000;
 
 /**
  * `#12`, `GH-12` or `owner/name#12`, not part of a longer word, URL fragment
@@ -28,12 +32,13 @@ const REFERENCE = /(^|[^\w/&#.-])(?:([\w.-]+\/[\w.-]+)#|#|GH-)(\d+)\b/gi;
 export function parseReferences(text: string, owner: string, name: string): TextReference[] {
   const found = new Map<string, TextReference>();
   const self = `${owner}/${name}`.toLowerCase();
-  for (const match of text.matchAll(REFERENCE)) {
+  for (const match of text.slice(0, MAX_REFERENCE_TEXT).matchAll(REFERENCE)) {
     const [, prefix = '', named, digits = ''] = match;
     const number = Number.parseInt(digits, 10);
     if (!Number.isSafeInteger(number) || number <= 0) continue;
     const repo = named && named.toLowerCase() !== self ? named.toLowerCase() : null;
-    const before = text.slice(0, match.index + prefix.length);
+    const end = match.index + prefix.length;
+    const before = text.slice(Math.max(0, end - CLOSING_WINDOW), end);
     const key = `${repo ?? ''}#${String(number)}`;
     const closing = (found.get(key)?.closing ?? false) || CLOSING.test(before);
     found.set(key, { number, repo, closing });

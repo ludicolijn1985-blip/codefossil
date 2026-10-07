@@ -73,7 +73,7 @@ export function validateApiUrl(apiUrl: string): URL {
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 
 /** Read a response body as text, failing once it exceeds `limit` bytes. */
-async function readLimited(response: Response, limit: number): Promise<string> {
+export async function readLimited(response: Response, limit: number): Promise<string> {
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > limit) {
     await response.body?.cancel();

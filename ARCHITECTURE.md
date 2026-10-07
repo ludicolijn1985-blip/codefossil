@@ -190,3 +190,66 @@ evidence row of an unchanged call site, so its id stays stable. Calls whose rece
 expression (`getApp().listen()`), that fit several definitions, or whose calling symbol is not in
 the index are not recorded. `impact`
 walks `CALLS` backwards for callers, then `CONTAINS`/`IMPORTS` for files.
+
+**Stated types, references and the type checker.** Before resolution, a call through a name whose
+type the code states is rewritten to a call on that type: `const r = new Rates(); r.vat()` reads as
+`Rates.vat` (locals, parameters and fields with a type annotation or a `new`/constructor value, in
+TypeScript, JavaScript, Python, Java, C# and Go; Java and C# fields also without `this.`). Such
+edges keep the rule's level at ×0.9 confidence, with `+stated-type` in the method; the evidence
+quotes the call as written. A type is not used for a name declared twice in the calling symbol (a
+shadowing callback parameter) or given two types. A function passed by name (`app.get('/',
+handler)`) is recorded as a reference: an INFERRED `CALLS` edge (at most 0.8) to a function or
+method only. With `index --typescript`, the TypeScript type checker resolves each call to its
+declaration; those edges are DERIVED 1.0 (method `typescript-checker`) and replace the name-based
+reading of the same call sites.
+
+**Importers of a symbol.** A file importing the defining file counts towards a symbol's impact
+unless every name it imports from that file is another definition there (`bindingMayReach`): the
+whole module, its default export, the symbol, its container or a member of it, and names the file
+does not define (submodules, aliases) all may reach it.
+
+### Symbol lineage
+
+A symbol born in a commit (`INTRODUCED_BY`) is followed back with `COPIED_FROM` when the commit
+also removed one it continues. Matching runs once the commit is fully read, in two passes, and
+only accepts a pair that is unambiguous on both sides:
+
+| Reading          | Rule                                                                             | Level        |
+| ---------------- | -------------------------------------------------------------------------------- | ------------ |
+| Copied or moved  | identical content in another file (3+ lines; `identical-content`)                | DERIVED 0.9  |
+| Renamed          | same file and kind, identical once the symbol's own name is blanked (shape hash) | DERIVED 0.9  |
+| Moved with edits | same kind and qualified name, removed from another file in the same commit       | INFERRED 0.6 |
+
+The provenance details name the removed side. Origins are followed through these links (at most
+ten hops); a chain is never surer than its weakest link and INFERRED when any link is.
+
+### Line coverage
+
+An lcov report in the working tree is read into per-file instrumented and hit lines, citing one
+`coverage` evidence row. Coverage is used for a file only when the report was written after the
+file's last indexed commit, so line numbers match: hotspots then use `1 − hit/instrumented` as
+`testReachInverse`, and `why` states a symbol's covered lines (DERIVED).
+
+### Owners and the bus factor
+
+Per file, each author's share is their lines added plus deleted over the file's history, across
+renames (commits when no lines were counted). People are one identity across name spellings and
+names sharing an email address. An author is active when they committed within the window (365
+days) before the repository's latest commit. A file is at risk when one inactive author wrote at
+least 75%. The bus factor greedily removes the author who knows the most remaining files (wrote at
+least 25%, or most, of them) until more than half of the files have nobody left. INFERRED.
+
+### Issue trackers
+
+GitHub and GitLab: the issues the host records as closed by a merged pull or merge request are
+`RESOLVED_BY` FACT (unless the change was reverted); closing keywords are DERIVED 0.9; other
+mentions are `REFERENCES`. Jira and Linear: keys named in commits and pull requests (`PROJ-123`)
+of projects the tracker knows are read and linked as `REFERENCES` (DERIVED); a commit naming an
+issue typed or labelled as a bug counts as a defect commit (INFERRED 0.7).
+
+### Parse cache
+
+Symbols extracted from a blob are cached by blob id and grammar, under a version made of
+`SYMBOL_EXTRACTION_VERSION` and a hash of the grammar files, so content seen before (another
+branch, a reset, a revert) is not parsed again. A fingerprint test fails when extraction output
+changes without a version bump. The cache holds no claims; pruning leaves it, and `gc` trims it.

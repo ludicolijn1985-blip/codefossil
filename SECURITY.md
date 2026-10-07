@@ -10,8 +10,23 @@ Default behavior:
 - GitHub tokens are never stored: each run reads them from the environment or the GitHub CLI's
   login (`gh auth token --hostname`), scoped per host like the GitHub CLI does — `GITHUB_TOKEN`
   and `GH_TOKEN` go to github.com only, `GH_ENTERPRISE_TOKEN` to an Enterprise Server host.
-- A repository's remote never chooses where a token is sent: only github.com is derived from it;
-  any other host must be confirmed by the user with `--api-url`.
+- GitLab, Jira and Linear credentials (`GITLAB_TOKEN`, `JIRA_API_TOKEN` + `JIRA_EMAIL`,
+  `LINEAR_API_KEY`) are likewise read from the environment at run time and never stored.
+- A repository's remote never chooses where a token is sent: only github.com (or gitlab.com) is
+  derived from it; any other host must be confirmed by the user with `--api-url`.
+- Text in commits and pull requests chooses what is looked up, never where: issues of other
+  GitHub repositories are read only when public; Jira and Linear keys only for projects the
+  tracker reports; every lookup is budgeted and remembered for a week.
+- Repository content is parsed, never executed. One exception needs an explicit flag:
+  `index --typescript-from-repo` may load the TypeScript compiler installed in the repository's
+  `node_modules` when none is installed next to codefossil, and says so first. The environment
+  (`CODEFOSSIL_TYPESCRIPT=1`) never enables it. Use it on repositories you trust.
+- Text from repositories and servers is printed with control characters removed, so author names
+  or error messages cannot inject terminal escapes; closing-keyword matching scans a bounded
+  window, so hostile commit text cannot make it quadratic.
+- Working-tree files read for resolution (`.venv` metadata, `node_modules` workspace links,
+  `coverage/lcov.info`) are size-capped, read without following links out of the repository, and
+  never executed.
 - `codefossil serve` binds to loopback only and checks the Host header (DNS rebinding) and JSON
   content type (CSRF). With `--allow-network` the token is pinned to the connection trusted at
   startup; a connection rewritten through the API is refused until the server is restarted.

@@ -145,3 +145,16 @@ export function formatSymbols(
   );
   return `${header}\n\n${lines.join('\n')}\n`;
 }
+
+/** A control character (ANSI and OSC escapes start with one), other than tab and newline. */
+const isControl = (code: number): boolean =>
+  code !== 9 && code !== 10 && (code < 32 || (code >= 127 && code < 160));
+
+/** Untrusted text made safe for a terminal: control characters removed. */
+export function terminalText(text: string): string {
+  let safe = '';
+  for (let i = 0; i < text.length; i++) {
+    if (!isControl(text.charCodeAt(i))) safe += text.charAt(i);
+  }
+  return safe;
+}

@@ -27,6 +27,9 @@ describe('parseGitLabReferences', () => {
       { number: 14, kind: 'issue', closing: true },
     ]);
     expect(parseGitLabReferences('see https://x.org/page#2 or a!3 or group/project#4')).toEqual([]);
+    const started = performance.now();
+    parseGitLabReferences(`closes${' '.repeat(50_000)}x #1 ${'#1 '.repeat(40_000)}`);
+    expect(performance.now() - started).toBeLessThan(500);
   });
 });
 
@@ -66,29 +69,18 @@ describe('GitLab sync and linking', () => {
 
     const routes: Record<string, FakeRoute> = {
       '/api/v4/projects/acme%2Fshop': () => ({ body: { id: 7, path_with_namespace: 'acme/shop' } }),
-      '/api/v4/projects/acme%2Fshop/issues': () => ({
-        body: [
-          item(1, { title: 'Wrong VAT', state: 'closed', labels: ['bug'] }),
-          item(2, { title: 'Reduced rate' }),
-        ],
+      '/api/v4/projects/acme%2Fshop/issues': (url) => ({
+        body: url.searchParams.has('updated_after')
+          ? []
+          : [
+              item(1, { title: 'Wrong VAT', state: 'closed', labels: ['bug'] }),
+              item(2, { title: 'Reduced rate' }),
+            ],
       }),
-      '/api/v4/projects/acme%2Fshop/merge_requests': () => ({
-        body: [
-          {
-            ...item(3, {
-              title: 'Reduced VAT rate',
-              description: 'Closes #2, see !4',
-              state: 'merged',
-            }),
-            web_url: 'https://gitlab.com/acme/shop/-/merge_requests/3',
-            merged_at: '2026-01-03T12:00:00Z',
-            merge_commit_sha: mergeSha,
-            squash_commit_sha: null,
-            source_branch: 'feature',
-            target_branch: 'main',
-          },
-        ],
+      '/api/v4/projects/acme%2Fshop/merge_requests': (url) => ({
+        body: url.searchParams.has('updated_after') ? [] : [mergeRequest()],
       }),
+      '/api/v4/projects/acme%2Fshop/merge_requests/3': () => ({ body: mergeRequest() }),
       '/api/v4/projects/acme%2Fshop/merge_requests/3/commits': () => ({ body: [{ id: fixSha }] }),
       // GitLab's own record: #2 here, and an issue of another project that is ignored.
       '/api/v4/projects/acme%2Fshop/merge_requests/3/closes_issues': () => ({
@@ -98,6 +90,21 @@ describe('GitLab sync and linking', () => {
         ],
       }),
     };
+    function mergeRequest() {
+      return {
+        ...item(3, {
+          title: 'Reduced VAT rate',
+          description: 'Closes #2, see !4',
+          state: 'merged',
+        }),
+        web_url: 'https://gitlab.com/acme/shop/-/merge_requests/3',
+        merged_at: '2026-01-03T12:00:00Z',
+        merge_commit_sha: mergeSha,
+        squash_commit_sha: null,
+        source_branch: 'feature',
+        target_branch: 'main',
+      };
+    }
     server = await startFakeGitHub((url) =>
       routes[url.pathname]?.(url, { method: 'GET', body: '' }),
     );
@@ -162,6 +169,27 @@ describe('GitLab sync and linking', () => {
     // Offline later: everything stored is still linked.
     const offline = await runIndex(fossil.db, repo.root, { now });
     expect(offline.gitlab).toMatchObject({ sync: null, links: { resolutions: 2 } });
+  });
+
+  it('finishes merge requests an interrupted sync left pending, though they are not listed again', async () => {
+    const apiUrl = `${server.apiUrl}/api/v4`;
+    // Budget for the project, issues and merge request lists only: details are left pending.
+    const first = await runIndex(fossil.db, repo.root, {
+      now,
+      gitlab: () => new GitLabClient({ apiUrl, token: 't', maxRequests: 3 }),
+    });
+    expect(first.gitlab?.sync?.stoppedEarly).toMatch(/budget/);
+    expect(first.gitlab?.links.pullRequestCommits).toBe(0);
+
+    const second = await runIndex(fossil.db, repo.root, {
+      now,
+      gitlab: () => new GitLabClient({ apiUrl, token: 't', maxRequests: 50 }),
+    });
+    expect(second.gitlab?.sync?.stoppedEarly).toBeNull();
+    expect(server.requests.map((r) => r.url.pathname)).toContain(
+      '/api/v4/projects/acme%2Fshop/merge_requests/3',
+    );
+    expect(second.gitlab?.links).toMatchObject({ pullRequestCommits: 2, resolutions: 2 });
   });
 
   it('reports a GitLab failure without stopping indexing', async () => {

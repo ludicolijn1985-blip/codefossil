@@ -84,4 +84,16 @@ describe('parseReferences', () => {
       { number: 11, repo: null, closing: false },
     ]);
   });
+
+  it('stays fast on hostile text and still finds closing keywords', () => {
+    const spaces = `closes${' '.repeat(50_000)}x #1`;
+    const many = '#1 '.repeat(40_000);
+    const started = performance.now();
+    refs(spaces);
+    refs(many);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(refs(`${'x '.repeat(1000)}fixes #7`)).toEqual([
+      { number: 7, repo: null, closing: true },
+    ]);
+  });
 });

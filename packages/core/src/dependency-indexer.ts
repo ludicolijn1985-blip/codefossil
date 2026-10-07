@@ -132,6 +132,8 @@ export async function indexDependencies(
     readonly now?: () => Date;
     /** Resolve TypeScript calls with the type checker (slow; may load the repository's compiler). */
     readonly typescript?: boolean;
+    /** Allow the compiler the repository installed (runs its code); explicit opt-in only. */
+    readonly typescriptFromRepository?: boolean;
   } = {},
 ): Promise<DependencyIndexResult> {
   const previous = getGraphIndexedSha(db, repositoryId);
@@ -140,7 +142,9 @@ export async function indexDependencies(
 
   const changed = previous ? await changedPaths(root, previous, headSha) : null;
   const snapshot = await readSnapshot(root, headSha, changed);
-  const checked = options.typescript ? await typeCheckedCalls(root) : null;
+  const checked = options.typescript
+    ? await typeCheckedCalls(root, { fromRepository: options.typescriptFromRepository === true })
+    : null;
 
   return db.transaction((tx) => {
     for (const path of snapshot.removed) {

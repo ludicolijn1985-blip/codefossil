@@ -34,13 +34,14 @@ const MAX_CALLEE_TEXT = 120;
 type TypeScript = typeof TS;
 
 /**
- * The TypeScript compiler: codefossil's own when installed alongside it,
- * else the one the repository installed. Loading the repository's runs code
- * from its node_modules, which is why the whole feature is opt-in.
+ * The TypeScript compiler installed alongside codefossil, or — only when
+ * `fromRepository` is asked for explicitly — the one the repository
+ * installed. Loading the repository's runs code from its node_modules.
  */
-function loadTypeScript(root: string): TypeScript | null {
+function loadTypeScript(root: string, fromRepository: boolean): TypeScript | null {
   const name = 'typescript';
-  for (const from of [import.meta.url, join(root, 'package.json')]) {
+  const places = [import.meta.url, ...(fromRepository ? [join(root, 'package.json')] : [])];
+  for (const from of places) {
     try {
       return createRequire(from)(name) as TypeScript;
     } catch {
@@ -139,12 +140,18 @@ function nameOf(ts: TypeScript, declaration: TS.Declaration): string | null {
  * are committed unchanged at HEAD are returned. Opt-in: building the program
  * takes time and may load the repository's own compiler.
  */
-export async function typeCheckedCalls(root: string): Promise<CheckedCalls> {
-  const ts = loadTypeScript(root);
+export async function typeCheckedCalls(
+  root: string,
+  options: { readonly fromRepository?: boolean } = {},
+): Promise<CheckedCalls> {
+  const ts = loadTypeScript(root, options.fromRepository === true);
   if (!ts) {
     return {
       calls: [],
-      note: 'TypeScript is not installed (neither with codefossil nor in the repository)',
+      note: options.fromRepository
+        ? 'TypeScript is installed neither next to codefossil nor in the repository'
+        : 'TypeScript is not installed next to codefossil (npm install -g codefossil typescript); ' +
+          "--typescript-from-repo uses the repository's own, running its code",
       compiler: null,
     };
   }

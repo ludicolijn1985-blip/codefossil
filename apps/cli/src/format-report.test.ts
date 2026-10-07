@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { terminalText } from './format.js';
 import { mdCode, mdText } from './format-report.js';
 
 describe('markdown escaping for untrusted repository text', () => {
@@ -27,5 +28,13 @@ describe('markdown escaping for untrusted repository text', () => {
   it('keeps inline code closed and silent', () => {
     expect(mdCode('src/`x`.ts')).toBe('`src/ x .ts`');
     expect(mdCode('@team/pkg')).toBe('`@\u200bteam/pkg`');
+  });
+});
+
+describe('terminalText', () => {
+  it('removes control characters such as ANSI and OSC escapes, keeping tabs and newlines', () => {
+    const hostile = `Ada${String.fromCharCode(27)}[31m Lovelace${String.fromCharCode(7, 155)}\tok\n`;
+    expect(terminalText(hostile)).toBe('Ada[31m Lovelace\tok\n');
+    expect(terminalText('naïve 日本 😀')).toBe('naïve 日本 😀');
   });
 });

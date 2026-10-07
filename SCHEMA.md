@@ -100,8 +100,9 @@ issues
 
 - id
 - repository_id
-- provider
-- external_id
+- provider (github | gitlab | jira | linear)
+- source_repo (`owner/name` for an issue of another GitHub repository; empty for the own one)
+- external_id (the number; for Jira and Linear the key, `PROJ-123`)
 - title
 - body
 - state
@@ -132,6 +133,8 @@ pull_requests
 - base_branch
 - head_branch
 - details_synced_at (commits/reviews fetched; pending while null or older than updated_at)
+- closing_refs_json (the issues GitHub or GitLab records as closed by it; null until fetched)
+- closing_refs_synced_at
 
 pull_request_commits
 
@@ -152,9 +155,9 @@ provider_connections (no credentials)
 
 - id
 - repository_id
-- provider (github)
+- provider (github | gitlab | jira | linear)
 - owner
-- name
+- name (GitHub repository name, GitLab project path, or a tracker's project keys)
 - api_url
 - cursor (updated_at of the newest synced issue/PR; the next sync resumes from it)
 - last_synced_at
@@ -190,6 +193,36 @@ imports (snapshot at HEAD; replaced when the file changes)
 - evidence_id
 - resolution (files | dependency | builtin | unresolved)
 - resolution_detail (target, or the reason it is unresolved)
+
+foreign_lookups (lookups that need not be repeated for a week)
+
+- repository_id
+- reference (`owner/name#12`, `jira:PROJ-12`, lower-cased)
+- found
+- checked_at
+
+calls (snapshot at HEAD; replaced when the file changes)
+
+- id
+- file_id
+- caller_key
+- callee (name path; rewritten to the stated type when one applies)
+- line
+- local_head, self_receiver
+- via (null | type | reference) and written (the callee as written)
+- sha
+
+line_coverage (from the last lcov report read)
+
+- file_id
+- found_json, hit_json (instrumented and hit lines)
+- evidence_id (the report's `coverage` evidence)
+
+parsed_blobs (parse cache; no claims)
+
+- repository_id, oid, grammar
+- version (extraction version + grammar hash)
+- result_json
 
 incidents
 

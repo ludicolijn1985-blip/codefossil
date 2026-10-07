@@ -26,6 +26,8 @@ export const TRACKER_LINKER_PRODUCER = 'tracker-linker@0.1.0';
 const MAX_LOOKUPS = 500;
 /** How long a looked-up key is left alone before it is read again. */
 const LOOKUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Keys read and stored per transaction. */
+const STORE_BATCH = 50;
 
 export type TrackerProvider = 'jira' | 'linear';
 
@@ -89,6 +91,23 @@ export async function syncTracker(
     ]
       .filter((key) => !recent.has(`${provider}:${key}`.toLowerCase()))
       .slice(0, MAX_LOOKUPS);
+    // Read and store in batches: a failure later on keeps what earlier batches read.
+    for (let start = 0; start < keys.length; start += STORE_BATCH) {
+      issues += await readBatch(keys.slice(start, start + STORE_BATCH));
+    }
+    return { provider, projects, issues, requests: client.requestsMade, stoppedEarly: null };
+  } catch (error) {
+    if (!(error instanceof TrackerApiError || error instanceof TrackerLimitError)) throw error;
+    return {
+      provider,
+      projects,
+      issues,
+      requests: client.requestsMade,
+      stoppedEarly: error.message,
+    };
+  }
+
+  async function readBatch(keys: readonly string[]): Promise<number> {
     const found = await client.issues(keys);
     const checkedAt = now().toISOString();
     db.transaction((tx) => {
@@ -108,7 +127,6 @@ export async function syncTracker(
           closedAt: issue.closedAt,
           externalKey: issue.key,
         });
-        issues++;
       }
       const seen = new Set(found.map((issue) => issue.key));
       for (const key of keys) {
@@ -121,16 +139,7 @@ export async function syncTracker(
         );
       }
     });
-    return { provider, projects, issues, requests: client.requestsMade, stoppedEarly: null };
-  } catch (error) {
-    if (!(error instanceof TrackerApiError || error instanceof TrackerLimitError)) throw error;
-    return {
-      provider,
-      projects,
-      issues,
-      requests: client.requestsMade,
-      stoppedEarly: error.message,
-    };
+    return found.length;
   }
 }
 

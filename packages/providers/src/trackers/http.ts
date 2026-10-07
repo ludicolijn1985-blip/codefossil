@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { validateApiUrl } from '../github/client.js';
+import { GitHubApiError, readLimited, validateApiUrl } from '../github/client.js';
 
 const USER_AGENT = 'codefossil';
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -99,14 +99,15 @@ export class JsonClient {
         response.status,
       );
     }
-    const declared = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
-      await response.body?.cancel();
-      throw new TrackerApiError(`Response from ${url.pathname} is too large`, response.status);
-    }
-    const text = await response.text();
-    if (text.length > MAX_RESPONSE_BYTES) {
-      throw new TrackerApiError(`Response from ${url.pathname} is too large`, response.status);
+    let text: string;
+    try {
+      // Streams the body and stops reading once it exceeds the cap, declared length or not.
+      text = await readLimited(response, MAX_RESPONSE_BYTES);
+    } catch (error) {
+      if (error instanceof GitHubApiError) {
+        throw new TrackerApiError(`Response from ${url.pathname} is too large`, response.status);
+      }
+      throw error;
     }
     let body: unknown;
     try {
