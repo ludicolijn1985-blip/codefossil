@@ -38,7 +38,7 @@ export const RECORD_SEPARATOR = '\x1e';
 export const RECORD_BOUNDARY = /\x1e(?=[0-9a-f]{40}(?:[0-9a-f]{24})?\0)/;
 
 /** `git log` format matching {@link parseCommitRecord}. */
-export const LOG_FORMAT = `--format=${RECORD_SEPARATOR}%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%s%x00%b%x00`;
+export const LOG_FORMAT = `--format=${RECORD_SEPARATOR}%H%x00%P%x00%aN%x00%aE%x00%aI%x00%cI%x00%s%x00%b%x00`;
 
 const HEADER_FIELD_COUNT = 8;
 

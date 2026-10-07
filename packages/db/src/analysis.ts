@@ -76,6 +76,7 @@ export interface AnalysisCommit {
   readonly body: string;
   readonly committedAt: string;
   readonly authorName: string;
+  readonly authorEmail: string;
 }
 
 export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCommit[] {
@@ -87,6 +88,7 @@ export function analysisCommits(db: FossilDb, repositoryId: number): AnalysisCom
       body: commits.body,
       committedAt: commits.committedAt,
       authorName: commits.authorName,
+      authorEmail: commits.authorEmail,
     })
     .from(commits)
     .where(eq(commits.repositoryId, repositoryId))

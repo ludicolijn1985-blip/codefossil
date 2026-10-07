@@ -9,3 +9,4 @@ export * from './story.js';
 export * from './text-signals.js';
 export * from './report.js';
 export { issueReference } from '@codefossil/shared';
+export * from './ownership.js';

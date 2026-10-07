@@ -199,6 +199,22 @@ export const MCP_TOOLS: readonly ToolDefinition[] = [
     ],
   }),
   tool({
+    name: 'owners',
+    title: 'Who wrote this code',
+    description:
+      'Per file, each author\u2019s share of the changes and whether they are still active; files ' +
+      'whose main author is inactive (knowledge may have left) and the bus factor. Optionally for ' +
+      'one file or directory (repository-relative). INFERRED: authorship stands in for knowledge.' +
+      UNTRUSTED,
+    input: { path: target.optional(), limit: limit(200) },
+    args: ({ path, limit }) => [
+      'owners',
+      '--json',
+      ...(limit ? ['--limit', String(limit)] : []),
+      ...(path ? ['--', path] : []),
+    ],
+  }),
+  tool({
     name: 'change_report',
     title: 'What a branch touches',
     description:

@@ -11,6 +11,8 @@ export interface FileActivity {
   /** Changes git could not count lines for (binary files). */
   readonly binaryChanges: number;
   readonly lastChangedAt: string | null;
+  /** Lines added plus deleted per commit (0 for a binary change). */
+  readonly churnByCommit: ReadonlyMap<number, number>;
 }
 
 const isPureRename = (change: AnalysisChange) =>
@@ -42,6 +44,7 @@ export function fileActivity(
       let churn = 0;
       let binaryChanges = 0;
       let lastChangedAt: string | null = null;
+      const churnByCommit = new Map<number, number>();
       const visited = new Set<number>();
       const queue: { id: number; until: string | null }[] = [{ id: file.id, until: null }];
       for (let item = queue.shift(); item; item = queue.shift()) {
@@ -55,12 +58,22 @@ export function fileActivity(
           }
           if ((since && change.committedAt < since) || isPureRename(change)) continue;
           commitIds.add(change.commitId);
+          const lines = change.additions === null ? 0 : change.additions + (change.deletions ?? 0);
           if (change.additions === null) binaryChanges++;
-          else churn += change.additions + (change.deletions ?? 0);
+          else churn += lines;
+          churnByCommit.set(change.commitId, (churnByCommit.get(change.commitId) ?? 0) + lines);
           if (!lastChangedAt || change.committedAt > lastChangedAt)
             lastChangedAt = change.committedAt;
         }
       }
-      return { fileId: file.id, path: file.path, commitIds, churn, binaryChanges, lastChangedAt };
+      return {
+        fileId: file.id,
+        path: file.path,
+        commitIds,
+        churn,
+        binaryChanges,
+        lastChangedAt,
+        churnByCommit,
+      };
     });
 }

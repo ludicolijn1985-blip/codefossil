@@ -1,9 +1,11 @@
+import { resolve } from 'node:path';
 import { Option, type Command } from 'commander';
 import {
   analyzeDeadIntent,
   analyzeFixedSymbols,
   analyzeFossils,
   analyzeHotspots,
+  analyzeOwnership,
   DEFAULT_DEAD_INTENT_LIMIT,
   DEFAULT_FOSSIL_LIMIT,
   DEFAULT_HOTSPOT_LIMIT,
@@ -16,11 +18,12 @@ import {
   formatFixedSymbols,
   formatFossils,
   formatHotspots,
+  formatOwnership,
 } from './format-analysis.js';
 import { CliError, writeJson, type CliIO } from './io.js';
 import { parsePositiveInteger, parseSince } from './options.js';
 import { openIndexedWorkspace } from './auto-index.js';
-import { withWorkspace } from './workspace.js';
+import { toRepositoryPath, withWorkspace } from './workspace.js';
 
 interface HotspotCommandOptions {
   readonly since?: string;
@@ -150,4 +153,41 @@ export function registerAnalysisCommands(
         else io.stdout(formatFossils(report));
       });
     });
+
+  program
+    .command('owners')
+    .description(
+      'Who wrote the code: per file each author\u2019s share of the changes and whether they are ' +
+        'still active, files whose knowledge may have left, and the bus factor.',
+    )
+    .argument('[path]', 'a file or directory; the whole repository when omitted')
+    .option('--limit <n>', 'files to show', '20')
+    .option('--active-days <n>', 'days before the latest commit an author counts as active', '365')
+    .option('--tests', 'include test files')
+    .addOption(new Option('--json', 'print the result as JSON'))
+    .action(
+      async (
+        path: string | undefined,
+        options: {
+          readonly limit: string;
+          readonly activeDays: string;
+          readonly tests?: boolean;
+          readonly json?: boolean;
+        },
+      ) => {
+        const limit = parsePositiveInteger(options.limit, '--limit');
+        const activeDays = parsePositiveInteger(options.activeDays, '--active-days');
+        await withWorkspace(openIndexedWorkspace(repoPath(), io), (ws) => {
+          const scope = path ? toRepositoryPath(ws.root, resolve(io.cwd, path)) : undefined;
+          const report = analyzeOwnership(ws.fossil.db, ws.repositoryId, {
+            ...(scope ? { path: scope } : {}),
+            limit,
+            activeDays,
+            includeTests: options.tests === true,
+          });
+          if (options.json) writeJson(io, report);
+          else io.stdout(formatOwnership(report));
+        });
+      },
+    );
 }

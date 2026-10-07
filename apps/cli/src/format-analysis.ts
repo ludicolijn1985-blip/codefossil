@@ -3,6 +3,7 @@ import type {
   FixedSymbolsReport,
   FossilReport,
   HotspotReport,
+  OwnershipReport,
 } from '@codefossil/analyzers';
 import { plural } from './format.js';
 
@@ -132,4 +133,28 @@ export function formatFixedSymbols(report: FixedSymbolsReport): string {
     ].join('\n');
   });
   return `${header}\n${blocks.join('\n\n')}\n`;
+}
+
+const percent = (share: number) => `${String(Math.round(share * 100))}%`;
+
+export function formatOwnership(report: OwnershipReport): string {
+  const scope = report.scope ?? 'the repository';
+  if (report.filesConsidered === 0) return `No code files with history in ${scope}.\n`;
+  const header =
+    `Who wrote ${scope}: ${plural(report.filesConsidered, 'file')} with history` +
+    `${report.asOf ? ` (as of ${day(report.asOf)})` : ''}.\n` +
+    `Bus factor ${String(report.busFactor)}: ${report.busFactorAuthors.join(', ') || '—'} ` +
+    `(INFERRED). Files at risk: ${String(report.files.filter((f) => f.atRisk).length)} shown.\n`;
+  const blocks = report.files.map((file) => {
+    const authors = file.authors
+      .slice(0, 3)
+      .map(
+        (a) =>
+          `${a.author} ${percent(a.share)}${a.active ? '' : ` (inactive, last commit ${day(a.lastCommitAt)})`}`,
+      )
+      .join(' · ');
+    const more = file.authors.length > 3 ? ` · +${String(file.authors.length - 3)} more` : '';
+    return `  ${file.atRisk ? '!' : ' '} ${file.file.path}  (${plural(file.commits, 'commit')})\n      ${authors}${more}`;
+  });
+  return `${header}\n${blocks.join('\n')}\n\n${report.notes.map((n) => `Note: ${n}`).join('\n')}\n`;
 }

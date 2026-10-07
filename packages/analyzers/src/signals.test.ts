@@ -157,6 +157,7 @@ describe('classifyDefects', () => {
     body,
     committedAt: '2026-01-01',
     authorName: 'Ada',
+    authorEmail: 'ada@example.com',
   });
   const evidence = new Map([[commit(1, '').sha, 101]]);
 
@@ -295,6 +296,7 @@ describe('defect wording that is not about code', () => {
     body: '',
     committedAt: '2026-01-01',
     authorName: 'Ada',
+    authorEmail: 'ada@example.com',
   });
   it('ignores dependency bumps and documentation fixes', () => {
     const result = classifyDefects(

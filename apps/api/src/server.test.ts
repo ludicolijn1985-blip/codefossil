@@ -383,6 +383,17 @@ describe('CODEFOSSIL API', () => {
       }
     });
 
+    it('serves authorship, the bus factor and files at risk', async () => {
+      const report = await call({ method: 'GET', url: repo('/owners?limit=5') });
+      expect(report.status).toBe(200);
+      expect(report.body.data).toMatchObject({ classification: 'INFERRED', scope: null });
+      const scoped = await call({ method: 'GET', url: repo('/owners?path=src/tax') });
+      expect(scoped.body.data).toMatchObject({ scope: 'src/tax' });
+      for (const bad of ['path=../etc', 'path=/etc', 'limit=0', 'activeDays=0', 'extra=1']) {
+        expect((await call({ method: 'GET', url: repo(`/owners?${bad}`) })).status).toBe(400);
+      }
+    });
+
     it('serves dead-intent candidates, always as inferences', async () => {
       const report = await call({ method: 'GET', url: repo('/dead-intent') });
       const { candidates } = report.body.data as {

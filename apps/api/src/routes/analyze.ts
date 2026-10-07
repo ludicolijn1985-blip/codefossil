@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   analyzeDeadIntent,
   analyzeHotspots,
+  analyzeOwnership,
   DEFAULT_DEAD_INTENT_LIMIT,
   DEFAULT_HOTSPOT_LIMIT,
   DEFAULT_STALE_DAYS,
@@ -31,6 +32,23 @@ const deadIntentQuery = z
   })
   .strict();
 
+const ownersQuery = z
+  .object({
+    path: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .refine((value) => !value.startsWith('/') && !value.split('/').includes('..'), {
+        message: 'must be a repository-relative path',
+      })
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(20),
+    activeDays: z.coerce.number().int().min(1).max(MAX_STALE_DAYS).default(365),
+    tests: flag.default(false),
+  })
+  .strict();
+
 /** Historical hotspots, risk components and dead-intent candidates, computed from the index. */
 export function analyzeRoutes(app: FastifyInstance, context: ApiContext): void {
   const db = context.fossil.db;
@@ -46,6 +64,19 @@ export function analyzeRoutes(app: FastifyInstance, context: ApiContext): void {
         includeGenerated: query.generated,
         includeNonCode: query.all,
         orderBy: query.order,
+      }),
+    };
+  });
+
+  app.get('/api/repositories/:id/owners', (request) => {
+    const repository = repositoryOr404(context, request.params);
+    const query = ownersQuery.parse(request.query);
+    return {
+      data: analyzeOwnership(db, repository.id, {
+        ...(query.path ? { path: query.path } : {}),
+        limit: query.limit,
+        activeDays: query.activeDays,
+        includeTests: query.tests,
       }),
     };
   });
