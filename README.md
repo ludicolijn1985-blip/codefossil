@@ -22,11 +22,13 @@ code still running, what breaks most often, and a page per function, generated b
 
 ```bash
 cd any-git-repository
-npx codefossil why <function-or-file>
+npx codefossil why <function-or-file>   # where it came from and what happened to it
+npx codefossil fossils                  # the oldest code still running
+npx codefossil site fossil-site         # a static website about your repository
 ```
 
 The first question indexes the history into `.codefossil/` (it ignores itself; your repository is
-untouched). Express, 6,170 commits over 15 years, takes about 20 seconds. Later questions only
+untouched). Express, 6,173 commits over 17 years, takes about 17 seconds. Later questions only
 add new commits. No account, no upload, no AI needed.
 
 Some repositories (Express among them) set `ignore-scripts=true` in their `.npmrc`, which stops
@@ -35,19 +37,22 @@ npm from installing the SQLite driver's binary. There, run
 
 ## What you can ask
 
-| Command                                 | Answers                                                                           |
-| --------------------------------------- | --------------------------------------------------------------------------------- |
-| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since   |
-| `codefossil impact res.json`            | Which functions call it, which files import it, transitively, and which are tests |
-| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it        |
-| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components    |
-| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)   |
-| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since     |
-| `codefossil why res.send --html x.html` | A one-page, shareable history of a function: birth, moves, every change, fixes    |
-| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                      |
-| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests        |
-| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies              |
-| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)              |
+| Command                                 | Answers                                                                            |
+| --------------------------------------- | ---------------------------------------------------------------------------------- |
+| `codefossil why res.sendFile`           | Where it was introduced, by whom, why (commit, issue, PR), how it changed since    |
+| `codefossil impact res.json`            | Which functions call it, which files import it, transitively, and which are tests  |
+| `codefossil timeline lib/response.js`   | Every change to a file, across renames, with the symbols and PRs behind it         |
+| `codefossil hotspots`                   | Where history concentrates: change × churn × fix commits, with risk components     |
+| `codefossil dead-intent`                | Workarounds whose reason may be gone ("temporary", "compat", old Node versions)    |
+| `codefossil fossils`                    | The oldest code still running, when it was born and what happened to it since      |
+| `codefossil hotspots --symbols`         | The functions fixed most often, with the fixes                                     |
+| `codefossil why res.send --html x.html` | A one-page, shareable history of a function: birth, moves, every change, fixes     |
+| `codefossil query "what depends on X?"` | The same answers from a plain-words question                                       |
+| `codefossil report --base origin/main`  | A Markdown report on everything a branch touches, for CI and pull requests         |
+| `codefossil serve` + web UI             | Browse investigations, the evidence graph, hotspots and dependencies               |
+| `codefossil site fossil-site`           | A static website: oldest code, most-fixed functions, hotspots, a page per function |
+| `codefossil lens src/cart.ts`           | One line of history per function of a file (what the VS Code extension shows)      |
+| `codefossil mcp`                        | The same answers for AI coding agents (Claude Code, Cursor, VS Code)               |
 
 Targets can be a symbol (`res.sendFile`, `Cart.total`), a path, `path:Symbol`, a commit sha,
 `#123` or `npm:package`. An ambiguous target lists the candidates instead of guessing.
@@ -92,6 +97,19 @@ back through moves), every commit that changed it on a timeline, which of them w
 issues behind them and how many places call it.
 
 ![The life of res.send in Express](docs/images/story-res-send.png)
+
+## Fossil Records
+
+What CODEFOSSIL finds in well-known repositories, every claim with its evidence level and the
+command that reproduces it:
+
+- [#1 Express](docs/fossil-records/01-express.md): `res.get` has not changed a character since
+  2011; `res.send` has had 17 fix commits.
+- [#2 React](docs/fossil-records/02-react.md): a function from the 2013 initial public release
+  still ships.
+
+Browse both as [websites](https://ludicolijn1985-blip.github.io/codefossil/), built with
+`codefossil site`.
 
 ## Evidence, not guesses
 
@@ -191,10 +209,13 @@ unless you allow it, and every AI claim is INFERRED and capped at confidence 0.6
 
 ## Languages
 
-Symbols, calls and imports: **TypeScript, JavaScript (ES modules, CommonJS, prototype style and
-IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. C#
-`using` directives name namespaces, which are not tied to files, so they stay unresolved. History, hotspots and timelines work for any file in any
-language. Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`.
+Symbols, calls and imports for **TypeScript, JavaScript (ES modules, CommonJS, prototype style and
+IIFE/UMD wrappers), Python, Go, Rust, Java, C#, Ruby and PHP**, parsed with Tree-sitter. History,
+hotspots and timelines work for any file in any language.
+
+Manifests: `package.json`, `go.mod`, `Cargo.toml`, `pyproject.toml`, `requirements*.txt`. Java,
+Ruby and PHP imports resolve to repository files by path; C# `using` directives name namespaces,
+which are not tied to files, so they stay unresolved.
 
 More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -206,6 +227,9 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 - [SCHEMA.md](SCHEMA.md): the database.
 - [ACTION.md](ACTION.md): the GitHub Action.
 - [SECURITY.md](SECURITY.md): the threat model and guarantees.
+- [apps/vscode](apps/vscode): the VS Code extension.
+- [docs/fossil-records](docs/fossil-records): what CODEFOSSIL finds in well-known repositories.
+- [CHANGELOG.md](CHANGELOG.md): what changed in each release.
 
 ## Known limitations
 
