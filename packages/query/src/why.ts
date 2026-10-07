@@ -226,7 +226,12 @@ function whySymbol(
             ? `${subject} looks moved, with edits, from ${from}${when}: that definition left ` +
               'its file in the same commit (inferred from the name, not the content).'
             : `${subject} was copied, with identical content, from ${from}${when}.`,
-      role: method === 'renamed' ? 'renamed from' : 'copied from',
+      role:
+        method === 'renamed'
+          ? 'renamed from'
+          : method === 'moved-with-edits'
+            ? 'moved from'
+            : 'copied from',
       level: hop.row.evidenceType,
       confidence: hop.row.confidence,
       evidenceIds: [
