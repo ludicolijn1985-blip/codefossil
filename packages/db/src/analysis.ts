@@ -121,6 +121,8 @@ export interface CommitDiscussion {
   readonly number: string;
   /** `owner/name` for an issue of another repository; null for the indexed one. */
   readonly repo: string | null;
+  /** Where the issue lives: `github`, or a tracker (`jira`, `linear`) linked by key. */
+  readonly provider: string;
   readonly title: string;
   readonly body: string;
   readonly labels: readonly string[];
@@ -159,6 +161,7 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
         id: issues.id,
         number: issues.externalId,
         repo: issues.sourceRepo,
+        provider: issues.provider,
         title: issues.title,
         body: issues.body,
         labels: issues.labelsJson,
@@ -175,6 +178,7 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
         number: pullRequests.externalId,
         // Only issues of other repositories are synced; every pull request is the repository's own.
         repo: sql<string>`''`,
+        provider: pullRequests.provider,
         title: pullRequests.title,
         body: pullRequests.body,
         labels: pullRequests.labelsJson,
@@ -199,6 +203,7 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
         type: otherType,
         number: row.number,
         repo: row.repo === '' ? null : row.repo,
+        provider: row.provider,
         title: row.title,
         body: row.body,
         labels: row.labels ?? [],

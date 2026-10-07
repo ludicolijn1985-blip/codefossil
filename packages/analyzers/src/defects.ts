@@ -23,6 +23,8 @@ const NOT_A_DEFECT =
 /** Confidence of each heuristic; a label on a resolved issue is the strongest reading. */
 export const DEFECT_CONFIDENCE = {
   revert: 0.7,
+  /** A commit naming a Jira or Linear bug ticket by key: most such commits work on the bug. */
+  bugTicket: 0.7,
   conventionalFix: 0.6,
   fixWords: 0.5,
 } as const;
@@ -52,6 +54,18 @@ export function classifyDefects(
     ]);
   }
 
+  // Tracker issues are linked by the key a commit names, not by a closing keyword.
+  const bugTickets = new Map<number, CommitDiscussion[]>();
+  for (const discussion of discussions) {
+    if (discussion.relation !== 'REFERENCES' || discussion.type !== 'issue') continue;
+    if (discussion.provider === 'github') continue;
+    if (!discussion.labels.some((label) => BUG_LABEL.test(label))) continue;
+    bugTickets.set(discussion.commitId, [
+      ...(bugTickets.get(discussion.commitId) ?? []),
+      discussion,
+    ]);
+  }
+
   const result = new Map<number, DefectSignal>();
   for (const commit of commits) {
     const own = commitEvidence.get(commit.sha);
@@ -62,6 +76,14 @@ export function classifyDefects(
       confidence: issue.confidence,
       evidenceIds: cite(issue.evidenceIds),
     }));
+    for (const ticket of bugTickets.get(commit.id) ?? []) {
+      signals.push({
+        reason: `names ${ticket.provider === 'jira' ? 'Jira' : 'Linear'} bug ${issueReference(ticket)}`,
+        level: 'INFERRED',
+        confidence: DEFECT_CONFIDENCE.bugTicket,
+        evidenceIds: cite(ticket.evidenceIds),
+      });
+    }
     if (REVERT.test(`${commit.subject}\n${commit.body}`)) {
       signals.push({
         reason: 'reverts an earlier change',

@@ -19,6 +19,11 @@ export interface CliIO {
   readonly onServe?: (server: { url: string; close: () => Promise<void> }) => void;
   /** The current time, for analyses that measure age; tests pin it. */
   readonly now?: () => Date;
+  /**
+   * Environment for tracker credentials (JIRA_API_TOKEN, LINEAR_API_KEY…);
+   * defaults to the process environment. Tests inject their own.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
   /** Builds the AI provider from its configuration; tests inject a fake that contacts nothing. */
   readonly createAiProvider?: (config: AiConfig) => AiProvider;
 }

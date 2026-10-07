@@ -161,12 +161,42 @@ describe('classifyDefects', () => {
   });
   const evidence = new Map([[commit(1, '').sha, 101]]);
 
+  it('reads a commit naming a Jira or Linear bug ticket as a fix (INFERRED)', () => {
+    const ticket = (provider: string, labels: string[]): CommitDiscussion => ({
+      commitId: 7,
+      type: 'issue',
+      number: 'PROJ-12',
+      repo: null,
+      provider,
+      title: 'Checkout crashes',
+      body: '',
+      labels,
+      relation: 'REFERENCES',
+      level: 'DERIVED',
+      confidence: 1,
+      evidenceIds: [55],
+    });
+    const named = commit(7, 'PROJ-12 handle empty cart');
+    const evidenceOf = new Map([[named.sha, 107]]);
+
+    expect(classifyDefects([named], [ticket('jira', ['type:Bug'])], evidenceOf).get(7)).toEqual({
+      reason: 'names Jira bug PROJ-12',
+      level: 'INFERRED',
+      confidence: 0.7,
+      evidenceIds: [107, 55],
+    });
+    // A story is no bug; a GitHub mention without a closing keyword is no resolution either.
+    expect(classifyDefects([named], [ticket('jira', ['type:Story'])], evidenceOf).size).toBe(0);
+    expect(classifyDefects([named], [ticket('github', ['bug'])], evidenceOf).size).toBe(0);
+  });
+
   it('reads labelled resolved issues, reverts and fix wording at their own certainty', () => {
     const bugIssue: CommitDiscussion = {
       commitId: 1,
       type: 'issue',
       number: '12',
       repo: null,
+      provider: 'github',
       title: 'Crash on checkout',
       body: '',
       labels: ['bug', 'checkout'],
@@ -212,6 +242,7 @@ describe('classifyDefects', () => {
       type: 'issue',
       number: '3',
       repo: null,
+      provider: 'github',
       title: 'Cart',
       body: '',
       labels: ['feature'],

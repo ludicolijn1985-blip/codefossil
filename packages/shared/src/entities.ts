@@ -57,6 +57,8 @@ export function issueReference(item: {
   readonly number: number | string;
   readonly repo?: string | null;
 }): string {
+  // A tracker key (`PROJ-123`) is written as it is.
+  if (typeof item.number === 'string' && !/^\d+$/.test(item.number)) return item.number;
   return `${item.repo ? item.repo : ''}#${String(item.number)}`;
 }
 

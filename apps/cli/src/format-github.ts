@@ -1,4 +1,4 @@
-import type { GitHubIndexResult } from '@codefossil/core';
+import type { GitHubIndexResult, TrackerIndexResult } from '@codefossil/core';
 import type { ProviderCounts } from '@codefossil/db';
 import { plural } from './format.js';
 
@@ -67,4 +67,20 @@ export function formatGitHubStatus(github: GitHubStatus | null): string {
     `${plural(github.pullRequests, 'pull request')}${pending}; ` +
     `last synced ${github.lastSyncedAt ?? 'never'}\n`
   );
+}
+
+export function formatTrackers(trackers: readonly TrackerIndexResult[]): string {
+  return trackers
+    .map((tracker) => {
+      const label = tracker.provider === 'jira' ? 'Jira' : 'Linear';
+      const links = `${plural(tracker.links.references, 'reference')} linked`;
+      if (!tracker.sync) return `${label}: offline, ${links}.\n`;
+      const { sync } = tracker;
+      const stopped = sync.stoppedEarly ? ` Note: ${sync.stoppedEarly}.` : '';
+      return (
+        `${label}: read ${plural(sync.issues, 'issue')} from ${plural(sync.projects, 'project')} ` +
+        `with ${plural(sync.requests, 'request')}; ${links}.${stopped}\n`
+      );
+    })
+    .join('');
 }

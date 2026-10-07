@@ -350,7 +350,8 @@ export const providerConnections = sqliteTable(
     repositoryId: integer('repository_id')
       .notNull()
       .references(() => repositories.id, { onDelete: 'cascade' }),
-    provider: text('provider', { enum: ['github'] }).notNull(),
+    /** `github`; or an issue tracker linked by keys (`PROJ-123`): `jira`, `linear`. */
+    provider: text('provider', { enum: ['github', 'jira', 'linear'] }).notNull(),
     owner: text('owner').notNull(),
     name: text('name').notNull(),
     apiUrl: text('api_url').notNull(),

@@ -7,3 +7,4 @@ export * from './reference-linker.js';
 export * from './run-index.js';
 export * from './symbol-indexer.js';
 export * from './typescript-calls.js';
+export * from './tracker-sync.js';

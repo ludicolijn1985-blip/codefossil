@@ -8,9 +8,11 @@ import {
   TYPESCRIPT_ENV,
 } from '@codefossil/core';
 import {
+  connectProvider,
   fileImports,
   findFileByPath,
   forgetGraphSnapshot,
+  listProviderConnections,
   getIndexStatus,
   importedBy,
   listDependencies,
@@ -20,6 +22,9 @@ import {
 } from '@codefossil/db';
 import { formatDependencies, formatFileDependencies } from './format-graph.js';
 import { formatIndexResult, formatStatus, formatSymbols } from './format.js';
+import { LINEAR_API_URL, validateApiUrl } from '@codefossil/providers';
+import { JIRA_EMAIL_ENV, JIRA_TOKEN_ENV, LINEAR_TOKEN_ENV, planTrackerSync } from './trackers.js';
+import { formatTrackers } from './format-github.js';
 import { formatGitHubIndex, formatGitHubStatus, type GitHubStatus } from './format-github.js';
 import { connectGitHub, planGitHubSync } from './github.js';
 import { registerGraphCommands } from './graph-commands.js';
@@ -59,6 +64,11 @@ interface IndexCommandOptions {
   readonly offline?: boolean;
   readonly githubMaxRequests: string;
   readonly typescript?: boolean;
+  readonly json?: boolean;
+}
+
+interface TrackerConnectOptions {
+  readonly projects?: string;
   readonly json?: boolean;
 }
 
@@ -159,7 +169,12 @@ export function createProgram(io: CliIO): Command {
           offline: options.offline === true,
           maxRequests,
         });
-        for (const note of plan.notes) io.stderr(`Note: ${note}\n`);
+        const trackerPlan = planTrackerSync(
+          io,
+          listProviderConnections(ws.fossil.db, ws.repositoryId),
+          { offline: options.offline === true, maxRequests },
+        );
+        for (const note of [...plan.notes, ...trackerPlan.notes]) io.stderr(`Note: ${note}\n`);
         const typescript = options.typescript === true || typeCheckingRequested();
         // Asked for explicitly: rebuild the call graph now, even if HEAD did not move.
         if (options.typescript) forgetGraphSnapshot(ws.fossil.db, ws.repositoryId);
@@ -167,6 +182,7 @@ export function createProgram(io: CliIO): Command {
         const result = await runIndex(ws.fossil.db, ws.root, {
           ...(since ? { since } : {}),
           ...(plan.factory ? { github: plan.factory } : {}),
+          ...(trackerPlan.factory ? { trackers: trackerPlan.factory } : {}),
           ...(typescript ? { typescript: true } : {}),
         });
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
@@ -174,13 +190,82 @@ export function createProgram(io: CliIO): Command {
           writeJson(io, result);
           return;
         }
-        io.stdout(formatIndexResult(result, seconds) + formatGitHubIndex(result.github));
+        io.stdout(
+          formatIndexResult(result, seconds) +
+            formatGitHubIndex(result.github) +
+            formatTrackers(result.trackers),
+        );
       });
     });
 
-  program
+  const connect = program
     .command('connect')
-    .description('Connect the repository to an issue and pull request provider.')
+    .description('Connect the repository to an issue and pull request provider.');
+
+  connect
+    .command('jira')
+    .description(
+      'Link to a Jira site: issues named by key in commits and pull requests (PROJ-123) are ' +
+        `read and linked. Credentials come from ${JIRA_TOKEN_ENV} (and ${JIRA_EMAIL_ENV} for Jira ` +
+        'Cloud) and are never stored.',
+    )
+    .argument('<url>', 'the site, e.g. https://acme.atlassian.net')
+    .option('--projects <keys>', 'only these project keys, comma-separated (default: all visible)')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (url: string, options: TrackerConnectOptions) => {
+      await connectTracker('jira', url, options);
+    });
+
+  connect
+    .command('linear')
+    .description(
+      'Link to Linear: issues named by key in commits and pull requests (ENG-123) are read and ' +
+        `linked. The API key comes from ${LINEAR_TOKEN_ENV} and is never stored.`,
+    )
+    .option('--projects <keys>', 'only these team keys, comma-separated (default: all visible)')
+    .addOption(new Option('--json', 'print the connection as JSON'))
+    .action(async (options: TrackerConnectOptions) => {
+      await connectTracker('linear', LINEAR_API_URL, options);
+    });
+
+  async function connectTracker(
+    provider: 'jira' | 'linear',
+    url: string,
+    options: TrackerConnectOptions,
+  ): Promise<void> {
+    let apiUrl: string;
+    try {
+      apiUrl = validateApiUrl(url).toString().replace(/\/+$/, '');
+    } catch (error) {
+      throw new CliError(error instanceof Error ? error.message : String(error));
+    }
+    const projects = (options.projects ?? '')
+      .split(',')
+      .map((key) => key.trim().toUpperCase())
+      .filter((key) => key !== '');
+    const invalid = projects.filter((key) => !/^[A-Z][A-Z0-9]{1,9}$/.test(key));
+    if (invalid.length > 0) throw new CliError(`Not a project key: ${invalid.join(', ')}`);
+    await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      connectProvider(ws.fossil.db, {
+        repositoryId: ws.repositoryId,
+        provider,
+        owner: '',
+        name: projects.join(','),
+        apiUrl,
+      });
+      if (options.json) {
+        writeJson(io, { provider, apiUrl, projects });
+        return;
+      }
+      const label = provider === 'jira' ? 'Jira' : 'Linear';
+      io.stdout(
+        `Connected to ${label} at ${apiUrl}${projects.length > 0 ? ` (projects ${projects.join(', ')})` : ''}.\n` +
+          `Next: set ${provider === 'jira' ? JIRA_TOKEN_ENV : LINEAR_TOKEN_ENV} and run \`codefossil index\`.\n`,
+      );
+    });
+  }
+
+  connect
     .command('github')
     .description(
       'Link to a GitHub repository (owner/name, or the origin remote). ' +

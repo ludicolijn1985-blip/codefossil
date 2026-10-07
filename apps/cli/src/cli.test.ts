@@ -42,6 +42,8 @@ async function fossilWith(
       stderr += text;
     },
     resolveGitHubToken,
+    // Tests never see the developer's tracker credentials either.
+    env: {},
   };
   const code = await runCli(args, io);
   return { code, stdout, stderr };
@@ -136,6 +138,38 @@ describe('fossil CLI', () => {
     expect((await fossil(root(), 'gc', '--max-cache', 'many')).code).not.toBe(0);
     // Answers still work after compaction.
     expect((await fossil(root(), 'status')).code).toBe(0);
+  });
+
+  it('connects Jira and Linear, validating the site and project keys', async () => {
+    await fossil(root(), 'init');
+    const jira = await fossil(
+      root(),
+      'connect',
+      'jira',
+      'https://acme.atlassian.net/',
+      '--projects',
+      'proj, ops',
+      '--json',
+    );
+    expect(JSON.parse(jira.stdout)).toEqual({
+      provider: 'jira',
+      apiUrl: 'https://acme.atlassian.net',
+      projects: ['PROJ', 'OPS'],
+    });
+    expect((await fossil(root(), 'connect', 'jira', 'http://acme.example')).stderr).toMatch(
+      /https/,
+    );
+    expect(
+      (await fossil(root(), 'connect', 'jira', 'https://a.example', '--projects', 'a-b')).stderr,
+    ).toMatch(/Not a project key/);
+    expect((await fossil(root(), 'connect', 'linear')).code).toBe(0);
+
+    // Without credentials both stay offline and say so; indexing still succeeds.
+    const index = await fossil(root(), 'index');
+    expect(index.code).toBe(0);
+    expect(index.stderr).toContain('No JIRA_API_TOKEN set');
+    expect(index.stderr).toContain('No LINEAR_API_KEY set');
+    expect(index.stdout).toContain('Jira: offline, 0 references linked.');
   });
 
   it('accepts --since and rejects an invalid date', async () => {

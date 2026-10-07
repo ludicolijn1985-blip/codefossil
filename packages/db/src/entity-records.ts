@@ -53,7 +53,8 @@ export type EntityRecord =
   | {
       readonly type: 'issue' | 'pull_request';
       readonly id: number;
-      readonly number: number;
+      /** The GitHub number; for a Jira or Linear issue its key (`PROJ-123`). */
+      readonly number: number | string;
       /** `owner/name` for an issue of another repository; null for the indexed one. */
       readonly repo: string | null;
       readonly title: string;
@@ -149,7 +150,7 @@ const LOADERS: Record<EntityType, Loader> = {
       .all()
       .map(({ externalId, sourceRepo, ...row }) => ({
         type: 'issue',
-        number: Number(externalId),
+        number: /^\d+$/.test(externalId) ? Number(externalId) : externalId,
         repo: sourceRepo === '' ? null : sourceRepo,
         mergedAt: null,
         ...row,

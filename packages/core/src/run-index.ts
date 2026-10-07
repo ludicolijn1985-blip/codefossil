@@ -1,11 +1,23 @@
-import { getProviderConnection, type FossilDb, type ProviderConnectionRow } from '@codefossil/db';
-import type { GitHubClient } from '@codefossil/providers';
+import {
+  getProviderConnection,
+  listProviderConnections,
+  type FossilDb,
+  type ProviderConnectionRow,
+} from '@codefossil/db';
+import type { GitHubClient, TrackerClient } from '@codefossil/providers';
 import { indexCoverage, type CoverageIndexResult } from './coverage.js';
 import { indexDependencies, type DependencyIndexResult } from './dependency-indexer.js';
 import { indexRepository, type IndexOptions, type IndexResult } from './git-indexer.js';
 import { syncGitHub, type GitHubSyncResult } from './github-sync.js';
 import { linkGitHubReferences, type LinkResult } from './reference-linker.js';
 import { indexSymbols, type SymbolIndexResult } from './symbol-indexer.js';
+import {
+  linkTrackerReferences,
+  syncTracker,
+  type TrackerLinkResult,
+  type TrackerProvider,
+  type TrackerSyncResult,
+} from './tracker-sync.js';
 
 export interface RunIndexOptions extends IndexOptions {
   /**
@@ -19,6 +31,18 @@ export interface RunIndexOptions extends IndexOptions {
    * compiler from node_modules, so it is never on by default.
    */
   readonly typescript?: boolean;
+  /**
+   * Creates a client for a connected Jira or Linear tracker; omit it (or
+   * return null) to stay offline: stored issues are still linked.
+   */
+  readonly trackers?: (connection: ProviderConnectionRow) => TrackerClient | null;
+}
+
+export interface TrackerIndexResult {
+  readonly provider: TrackerProvider;
+  /** Null when the run was offline for this tracker. */
+  readonly sync: TrackerSyncResult | null;
+  readonly links: TrackerLinkResult;
 }
 
 export interface GitHubIndexResult {
@@ -36,6 +60,8 @@ export interface RunIndexResult extends IndexResult {
   readonly coverage: CoverageIndexResult;
   /** Null when the repository is not connected to GitHub. */
   readonly github: GitHubIndexResult | null;
+  /** Connected Jira and Linear trackers. */
+  readonly trackers: readonly TrackerIndexResult[];
 }
 
 /**
@@ -79,5 +105,14 @@ export async function runIndex(
     const links = linkGitHubReferences(db, history.repositoryId, connection, observedAt);
     github = { owner: connection.owner, name: connection.name, sync, links };
   }
-  return { ...history, symbols, dependencies, coverage, github };
+  const trackers: TrackerIndexResult[] = [];
+  for (const tracker of listProviderConnections(db, history.repositoryId)) {
+    if (tracker.provider !== 'jira' && tracker.provider !== 'linear') continue;
+    const client = options.trackers?.(tracker) ?? null;
+    const sync = client ? await syncTracker(db, tracker, client, clock) : null;
+    const observedAt = (options.now ?? (() => new Date()))().toISOString();
+    const links = linkTrackerReferences(db, history.repositoryId, tracker.provider, observedAt);
+    trackers.push({ provider: tracker.provider, sync, links });
+  }
+  return { ...history, symbols, dependencies, coverage, github, trackers };
 }

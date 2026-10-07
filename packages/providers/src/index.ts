@@ -3,3 +3,6 @@ export * from './github/references.js';
 export * from './github/remote.js';
 export * from './github/schemas.js';
 export * from './github/token.js';
+export * from './trackers/http.js';
+export * from './trackers/jira.js';
+export * from './trackers/linear.js';

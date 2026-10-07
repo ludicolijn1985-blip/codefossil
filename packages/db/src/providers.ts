@@ -128,13 +128,17 @@ export interface ExternalItem {
  */
 export function upsertIssue(
   db: FossilDb,
-  item: ExternalItem & { readonly sourceRepo?: string },
+  item: ExternalItem & {
+    readonly sourceRepo?: string;
+    /** A tracker key (`PROJ-123`) identifying the issue instead of `number`. */
+    readonly externalKey?: string;
+  },
 ): IssueRow {
-  const { number, labels, sourceRepo = '', ...fields } = item;
+  const { number, labels, sourceRepo = '', externalKey, ...fields } = item;
   const values = {
     ...fields,
     sourceRepo: sourceRepo.toLowerCase(),
-    externalId: String(number),
+    externalId: externalKey ?? String(number),
     labelsJson: [...labels],
   };
   const row = db
@@ -252,6 +256,7 @@ export function findIssueByNumber(
     .where(
       and(
         eq(issues.repositoryId, repositoryId),
+        eq(issues.provider, 'github'),
         eq(issues.sourceRepo, ''),
         eq(issues.externalId, String(number)),
       ),
@@ -349,7 +354,7 @@ export function externalIdsByNumber(
   const issueRows = db
     .select({ id: issues.id, externalId: issues.externalId, sourceRepo: issues.sourceRepo })
     .from(issues)
-    .where(eq(issues.repositoryId, repositoryId))
+    .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, 'github')))
     .all();
   return {
     issues: byNumber(issueRows.filter((row) => row.sourceRepo === '')),
@@ -362,7 +367,9 @@ export function externalIdsByNumber(
       db
         .select({ id: pullRequests.id, externalId: pullRequests.externalId })
         .from(pullRequests)
-        .where(eq(pullRequests.repositoryId, repositoryId))
+        .where(
+          and(eq(pullRequests.repositoryId, repositoryId), eq(pullRequests.provider, 'github')),
+        )
         .all(),
     ),
   };
@@ -393,7 +400,13 @@ export function providerCounts(db: FossilDb, repositoryId: number): ProviderCoun
       db
         .select({ value: count() })
         .from(issues)
-        .where(and(eq(issues.repositoryId, repositoryId), eq(issues.sourceRepo, '')))
+        .where(
+          and(
+            eq(issues.repositoryId, repositoryId),
+            eq(issues.provider, 'github'),
+            eq(issues.sourceRepo, ''),
+          ),
+        )
         .get()?.value,
     ),
     pullRequests: countOf(
@@ -485,4 +498,32 @@ export function recordForeignLookup(
       set: { found, checkedAt },
     })
     .run();
+}
+
+/** Tracker issues (Jira, Linear) by key, for linking keys found in text. */
+export function trackerIssueIds(
+  db: FossilDb,
+  repositoryId: number,
+  provider: 'jira' | 'linear',
+): Map<string, number> {
+  return new Map(
+    db
+      .select({ id: issues.id, key: issues.externalId })
+      .from(issues)
+      .where(and(eq(issues.repositoryId, repositoryId), eq(issues.provider, provider)))
+      .all()
+      .map((row) => [row.key, row.id]),
+  );
+}
+
+/** Every provider link of a repository. */
+export function listProviderConnections(
+  db: FossilDb,
+  repositoryId: number,
+): ProviderConnectionRow[] {
+  return db
+    .select()
+    .from(providerConnections)
+    .where(eq(providerConnections.repositoryId, repositoryId))
+    .all();
 }
