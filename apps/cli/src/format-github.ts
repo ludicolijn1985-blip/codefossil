@@ -44,6 +44,12 @@ export function formatGitHubIndex(result: GitHubIndexResult | null): string {
         'pull requests keep their keyword-based links.\n',
     );
   }
+  if (sync.foreignIssuesError) {
+    lines.push(
+      `Note: issues of other repositories could not be read (${sync.foreignIssuesError}); ` +
+        'the next sync tries again.\n',
+    );
+  }
   if (sync.stoppedEarly) {
     lines.push(`Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`);
   }

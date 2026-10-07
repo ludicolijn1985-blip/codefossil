@@ -24,6 +24,11 @@ export interface ParsedSymbol {
   readonly endLine: number;
   /** SHA-256 of the symbol's full source text; changes whenever the symbol does. */
   readonly contentHash: string;
+  /**
+   * SHA-256 of the source text with the symbol's own name blanked out: equal
+   * for two versions that differ only in that name (a rename).
+   */
+  readonly shapeHash: string;
 }
 
 interface Scope {
@@ -45,6 +50,14 @@ function pushChildren(stack: Pending[], node: Node, scope: readonly Scope[]): vo
     const child = children[i];
     if (child) stack.push({ node: child, scope });
   }
+}
+
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Hash `text` with every whole-word occurrence of `name` (its own, recursive calls) blanked. */
+function shapeHashOf(text: string, name: string): string {
+  const own = new RegExp(`(?<![\\w$])${escapeRegExp(name)}(?![\\w$])`, 'g');
+  return createHash('sha256').update(text.replace(own, '\u0000')).digest('hex');
 }
 
 /** Where a symbol's definition sits in the source, in bytes (end exclusive). */
@@ -104,6 +117,7 @@ export function extractSymbols(
       startLine: node.startPosition.row + 1,
       endLine: node.endPosition.row + 1,
       contentHash: createHash('sha256').update(node.text).digest('hex'),
+      shapeHash: shapeHashOf(node.text, name),
     });
 
     if (rule.container) {

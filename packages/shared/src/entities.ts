@@ -29,7 +29,12 @@ export const RELATION_TYPES = [
   'IMPLEMENTED_BY',
   'REFERENCES',
   'INTRODUCED_BY',
-  /** symbol → symbol: identical content appeared in another file (a copy or a move). */
+  /**
+   * symbol → symbol: lineage. The symbol continues an earlier one: identical
+   * content in another file (a copy or a move), the same code under a new name
+   * (a rename), or the same name moved with edits (INFERRED). The provenance
+   * method says which.
+   */
   'COPIED_FROM',
   'REVIEWED_IN',
   'CAUSED',

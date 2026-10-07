@@ -271,6 +271,84 @@ describe('indexSymbols at the edges of the evidence', () => {
     expect(moved.find((s) => s.name === 'one')?.introducedBy).not.toBeNull();
   });
 
+  const lineageOf = (repositoryId: number, symbolId: number) =>
+    outgoingRelations(fossil.db, repositoryId, { type: 'symbol', id: symbolId }).filter(
+      (relation) => relation.relation === 'COPIED_FROM' || relation.relation === 'INTRODUCED_BY',
+    );
+
+  it('follows a symbol renamed in place back to its old name', async () => {
+    const r = fixture();
+    const fn = (name: string) =>
+      `export function ${name}(n: number): number {\n  return n < 2 ? 1 : n * ${name}(n - 1);\n}\n`;
+    await r.write('src/math.ts', fn('fact'));
+    const born = await r.commit('Add fact');
+    await r.write('src/math.ts', fn('factorial'));
+    await r.commit('Rename fact to factorial');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsRenamed: 1, symbolsIntroduced: 1 });
+    const symbols = symbolsOf(result.repositoryId, 'src/math.ts');
+    expect(symbols.map((s) => s.name)).toEqual(['factorial']);
+    const lineage = lineageOf(result.repositoryId, symbols[0]?.id ?? 0);
+    expect(lineage).toHaveLength(1);
+    expect(lineage[0]).toMatchObject({
+      relation: 'COPIED_FROM',
+      evidenceType: 'DERIVED',
+      confidence: 0.9,
+    });
+    expect(lineage[0]?.provenanceJson.method).toBe('renamed');
+    // The old name keeps the introduction, so factorial's origin is the commit that added fact.
+    const [origin] = lineageOf(result.repositoryId, lineage[0]?.targetId ?? 0);
+    expect(origin).toMatchObject({
+      relation: 'INTRODUCED_BY',
+      targetId: findCommitBySha(fossil.db, result.repositoryId, born)?.id,
+    });
+  });
+
+  it('infers a move with edits when a name leaves one file for another in one commit', async () => {
+    const r = fixture();
+    await r.write('src/a.ts', 'export function load(path: string) {\n  return read(path);\n}\n');
+    await r.write('src/b.ts', 'export const b = 1;\n');
+    await r.commit('Add loader');
+    await r.write('src/a.ts', 'export const a = 1;\n');
+    await r.write(
+      'src/b.ts',
+      'export const b = 1;\nexport function load(path: string) {\n  return read(path, "utf8");\n}\n',
+    );
+    await r.commit('Move the loader, reading UTF-8');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsMoved: 1 });
+    const load = symbolsOf(result.repositoryId, 'src/b.ts').find((s) => s.name === 'load');
+    const lineage = lineageOf(result.repositoryId, load?.id ?? 0);
+    expect(lineage).toHaveLength(1);
+    expect(lineage[0]).toMatchObject({
+      relation: 'COPIED_FROM',
+      evidenceType: 'INFERRED',
+      confidence: 0.6,
+    });
+    expect(lineage[0]?.provenanceJson.method).toBe('moved-with-edits');
+  });
+
+  it('does not guess between two equally good rename candidates', async () => {
+    const r = fixture();
+    const fn = (name: string) => `export function ${name}() {\n  return 1;\n}\n`;
+    await r.write('src/twins.ts', `${fn('left')}${fn('right')}`);
+    await r.commit('Add twins');
+    await r.write('src/twins.ts', fn('middle'));
+    await r.commit('Replace both');
+
+    const result = await runIndex(fossil.db, r.root, { now });
+
+    expect(result.symbols).toMatchObject({ symbolsRenamed: 0, symbolsMoved: 0 });
+    const middle = symbolsOf(result.repositoryId, 'src/twins.ts').find((s) => s.name === 'middle');
+    expect(lineageOf(result.repositoryId, middle?.id ?? 0)).toEqual([
+      expect.objectContaining({ relation: 'INTRODUCED_BY' }),
+    ]);
+  });
+
   it('skips binary content and unsupported languages without failing', async () => {
     const r = fixture();
     await r.write('fake.ts', new Uint8Array([0x00, 0x01, 0x02]));

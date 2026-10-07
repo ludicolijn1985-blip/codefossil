@@ -1,4 +1,4 @@
-import type { StoryEvent, SymbolStory } from '@codefossil/analyzers';
+import { issueReference, type StoryEvent, type SymbolStory } from '@codefossil/analyzers';
 
 /** Repository text is untrusted: everything that reaches the page is escaped. */
 const escape = (text: string): string =>
@@ -62,7 +62,7 @@ function eventItem(e: StoryEvent): string {
   const refs = e.discussions
     .map(
       (d) =>
-        `<span class="badge ref" title="${escape(d.title)}">${d.type === 'issue' ? 'issue' : 'PR'} #${escape(d.number)}</span>`,
+        `<span class="badge ref" title="${escape(d.title)}">${d.type === 'issue' ? 'issue' : 'PR'} ${escape(issueReference(d))}</span>`,
     )
     .join('');
   return (

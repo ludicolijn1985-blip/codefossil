@@ -24,6 +24,7 @@ import {
   pullCommitSchema,
   pullDetailSchema,
   RequestBudgetExhaustedError,
+  repositorySchema,
   reviewSchema,
   type GitHubClient,
   type IssueItem,
@@ -62,6 +63,8 @@ export interface GitHubSyncResult {
   readonly closingRefsError: string | null;
   /** Issues of other repositories that commits or pull requests reference, newly read. */
   readonly foreignIssues: number;
+  /** Why issues of other repositories could not be read this run (they are tried again later). */
+  readonly foreignIssuesError: string | null;
   readonly requests: number;
   /** Why the sync stopped early (rate limit, request budget); null when it completed. */
   readonly stoppedEarly: string | null;
@@ -102,12 +105,13 @@ export async function syncGitHub(
   const repoPath = `/repos/${encodeURIComponent(connection.owner)}/${encodeURIComponent(connection.name)}`;
   let stoppedEarly: string | null = null;
   let closingRefsError: string | null = null;
+  let foreignIssuesError: string | null = null;
 
   try {
     await syncItems(db, connection, client, repoPath, counters, now);
     await syncPullRequestDetails(db, connection.repositoryId, client, repoPath, counters, now);
     closingRefsError = await syncClosingRefs(db, connection, client, counters, now);
-    await syncForeignIssues(db, connection, client, counters, now);
+    foreignIssuesError = await syncForeignIssues(db, connection, client, counters, now);
   } catch (error) {
     if (!(error instanceof GitHubRateLimitError || error instanceof RequestBudgetExhaustedError)) {
       throw error;
@@ -121,6 +125,7 @@ export async function syncGitHub(
     requests: client.requestsMade,
     stoppedEarly,
     closingRefsError,
+    foreignIssuesError,
   };
 }
 
@@ -326,7 +331,10 @@ async function fetchClosingRefs(
     );
     db.transaction((tx) => {
       for (const pr of batch) {
-        const nodes = data.repository?.[`pr${pr.externalId}`]?.closingIssuesReferences?.nodes ?? [];
+        const nodes = data.repository?.[`pr${pr.externalId}`]?.closingIssuesReferences?.nodes;
+        // A missing or partly failed answer is not "closes nothing": leave the PR unknown, so it
+        // keeps its keyword links and is asked again on the next sync.
+        if (!nodes || nodes.some((node) => node === null)) continue;
         const refs = nodes.flatMap((node) =>
           node ? [{ repo: node.repository.nameWithOwner, number: node.number }] : [],
         );
@@ -337,8 +345,11 @@ async function fetchClosingRefs(
   }
 }
 
-/** `owner/name` made of GitHub's name characters, neither part `.` or `..`. */
-const REPO_NAME = /^(?!\.{1,2}\/)[\w.-]+\/(?!\.{1,2}$)[\w.-]+$/;
+/**
+ * `owner/name` as GitHub allows them: an owner of letters, digits and hyphens,
+ * a repository name of letters, digits, `.`, `_` and `-` that is not `.` or `..`.
+ */
+const REPO_NAME = /^[a-z\d](?:[a-z\d-]{0,38})\/(?!\.{1,2}$)[\w.-]{1,100}$/;
 
 interface ForeignRef {
   readonly repo: string;
@@ -374,9 +385,14 @@ function foreignReferences(
 
 /**
  * Read the issues of other repositories that history references
- * (`other/repo#12`), so they can be linked like the repository's own. Each
+ * (`other/repo#12`), so they can be linked like the repository's own.
+ *
+ * Which repositories are read is decided by commit and pull request text,
+ * which is untrusted: only public repositories are read, so text cannot make
+ * the sync copy private data the token happens to reach into the index. Each
  * reference is read at most once a week; one that cannot be read (private,
- * deleted, a pull request) is remembered as such.
+ * deleted, a pull request) is remembered as such. A failure stops these
+ * lookups for this run and is returned; it never stops the sync.
  */
 async function syncForeignIssues(
   db: FossilDb,
@@ -384,45 +400,73 @@ async function syncForeignIssues(
   client: GitHubClient,
   counters: Counters,
   now: () => Date,
-): Promise<void> {
+): Promise<string | null> {
   const since = new Date(now().getTime() - FOREIGN_LOOKUP_TTL_MS).toISOString();
   const recent = recentForeignLookups(db, connection.repositoryId, since);
   const due = [...foreignReferences(db, connection)]
     .filter(([key]) => !recent.has(key))
     .slice(0, MAX_FOREIGN_LOOKUPS);
-  for (const [key, { repo, number }] of due) {
-    const [owner = '', name = ''] = repo.split('/');
-    const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${String(number)}`;
-    let item: IssueItem | null = null;
-    try {
-      item = (await client.get(path, issueItemSchema)).items;
-    } catch (error) {
-      if (!(error instanceof GitHubApiError && UNREADABLE_STATUSES.has(error.status ?? 0))) {
-        throw error;
-      }
+  const publicRepos = new Map<string, boolean>();
+  try {
+    for (const [key, ref] of due) {
+      const issue = await readForeignIssue(client, ref, publicRepos);
+      db.transaction((tx) => {
+        if (issue) {
+          upsertIssue(tx, {
+            repositoryId: connection.repositoryId,
+            provider: 'github',
+            sourceRepo: ref.repo,
+            number: issue.number,
+            title: issue.title,
+            body: issue.body ?? '',
+            state: issue.state,
+            url: issue.html_url,
+            author: issue.user?.login ?? null,
+            labels: labelNames(issue.labels),
+            createdAt: issue.created_at,
+            updatedAt: issue.updated_at,
+            closedAt: issue.closed_at,
+          });
+          counters.foreignIssues++;
+        }
+        recordForeignLookup(tx, connection.repositoryId, key, issue !== null, now().toISOString());
+      });
     }
-    // Pull requests of other repositories are not stored: only their issues are linked.
-    const issue = item && !item.pull_request ? item : null;
-    db.transaction((tx) => {
-      if (issue) {
-        upsertIssue(tx, {
-          repositoryId: connection.repositoryId,
-          provider: 'github',
-          sourceRepo: repo,
-          number: issue.number,
-          title: issue.title,
-          body: issue.body ?? '',
-          state: issue.state,
-          url: issue.html_url,
-          author: issue.user?.login ?? null,
-          labels: labelNames(issue.labels),
-          createdAt: issue.created_at,
-          updatedAt: issue.updated_at,
-          closedAt: issue.closed_at,
-        });
-        counters.foreignIssues++;
-      }
-      recordForeignLookup(tx, connection.repositoryId, key, issue !== null, now().toISOString());
-    });
+    return null;
+  } catch (error) {
+    if (!(error instanceof GitHubApiError)) throw error;
+    return error.message;
   }
+}
+
+/** Null when a status says the resource cannot be read; other failures are thrown. */
+async function readOrNull<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (error) {
+    if (error instanceof GitHubApiError && UNREADABLE_STATUSES.has(error.status ?? 0)) return null;
+    throw error;
+  }
+}
+
+/** An issue of a public repository, or null: private, unreadable, or a pull request. */
+async function readForeignIssue(
+  client: GitHubClient,
+  { repo, number }: ForeignRef,
+  publicRepos: Map<string, boolean>,
+): Promise<IssueItem | null> {
+  const [owner = '', name = ''] = repo.split('/');
+  const repoPath = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+  let isPublic = publicRepos.get(repo);
+  if (isPublic === undefined) {
+    const info = await readOrNull(() => client.get(repoPath, repositorySchema));
+    isPublic = info !== null && !info.items.private;
+    publicRepos.set(repo, isPublic);
+  }
+  if (!isPublic) return null;
+  const item = await readOrNull(() =>
+    client.get(`${repoPath}/issues/${String(number)}`, issueItemSchema),
+  );
+  // Pull requests of other repositories are not stored: only their issues are linked.
+  return item && !item.items.pull_request ? item.items : null;
 }

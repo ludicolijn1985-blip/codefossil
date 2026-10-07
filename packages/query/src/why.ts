@@ -178,11 +178,19 @@ function whySymbol(
     if (index === 0) copiedIn = copyCommit;
     const evidenceId = copyCommit ? commitEvidence(db, repositoryId, copyCommit) : undefined;
     const { source } = hop;
+    const subject = index === 0 ? 'It' : 'That';
+    const from = `${source.kind} ${source.qualifiedName} in ${source.path}`;
+    const when = copyCommit ? ` in ${describeCommit(copyCommit)}` : '';
+    const method = hop.row.provenanceJson.method;
     parts.statements.push({
       text:
-        `${index === 0 ? 'It' : 'That'} was copied, with identical content, from ${source.kind} ` +
-        `${source.qualifiedName} in ${source.path}${copyCommit ? ` in ${describeCommit(copyCommit)}` : ''}.`,
-      role: 'copied from',
+        method === 'renamed'
+          ? `${subject} was renamed from ${from}${when}; the code is otherwise identical.`
+          : method === 'moved-with-edits'
+            ? `${subject} looks moved, with edits, from ${from}${when}: that definition left ` +
+              'its file in the same commit (inferred from the name, not the content).'
+            : `${subject} was copied, with identical content, from ${from}${when}.`,
+      role: method === 'renamed' ? 'renamed from' : 'copied from',
       level: hop.row.evidenceType,
       confidence: hop.row.confidence,
       evidenceIds: [
@@ -192,7 +200,7 @@ function whySymbol(
     });
   }
   if (hops.length > 0) {
-    parts.caveats.push('The change count covers the time since it was copied into this file.');
+    parts.caveats.push('The change count covers the time since it took its current name and file.');
   }
 
   const introduction = linked(db, repositoryId, origin, 'INTRODUCED_BY', 'out').find(

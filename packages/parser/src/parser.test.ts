@@ -79,6 +79,23 @@ describe('TypeScript', () => {
     expect(hash(after, 'function:b')).toBe(hash(before, 'function:b'));
   });
 
+  it('gives a renamed symbol the same shape hash, and an edited one a different one', async () => {
+    const shape = async (source: string) =>
+      (await extractor.extract(source, 'typescript'))?.symbols[0]?.shapeHash;
+    const original = await shape('function fact(n) { return n < 2 ? 1 : n * fact(n - 1); }');
+
+    expect(await shape('function factorial(n) { return n < 2 ? 1 : n * factorial(n - 1); }')).toBe(
+      original,
+    );
+    expect(await shape('function fact(n) { return n < 3 ? 1 : n * fact(n - 1); }')).not.toBe(
+      original,
+    );
+    // Only whole words are blanked: `factor` is left alone when `fact` is renamed to `g`.
+    expect(await shape('function fact(n) { return factor(n); }')).toBe(
+      await shape('function g(n) { return factor(n); }'),
+    );
+  });
+
   it('disambiguates overloads with an occurrence suffix', async () => {
     expect(
       await keys(

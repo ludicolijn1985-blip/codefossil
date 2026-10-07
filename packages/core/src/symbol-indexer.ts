@@ -1,4 +1,6 @@
 import {
+  deleteRelation,
+  fileSymbolRows,
   findFileById,
   findFileByPath,
   findIdenticalSymbol,
@@ -41,6 +43,11 @@ const COPYABLE_KINDS: ReadonlySet<string> = new Set([
 const MIN_COPY_LINES = 3;
 /** Identical content is observed; that it was copied (not rewritten identically) is very likely. */
 const COPY_CONFIDENCE = 0.9;
+/**
+ * The same name and kind left one file and arrived in another within one
+ * commit, with edits: probably moved, but the content does not prove it.
+ */
+const MOVED_WITH_EDITS_CONFIDENCE = 0.6;
 
 /** Confidence for relations derived from a tree Tree-sitter had to error-recover. */
 const RECOVERED_PARSE_CONFIDENCE = 0.8;
@@ -62,20 +69,65 @@ export interface SymbolIndexResult {
   readonly symbolsIntroduced: number;
   /** New symbols identical to one in another file: copied or moved there, not introduced. */
   readonly symbolsCopied: number;
+  /** New symbols identical to one that disappeared from the same file in that commit, but for the name. */
+  readonly symbolsRenamed: number;
+  /** New symbols whose name and kind left another file in the same commit (moved with edits). */
+  readonly symbolsMoved: number;
   /** Versions the parser failed on; counted in versionsSkipped as well. */
   readonly parseFailures: number;
 }
+
+/** A symbol's hashes in one file version. */
+interface SymbolHashes {
+  readonly content: string;
+  /** With the symbol's own name blanked: equal across a rename. */
+  readonly shape: string;
+}
+
+const hashesOf = (result: ExtractResult): ReadonlyMap<string, SymbolHashes> =>
+  new Map(
+    result.symbols.map((symbol) => [
+      symbol.stableKey,
+      { content: symbol.contentHash, shape: symbol.shapeHash },
+    ]),
+  );
 
 interface ParsedChange {
   readonly change: PendingSymbolChange;
   /** Null for deletions and for versions that could not be parsed. */
   readonly result: ExtractResult | null;
   /**
-   * Symbol content hashes of the same file in the commit's first parent, when
-   * known: a symbol changed only if it differs from there. Null falls back to
-   * the stored version (an incremental run whose parent was parsed earlier).
+   * Symbol hashes of the same file in the commit's first parent, when known:
+   * a symbol changed only if it differs from there. Null falls back to the
+   * stored version (an incremental run whose parent was parsed earlier).
    */
-  readonly previous: ReadonlyMap<string, string> | null;
+  readonly previous: ReadonlyMap<string, SymbolHashes> | null;
+}
+
+interface LineageSymbol {
+  readonly symbolId: number;
+  readonly fileId: number;
+  readonly kind: string;
+  readonly qualifiedName: string;
+  /** Null when the version's text is unknown (a deleted file, no parsed parent). */
+  readonly shape: string | null;
+  readonly lines: number;
+}
+
+interface BornSymbol extends LineageSymbol {
+  readonly evidenceId: number;
+  readonly confidence: number;
+}
+
+/**
+ * Symbols that disappeared and that were born within one commit. Read
+ * together once the commit's last file is written, they tell a rename or a
+ * move apart from a removal plus an unrelated birth.
+ */
+interface CommitLineage {
+  readonly commitId: number;
+  readonly removed: LineageSymbol[];
+  readonly born: BornSymbol[];
 }
 
 interface Totals {
@@ -84,6 +136,8 @@ interface Totals {
   symbolVersions: number;
   symbolsIntroduced: number;
   symbolsCopied: number;
+  symbolsRenamed: number;
+  symbolsMoved: number;
   parseFailures: number;
 }
 
@@ -116,6 +170,8 @@ export async function indexSymbols(
     symbolVersions: 0,
     symbolsIntroduced: 0,
     symbolsCopied: 0,
+    symbolsRenamed: 0,
+    symbolsMoved: 0,
     parseFailures: 0,
   };
   const touchedFiles = new Set<number>();
@@ -129,17 +185,29 @@ export async function indexSymbols(
   )[Symbol.asyncIterator]();
   // Symbol hashes per parsed blob: a change is diffed against its parent's version of the file,
   // not against whichever branch was indexed last.
-  const hashesByBlob = new Map<string, ReadonlyMap<string, string>>();
+  const hashesByBlob = new Map<string, ReadonlyMap<string, SymbolHashes>>();
 
   try {
     const parents = await parentVersions(root, parseable);
     const parentHashes = await parseOutsideParents(root, extractor, parseable, parents);
     let batch: ParsedChange[] = [];
     let processed = 0;
-    const flush = () => {
+    let lineage: CommitLineage | null = null;
+    /** Write the batch; `nextCommitId` is the commit of the change after it, if any. */
+    const flush = (nextCommitId: number | null) => {
       db.transaction((tx) => {
-        for (const item of batch)
-          writeChange(tx, repositoryId, item, observedAt, totals, touchedFiles);
+        for (const item of batch) {
+          if (lineage && lineage.commitId !== item.change.commitId) {
+            resolveLineage(tx, repositoryId, lineage, observedAt, totals);
+            lineage = null;
+          }
+          lineage ??= { commitId: item.change.commitId, removed: [], born: [] };
+          writeChange(tx, repositoryId, item, observedAt, totals, touchedFiles, lineage);
+        }
+        if (lineage && lineage.commitId !== nextCommitId) {
+          resolveLineage(tx, repositoryId, lineage, observedAt, totals);
+          lineage = null;
+        }
       });
       processed += batch.length;
       batch = [];
@@ -147,7 +215,7 @@ export async function indexSymbols(
     };
 
     let parsedIndex = 0;
-    for (const change of pending) {
+    for (const [index, change] of pending.entries()) {
       if (change.status === 'deleted') {
         batch.push({ change, result: null, previous: null });
       } else {
@@ -159,7 +227,7 @@ export async function indexSymbols(
         const parentBlob = parents[parsedIndex++]?.oid ?? null;
         const previous =
           change.status === 'added'
-            ? new Map<string, string>()
+            ? new Map<string, SymbolHashes>()
             : parentBlob === null
               ? null
               : (hashesByBlob.get(parentBlob) ?? parentHashes.get(parentBlob) ?? null);
@@ -168,16 +236,13 @@ export async function indexSymbols(
             const oldest = hashesByBlob.keys().next().value;
             if (oldest !== undefined) hashesByBlob.delete(oldest);
           }
-          hashesByBlob.set(
-            next.value.oid,
-            new Map(result.symbols.map((symbol) => [symbol.stableKey, symbol.contentHash])),
-          );
+          hashesByBlob.set(next.value.oid, hashesOf(result));
         }
         batch.push({ change, result, previous });
       }
-      if (batch.length >= batchSize) flush();
+      if (batch.length >= batchSize) flush(pending[index + 1]?.commitId ?? null);
     }
-    if (batch.length > 0) flush();
+    if (batch.length > 0) flush(null);
 
     if (headSha) {
       await reconcileWithHead(db, repositoryId, root, headSha, touchedFiles, extractor, observedAt);
@@ -229,7 +294,7 @@ async function parseOutsideParents(
   extractor: SymbolExtractor,
   changes: readonly PendingSymbolChange[],
   parents: readonly (ParentVersion | null)[],
-): Promise<Map<string, ReadonlyMap<string, string>>> {
+): Promise<Map<string, ReadonlyMap<string, SymbolHashes>>> {
   const own = new Set(
     (
       await readBlobIds(
@@ -242,12 +307,10 @@ async function parseOutsideParents(
   for (const parent of parents) {
     if (parent && !own.has(parent.oid)) outside.set(parent.oid, parent);
   }
-  const hashes = new Map<string, ReadonlyMap<string, string>>();
+  const hashes = new Map<string, ReadonlyMap<string, SymbolHashes>>();
   for await (const { request, content } of readBlobs(root, [...outside.values()])) {
     const result = await parse(extractor, request.path, content, () => undefined);
-    if (result) {
-      hashes.set(request.oid, new Map(result.symbols.map((s) => [s.stableKey, s.contentHash])));
-    }
+    if (result) hashes.set(request.oid, hashesOf(result));
   }
   return hashes;
 }
@@ -282,6 +345,7 @@ function writeChange(
   observedAt: string,
   totals: Totals,
   touchedFiles: Set<number>,
+  lineage: CommitLineage,
 ): void {
   touchedFiles.add(change.fileId);
   let renamedFrom: number | null = null;
@@ -297,6 +361,7 @@ function writeChange(
   }
 
   if (change.status === 'deleted') {
+    noteRemoved(db, change.fileId, null, new Set(), lineage);
     setCurrentSymbols(db, change.fileId, new Set());
   } else if (!result) {
     totals.versionsSkipped++;
@@ -306,7 +371,24 @@ function writeChange(
       change.status === 'added' ||
       hasIndexedVersion(db, change.fileId) ||
       (renamedFrom !== null && hasIndexedVersion(db, renamedFrom));
-    writeSymbols(db, repositoryId, change, result, previous, sawEarlierVersion, observedAt, totals);
+    noteRemoved(
+      db,
+      change.fileId,
+      previous,
+      new Set(result.symbols.map((s) => s.stableKey)),
+      lineage,
+    );
+    writeSymbols(
+      db,
+      repositoryId,
+      change,
+      result,
+      previous,
+      sawEarlierVersion,
+      observedAt,
+      totals,
+      lineage,
+    );
     totals.versionsParsed++;
   }
   markSymbolsIndexed(db, change.fileChangeId, observedAt);
@@ -317,10 +399,11 @@ function writeSymbols(
   repositoryId: number,
   change: PendingSymbolChange,
   result: ExtractResult,
-  previous: ReadonlyMap<string, string> | null,
+  previous: ReadonlyMap<string, SymbolHashes> | null,
   sawEarlierVersion: boolean,
   observedAt: string,
   totals: Totals,
+  lineage: CommitLineage,
 ): void {
   const derivedConfidence = result.hasSyntaxErrors ? RECOVERED_PARSE_CONFIDENCE : 1;
   for (const symbol of result.symbols) {
@@ -328,7 +411,7 @@ function writeSymbols(
     const { row, created } = upsert;
     const changed =
       created ||
-      (previous ? previous.get(symbol.stableKey) !== symbol.contentHash : upsert.changed);
+      (previous ? previous.get(symbol.stableKey)?.content !== symbol.contentHash : upsert.changed);
     if (!changed) continue;
 
     insertSymbolVersion(db, {
@@ -401,6 +484,17 @@ function writeSymbols(
         provenance: provenance('first-indexed-version'),
       });
       totals.symbolsIntroduced++;
+      // A rename or a move found once the whole commit is read replaces this claim.
+      lineage.born.push({
+        symbolId: row.id,
+        fileId: change.fileId,
+        kind: symbol.kind,
+        qualifiedName: symbol.qualifiedName,
+        shape: symbol.shapeHash,
+        lines: symbol.endLine - symbol.startLine + 1,
+        evidenceId: evidence.id,
+        confidence: derivedConfidence,
+      });
     }
     totals.symbolVersions++;
   }
@@ -492,4 +586,96 @@ async function reconcileWithHead(
       setCurrentSymbols(tx, file.id, new Set(result.symbols.map((s) => s.stableKey)));
     }
   });
+}
+
+/**
+ * Record the symbols of a file that this change removes: those of the
+ * parent version (or, without one, the stored current ones) that `kept` no
+ * longer has.
+ */
+function noteRemoved(
+  db: FossilDb,
+  fileId: number,
+  previous: ReadonlyMap<string, SymbolHashes> | null,
+  kept: ReadonlySet<string>,
+  lineage: CommitLineage,
+): void {
+  for (const row of fileSymbolRows(db, fileId)) {
+    const before = previous ? previous.has(row.stableKey) : row.current;
+    if (!before || kept.has(row.stableKey)) continue;
+    lineage.removed.push({
+      symbolId: row.id,
+      fileId,
+      kind: row.kind,
+      qualifiedName: row.qualifiedName,
+      shape: previous?.get(row.stableKey)?.shape ?? null,
+      lines: row.endLine - row.startLine + 1,
+    });
+  }
+}
+
+const isLineageCandidate = (symbol: LineageSymbol): boolean =>
+  COPYABLE_KINDS.has(symbol.kind) && symbol.lines >= MIN_COPY_LINES;
+
+/**
+ * Once a commit is fully written, follow symbols born in it back to symbols
+ * that disappeared in it:
+ * - renamed: same file and kind, identical but for the name (DERIVED);
+ * - moved with edits: same kind and qualified name, removed from another
+ *   file (INFERRED).
+ * Only an unambiguous match counts. A match replaces the symbol's
+ * `INTRODUCED_BY` with `COPIED_FROM`, so its origin is the older symbol's.
+ */
+function resolveLineage(
+  db: FossilDb,
+  repositoryId: number,
+  lineage: CommitLineage,
+  observedAt: string,
+  totals: Totals,
+): void {
+  const used = new Set<number>();
+  const removed = lineage.removed.filter(isLineageCandidate);
+  for (const born of lineage.born.filter(isLineageCandidate)) {
+    const open = removed.filter((r) => !used.has(r.symbolId) && r.kind === born.kind);
+    const renamed = open.filter((r) => r.fileId === born.fileId && r.shape === born.shape);
+    const moved = open.filter(
+      (r) => r.fileId !== born.fileId && r.qualifiedName === born.qualifiedName,
+    );
+    const match =
+      renamed.length === 1 && renamed[0]
+        ? { source: renamed[0], method: 'renamed', level: 'DERIVED', confidence: COPY_CONFIDENCE }
+        : moved.length === 1 && moved[0]
+          ? {
+              source: moved[0],
+              method: 'moved-with-edits',
+              level: 'INFERRED',
+              confidence: MOVED_WITH_EDITS_CONFIDENCE,
+            }
+          : null;
+    if (!match) continue;
+    used.add(match.source.symbolId);
+    const symbolRef = { type: 'symbol', id: born.symbolId } as const;
+    deleteRelation(db, repositoryId, {
+      source: symbolRef,
+      relation: 'INTRODUCED_BY',
+      target: { type: 'commit', id: lineage.commitId },
+    });
+    recordRelation(db, {
+      repositoryId,
+      source: symbolRef,
+      relation: 'COPIED_FROM',
+      target: { type: 'symbol', id: match.source.symbolId },
+      evidenceType: match.level,
+      confidence: match.confidence * born.confidence,
+      provenance: {
+        producer: SYMBOL_INDEXER_PRODUCER,
+        method: match.method,
+        evidenceIds: [born.evidenceId],
+        observedAt,
+      },
+    });
+    totals.symbolsIntroduced--;
+    if (match.method === 'renamed') totals.symbolsRenamed++;
+    else totals.symbolsMoved++;
+  }
 }

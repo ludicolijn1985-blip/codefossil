@@ -252,9 +252,12 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
 - **Wrapped modules.** Definitions inside a module-level wrapper (an IIFE, `.call(this)` or a UMD
   factory) count as module level; definitions inside other functions or callbacks are local and are
   not symbols.
-- **Symbol identity.** A symbol is identified by kind and qualified name within a file. Code
-  copied or moved to another file with identical content (three lines or more) is followed back to
-  its original; a renamed symbol, or one edited while it moved, looks like a new one.
+- **Symbol identity.** A symbol is identified by kind and qualified name within a file. Its
+  lineage is followed back across a copy or move with identical content (three lines or more,
+  DERIVED), a rename in the same file that changed nothing but the name (DERIVED), and a move to
+  another file with edits, when that name left one file for the other in the same commit
+  (INFERRED, 0.6). A symbol renamed and edited in one commit, or moved under another name, still
+  looks like a new one.
 - **Unresolved imports.** Import resolution leaves unresolved, and says why, what it cannot
   decide from files and manifests. Python import names that differ from their distribution are
   matched only for a curated list of well-known packages (`yaml` → PyYAML); Go `replace` directives

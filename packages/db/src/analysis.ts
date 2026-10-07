@@ -329,7 +329,10 @@ const MAX_COPY_HOPS = 10;
 export function currentSymbolOrigins(db: FossilDb, repositoryId: number): SymbolOrigin[] {
   type Introduction = NonNullable<SymbolOrigin['introduced']>;
   const introductions = new Map<number, Introduction>();
-  const copies = new Map<number, { readonly symbolId: number; readonly confidence: number }>();
+  const copies = new Map<
+    number,
+    { readonly symbolId: number; readonly confidence: number; readonly level: EvidenceLevel }
+  >();
   for (const row of db
     .select({
       relation: relations.relation,
@@ -349,7 +352,11 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
     )
     .all()) {
     if (row.relation === 'COPIED_FROM') {
-      copies.set(row.symbolId, { symbolId: row.targetId, confidence: row.confidence });
+      copies.set(row.symbolId, {
+        symbolId: row.targetId,
+        confidence: row.confidence,
+        level: row.level,
+      });
       continue;
     }
     const known = introductions.get(row.symbolId);
@@ -375,16 +382,24 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
     const seen = new Set([symbolId]);
     let current = symbolId;
     let confidence = 1;
+    let inferred = false;
     for (let hop = 0; hop < MAX_COPY_HOPS; hop++) {
       const copy = copies.get(current);
       if (!copy || seen.has(copy.symbolId)) break;
       seen.add(copy.symbolId);
       confidence = Math.min(confidence, copy.confidence);
+      inferred ||= copy.level === 'INFERRED';
       current = copy.symbolId;
     }
     const own = introductions.get(current);
     // A claim followed through copies is no surer than its weakest copy link.
-    return own ? { ...own, confidence: Math.min(own.confidence, confidence) } : null;
+    return own
+      ? {
+          ...own,
+          level: inferred ? 'INFERRED' : own.level,
+          confidence: Math.min(own.confidence, confidence),
+        }
+      : null;
   };
 
   return db

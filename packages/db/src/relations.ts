@@ -133,3 +133,27 @@ export function incomingRelations(
 export function allRelations(db: FossilDb, repositoryId: number): RelationRow[] {
   return db.select().from(relations).where(eq(relations.repositoryId, repositoryId)).all();
 }
+
+/** Remove one edge, e.g. a claim that later evidence in the same run replaces. */
+export function deleteRelation(
+  db: FossilDb,
+  repositoryId: number,
+  edge: {
+    readonly source: EntityRef;
+    readonly relation: RelationInput['relation'];
+    readonly target: EntityRef;
+  },
+): void {
+  db.delete(relations)
+    .where(
+      and(
+        eq(relations.repositoryId, repositoryId),
+        eq(relations.sourceType, edge.source.type),
+        eq(relations.sourceId, edge.source.id),
+        eq(relations.relation, edge.relation),
+        eq(relations.targetType, edge.target.type),
+        eq(relations.targetId, edge.target.id),
+      ),
+    )
+    .run();
+}

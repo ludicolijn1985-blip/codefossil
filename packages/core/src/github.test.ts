@@ -65,6 +65,12 @@ const item = (number: number, fields: Record<string, unknown>) => ({
   ...fields,
 });
 
+const publicRepo =
+  (fullName: string): FakeRoute =>
+  () => ({
+    body: { full_name: fullName, private: false, default_branch: 'main' },
+  });
+
 /** Answer a closing-references GraphQL query: `closing` maps a PR number to its issues. */
 function closingRefs(closing: Record<number, readonly (readonly [string, number])[]>): FakeRoute {
   return (_url, request: FakeRequest) => {
@@ -289,6 +295,52 @@ describe('GitHub sync and linking', () => {
     expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} DERIVED 0.9`]);
   });
 
+  it('treats a partly failed answer from GitHub as unknown, not as closing nothing', async () => {
+    const partial: FakeRoute = () => ({
+      body: { data: { repository: { pr3: null } }, errors: [{ message: 'Something went wrong' }] },
+    });
+    const result = await index(githubRoutes(shas, { '/graphql': partial }));
+
+    expect(result.github?.sync).toMatchObject({ closingRefsFetched: 0, closingRefsError: null });
+    const pr3 = ref('pull_request', 3);
+    expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} DERIVED 0.9`]);
+  });
+
+  it('reads issues of public repositories only', async () => {
+    await repo?.commit('Fixes secret/vault#1');
+    const result = await index(
+      githubRoutes(shas, {
+        '/repos/secret/vault': () => ({
+          body: { full_name: 'secret/vault', private: true, default_branch: 'main' },
+        }),
+        '/repos/secret/vault/issues/1': () => ({ body: item(1, { title: 'Private' }) }),
+      }),
+    );
+
+    expect(result.github?.sync).toMatchObject({ foreignIssues: 0, foreignIssuesError: null });
+    expect(server?.requests.map((r) => r.url.pathname)).not.toContain(
+      '/repos/secret/vault/issues/1',
+    );
+  });
+
+  it('keeps indexing when issues of other repositories cannot be read', async () => {
+    await repo?.commit('See other/lib#5');
+    const broken: FakeRoute = () => ({ status: 502, body: { message: 'Bad gateway' } });
+    const routes = githubRoutes(shas, {
+      '/repos/other/lib': publicRepo('other/lib'),
+      '/repos/other/lib/issues/5': broken,
+    });
+
+    const result = await index(routes);
+    expect(result.github?.sync?.foreignIssuesError).toMatch(/failed with 502/);
+    // Linking still ran.
+    expect(edges(ref('issue', 2))).toHaveLength(1);
+
+    // Not remembered as unreadable: the next sync asks again.
+    await index(routes);
+    expect(server?.requests.map((r) => r.url.pathname)).toContain('/repos/other/lib/issues/5');
+  });
+
   it('links issues of other repositories, and remembers the ones it cannot read', async () => {
     const fix = (await repo?.commit('Fixes Other/Lib#5, see other/lib#6')) ?? '';
     const foreign = (number: number, title: string) => () => ({
@@ -305,6 +357,7 @@ describe('GitHub sync and linking', () => {
           ['Other/Lib', 7],
         ],
       }),
+      '/repos/other/lib': publicRepo('other/lib'),
       '/repos/other/lib/issues/5': foreign(5, 'Crash in parser'),
       '/repos/other/lib/issues/7': foreign(7, 'Upstream rate table'),
       // #6 is private or gone: a 404.

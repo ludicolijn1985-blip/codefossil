@@ -309,3 +309,26 @@ export function findIdenticalSymbol(
       .get()?.id ?? null
   );
 }
+
+/** Every symbol row of a file, current or not, keyed for the indexer. */
+export function fileSymbolRows(
+  db: FossilDb,
+  fileId: number,
+): Pick<
+  SymbolRow,
+  'id' | 'stableKey' | 'kind' | 'qualifiedName' | 'startLine' | 'endLine' | 'current'
+>[] {
+  return db
+    .select({
+      id: symbols.id,
+      stableKey: symbols.stableKey,
+      kind: symbols.kind,
+      qualifiedName: symbols.qualifiedName,
+      startLine: symbols.startLine,
+      endLine: symbols.endLine,
+      current: symbols.current,
+    })
+    .from(symbols)
+    .where(eq(symbols.fileId, fileId))
+    .all();
+}
