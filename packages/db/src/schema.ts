@@ -431,6 +431,26 @@ export const imports = sqliteTable(
 );
 
 /**
+ * Symbols parsed from one blob (file content), so content seen before — on
+ * another branch, after a reset, in a revert — is not parsed again. Keyed by
+ * content and grammar; `version` changes whenever extraction does. Holds no
+ * claims, only a parse result, so pruning history leaves it alone.
+ */
+export const parsedBlobs = sqliteTable(
+  'parsed_blobs',
+  {
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    oid: text('oid').notNull(),
+    grammar: text('grammar').notNull(),
+    version: text('version').notNull(),
+    resultJson: text('result_json', { mode: 'json' }).$type<unknown>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.repositoryId, t.oid, t.grammar] })],
+);
+
+/**
  * Line coverage of a file, from the last coverage report read (lcov). Only
  * files present in the report have a row; the report itself is the cited
  * evidence row.

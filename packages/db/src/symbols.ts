@@ -7,6 +7,7 @@ import {
   commits,
   fileChanges,
   files,
+  parsedBlobs,
   relations,
   symbols,
   symbolVersions,
@@ -331,4 +332,47 @@ export function fileSymbolRows(
     .from(symbols)
     .where(eq(symbols.fileId, fileId))
     .all();
+}
+
+/** A parse result stored for a blob, if one was stored under this extraction version. */
+export function loadParsedBlob(
+  db: FossilDb,
+  repositoryId: number,
+  oid: string,
+  grammar: string,
+  version: string,
+): unknown {
+  return db
+    .select({ result: parsedBlobs.resultJson })
+    .from(parsedBlobs)
+    .where(
+      and(
+        eq(parsedBlobs.repositoryId, repositoryId),
+        eq(parsedBlobs.oid, oid),
+        eq(parsedBlobs.grammar, grammar),
+        eq(parsedBlobs.version, version),
+      ),
+    )
+    .get()?.result;
+}
+
+/** Store a blob's parse result, replacing one from an older extraction version. */
+export function saveParsedBlob(
+  db: FossilDb,
+  entry: {
+    readonly repositoryId: number;
+    readonly oid: string;
+    readonly grammar: string;
+    readonly version: string;
+    readonly result: unknown;
+  },
+): void {
+  const { result, ...key } = entry;
+  db.insert(parsedBlobs)
+    .values({ ...key, resultJson: result })
+    .onConflictDoUpdate({
+      target: [parsedBlobs.repositoryId, parsedBlobs.oid, parsedBlobs.grammar],
+      set: { version: entry.version, resultJson: result },
+    })
+    .run();
 }

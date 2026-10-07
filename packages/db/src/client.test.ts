@@ -20,6 +20,7 @@ const EXPECTED_TABLES = [
   'investigations',
   'issues',
   'line_coverage',
+  'parsed_blobs',
   'provider_connections',
   'pull_request_commits',
   'pull_requests',

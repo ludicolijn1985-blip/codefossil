@@ -193,6 +193,9 @@ describe('pruning history that HEAD no longer reaches', () => {
     const result = await runIndex(fossil.db, repo.root, { now });
 
     expect(result).toMatchObject({ commitsPruned: 0, commitsIndexed: 1 });
+    // Its content was parsed before: nothing is parsed again.
+    expect(result.symbols.versionsFromCache).toBeGreaterThan(0);
+    expect(result.symbols.versionsFromCache).toBe(result.symbols.versionsParsed);
     expect(findCommitBySha(fossil.db, result.repositoryId, feature)).toBeDefined();
     await expectSameAsFreshIndex();
   });

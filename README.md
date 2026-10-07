@@ -249,8 +249,11 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   restored from another branch), the next index run removes the commits HEAD no longer contains,
   with the symbols, relations and evidence derived from them, re-parses the history of the files
   they touched and rebuilds the dependency graph at HEAD; GitHub data and saved investigations are
-  kept. Returning to a branch indexes its commits again, so switching far apart (an old tag and
-  back) costs about as much as indexing that history anew. In a shallow clone, indexed commits the
+  kept. Returning to a branch indexes its commits again, but file contents parsed before are not
+  parsed again (a parse cache keyed by blob), so switching far apart and back costs a fraction of
+  indexing that history anew (Express, an old tag and back: 7 s instead of 10 s). Other branches
+  are deliberately not indexed alongside HEAD: answers describe the code you have checked out.
+  In a shallow clone, indexed commits the
   clone does not have are kept, since they cannot be told apart from older history: index CI runs
   with `fetch-depth: 0`. With automatic indexing off (`CODEFOSSIL_AUTO_INDEX=0`), `status`,
   `doctor`, the report, the API status and the web UI say so instead.

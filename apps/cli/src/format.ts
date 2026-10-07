@@ -54,7 +54,11 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     `Indexed ${plural(result.commitsIndexed, 'new commit')} ` +
     `(${result.commitsSkipped} already indexed) and ` +
     `${plural(result.fileChanges, 'file change')}; ` +
-    `parsed ${plural(result.symbols.versionsParsed, 'file version')} into ` +
+    `parsed ${plural(result.symbols.versionsParsed, 'file version')}${
+      result.symbols.versionsFromCache > 0
+        ? ` (${String(result.symbols.versionsFromCache)} known from earlier runs)`
+        : ''
+    } into ` +
     `${plural(result.symbols.symbolVersions, 'symbol version')} in ${seconds}s.\n`;
   const pruned =
     result.commitsPruned > 0

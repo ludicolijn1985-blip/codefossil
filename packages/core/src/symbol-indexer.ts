@@ -6,11 +6,13 @@ import {
   findIdenticalSymbol,
   hasIndexedVersion,
   insertSymbolVersion,
+  loadParsedBlob,
   markSymbolsIndexed,
   moveSymbols,
   pendingSymbolChanges,
   recordEvidence,
   recordRelation,
+  saveParsedBlob,
   setCurrentSymbols,
   upsertSymbol,
   type FossilDb,
@@ -24,6 +26,13 @@ export const SYMBOL_INDEXER_PRODUCER = 'symbol-indexer@0.1.0';
 
 /** Parsed file versions written per database transaction. */
 const DEFAULT_BATCH_SIZE = 200;
+
+/**
+ * Version of what the symbol extraction produces. Bump it whenever symbols,
+ * keys or hashes change, so parse results cached under an older version are
+ * not reused.
+ */
+export const SYMBOL_EXTRACTION_VERSION = 'symbols@2';
 
 /** A commit's changes are written in one transaction up to this many batches. */
 const MAX_BATCHES_PER_COMMIT = 25;
@@ -78,6 +87,8 @@ export interface SymbolIndexResult {
   readonly symbolsMoved: number;
   /** Versions the parser failed on; counted in versionsSkipped as well. */
   readonly parseFailures: number;
+  /** Versions whose symbols came from the parse cache (content parsed in an earlier run). */
+  readonly versionsFromCache: number;
 }
 
 /** A symbol's hashes in one file version. */
@@ -142,6 +153,7 @@ interface Totals {
   symbolsRenamed: number;
   symbolsMoved: number;
   parseFailures: number;
+  versionsFromCache: number;
 }
 
 /**
@@ -176,12 +188,14 @@ export async function indexSymbols(
     symbolsRenamed: 0,
     symbolsMoved: 0,
     parseFailures: 0,
+    versionsFromCache: 0,
   };
   const touchedFiles = new Set<number>();
 
   const pending = pendingSymbolChanges(db, repositoryId).filter((c) => grammarForPath(c.path));
   const parseable = pending.filter((c) => c.status !== 'deleted');
   const extractor = new SymbolExtractor();
+  const parser = new BlobParser(db, repositoryId, extractor, totals);
   const blobs = readBlobs(
     root,
     parseable.map((change) => ({ ...change, revision: change.sha })),
@@ -192,13 +206,17 @@ export async function indexSymbols(
 
   try {
     const parents = await parentVersions(root, parseable);
-    const parentHashes = await parseOutsideParents(root, extractor, parseable, parents);
+    const parentHashes = await parseOutsideParents(root, parser, parseable, parents);
+    db.transaction((tx) => {
+      parser.save(tx);
+    });
     let batch: ParsedChange[] = [];
     let processed = 0;
     let lineage: CommitLineage | null = null;
     /** Write the batch; `nextCommitId` is the commit of the change after it, if any. */
     const flush = (nextCommitId: number | null) => {
       db.transaction((tx) => {
+        parser.save(tx);
         for (const item of batch) {
           if (lineage && lineage.commitId !== item.change.commitId) {
             resolveLineage(tx, repositoryId, lineage, observedAt, totals);
@@ -224,7 +242,7 @@ export async function indexSymbols(
       } else {
         const next = await blobs.next();
         if (next.done) throw new Error(`Missing blob result for ${change.path}@${change.sha}`);
-        const result = await parse(extractor, change.path, next.value.content, () => {
+        const result = await parser.parse(change.path, next.value.oid, next.value.content, () => {
           totals.parseFailures++;
         });
         const parentBlob = parents[parsedIndex++]?.oid ?? null;
@@ -302,7 +320,7 @@ async function parentVersions(
  */
 async function parseOutsideParents(
   root: string,
-  extractor: SymbolExtractor,
+  parser: BlobParser,
   changes: readonly PendingSymbolChange[],
   parents: readonly (ParentVersion | null)[],
 ): Promise<Map<string, ReadonlyMap<string, SymbolHashes>>> {
@@ -320,10 +338,89 @@ async function parseOutsideParents(
   }
   const hashes = new Map<string, ReadonlyMap<string, SymbolHashes>>();
   for await (const { request, content } of readBlobs(root, [...outside.values()])) {
-    const result = await parse(extractor, request.path, content, () => undefined);
+    const result = await parser.parse(request.path, request.oid, content, () => undefined, false);
     if (result) hashes.set(request.oid, hashesOf(result));
   }
   return hashes;
+}
+
+interface CachedParse {
+  readonly symbols: ExtractResult['symbols'];
+  readonly hasSyntaxErrors: boolean;
+}
+
+const isCachedParse = (value: unknown): value is CachedParse =>
+  typeof value === 'object' &&
+  value !== null &&
+  Array.isArray((value as { symbols?: unknown }).symbols) &&
+  typeof (value as { hasSyntaxErrors?: unknown }).hasSyntaxErrors === 'boolean';
+
+/**
+ * Parses file versions, reusing the result for content parsed before (by blob
+ * id and grammar). New results are kept until `save` writes them in the
+ * caller's transaction.
+ */
+class BlobParser {
+  private pending: { oid: string; grammar: string; result: CachedParse }[] = [];
+
+  constructor(
+    private readonly db: FossilDb,
+    private readonly repositoryId: number,
+    private readonly extractor: SymbolExtractor,
+    private readonly totals: Totals,
+  ) {}
+
+  async parse(
+    path: string,
+    oid: string | null,
+    content: Buffer | null,
+    onFailure: () => void,
+    /** Count a cache hit in the totals: false for parent versions, which are not indexed versions. */
+    counted = true,
+  ): Promise<ExtractResult | null> {
+    const grammar = grammarForPath(path);
+    if (grammar && oid) {
+      const cached = loadParsedBlob(
+        this.db,
+        this.repositoryId,
+        oid,
+        grammar,
+        SYMBOL_EXTRACTION_VERSION,
+      );
+      if (isCachedParse(cached)) {
+        if (counted) this.totals.versionsFromCache++;
+        return {
+          symbols: cached.symbols,
+          imports: [],
+          calls: [],
+          hasSyntaxErrors: cached.hasSyntaxErrors,
+        };
+      }
+    }
+    const result = await parse(this.extractor, path, content, onFailure);
+    if (result && grammar && oid) {
+      this.pending.push({
+        oid,
+        grammar,
+        result: { symbols: result.symbols, hasSyntaxErrors: result.hasSyntaxErrors },
+      });
+    }
+    return result;
+  }
+
+  /** Write the results parsed since the last save. */
+  save(db: FossilDb): void {
+    for (const { oid, grammar, result } of this.pending) {
+      saveParsedBlob(db, {
+        repositoryId: this.repositoryId,
+        oid,
+        grammar,
+        version: SYMBOL_EXTRACTION_VERSION,
+        result,
+      });
+    }
+    this.pending = [];
+  }
 }
 
 /**
