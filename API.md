@@ -59,6 +59,13 @@ GET  /api/repositories/:id/investigations?limit=
 POST /api/repositories/:id/providers/github/connect  { owner, name, apiUrl? }
 ```
 
+The status (also under `status` in `GET /api/repositories/:id`) has a `head` field comparing the
+indexed commit with HEAD: `{ freshness, indexedSha, headSha }`, where `freshness` is `current`,
+`behind` (newer commits not indexed yet), `diverged` (the index was built outside HEAD's history
+and may cite commits HEAD does not contain), `unknown` (the indexed commit is not in this clone)
+or `unindexed`; `head` is `null` when the repository cannot be read. `POST …/index` brings a
+diverged index back to HEAD's history.
+
 `investigate` and `query` accept `save: false` to skip recording the investigation. Targets are
 resolved like the CLI: a symbol, a path, `path:Symbol`, a commit sha prefix, `#123` or
 `npm:package`; an ambiguous target is a `409` listing the candidates, never a guess.

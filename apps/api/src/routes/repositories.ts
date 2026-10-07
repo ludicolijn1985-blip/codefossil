@@ -1,7 +1,7 @@
 import { basename, isAbsolute } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { runIndex } from '@codefossil/core';
+import { indexHeadState, runIndex, type IndexHeadState } from '@codefossil/core';
 import {
   getIndexStatus,
   getInvestigation,
@@ -76,13 +76,30 @@ export function repositoryRoutes(app: FastifyInstance, context: ApiContext): voi
     return reply.status(201).send({ data: repository });
   });
 
-  app.get('/api/repositories/:id', (request) => {
+  /**
+   * Whether the index covers HEAD's history; null when the repository cannot
+   * be read (e.g. moved), which says nothing about what the index holds.
+   */
+  const headState = async (repository: { id: number; path: string }) => {
+    try {
+      return await indexHeadState(db, repository.id, repository.path);
+    } catch {
+      return null;
+    }
+  };
+  const statusWithHead = async (repository: { id: number; path: string }) => {
+    const status = getIndexStatus(db, repository.id);
+    const head: IndexHeadState | null = await headState(repository);
+    return status ? { ...status, head } : status;
+  };
+
+  app.get('/api/repositories/:id', async (request) => {
     const repository = repositoryOr404(context, request.params);
     const connection = getProviderConnection(db, repository.id, 'github');
     return {
       data: {
         ...repository,
-        status: getIndexStatus(db, repository.id),
+        status: await statusWithHead(repository),
         github: connection
           ? {
               owner: connection.owner,
@@ -95,9 +112,9 @@ export function repositoryRoutes(app: FastifyInstance, context: ApiContext): voi
     };
   });
 
-  app.get('/api/repositories/:id/status', (request) => {
+  app.get('/api/repositories/:id/status', async (request) => {
     const repository = repositoryOr404(context, request.params);
-    return { data: getIndexStatus(db, repository.id) };
+    return { data: await statusWithHead(repository) };
   });
 
   app.post('/api/repositories/:id/index', async (request) => {

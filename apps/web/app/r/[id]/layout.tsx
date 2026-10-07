@@ -37,6 +37,9 @@ export default async function RepositoryLayout({
     { href: `${base}/dependencies`, label: 'Dependencies', hint: 'g d' },
   ];
   const latest = repository.status.latestCommit;
+  const head = repository.status.head;
+  const indexedSha = head?.indexedSha ?? null;
+  const offHistory = head?.freshness === 'diverged' || head?.freshness === 'unknown';
 
   return (
     <div className="flex min-h-screen flex-col lg:flex-row">
@@ -52,8 +55,16 @@ export default async function RepositoryLayout({
             {repository.name}
           </p>
           <p className="font-mono text-2xs text-faint">
-            {latest ? `HEAD ${shortSha(latest.sha)} · ${day(latest.committedAt)}` : 'not indexed'}
+            {indexedSha
+              ? `indexed at ${shortSha(indexedSha)}${latest ? ` · ${day(latest.committedAt)}` : ''}`
+              : 'not indexed'}
           </p>
+          {offHistory ? (
+            <p role="alert" className="mt-2 text-2xs leading-relaxed text-danger">
+              HEAD left the indexed history; answers may cite commits HEAD does not contain. Run{' '}
+              <code>codefossil index</code>.
+            </p>
+          ) : null}
         </div>
         <Nav items={items} />
         <p className="mt-auto hidden px-3 font-mono text-2xs leading-relaxed text-faint lg:block">

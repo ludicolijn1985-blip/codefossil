@@ -12,6 +12,7 @@ import type {
   IndexStatus,
   RepositoryRow,
 } from '@codefossil/db';
+import type { IndexHeadState } from '@codefossil/core';
 import type { WhyInvestigation } from '@codefossil/query';
 
 export type {
@@ -62,8 +63,11 @@ export interface CommitListItem {
   readonly committedAt: string;
 }
 
+export type { IndexHeadState } from '@codefossil/core';
+
 export interface RepositoryDetail extends RepositoryRow {
-  readonly status: IndexStatus;
+  /** `head` is null when the server could not read the repository's git state. */
+  readonly status: IndexStatus & { readonly head: IndexHeadState | null };
   readonly github: {
     readonly owner: string;
     readonly name: string;

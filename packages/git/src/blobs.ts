@@ -106,7 +106,30 @@ export async function readBlobIds(
 ): Promise<(string | null)[]> {
   const sendable = requests.map((r) => !/[\n\r]/.test(r.path) && !/[\n\r]/.test(r.revision));
   if (!sendable.some(Boolean)) return requests.map(() => null);
+  const lines = await batchCheck(
+    root,
+    requests.filter((_, i) => sendable[i]).map((r) => `${r.revision}:${r.path}`),
+  );
+  let next = 0;
+  return sendable.map((isSendable) => {
+    if (!isSendable) return null;
+    return /^([0-9a-f]+) blob \d+$/.exec(lines[next++] ?? '')?.[1] ?? null;
+  });
+}
 
+/** Of the given commit shas, those this clone has (a shallow clone lacks older history). */
+export async function listPresentCommits(
+  root: string,
+  shas: readonly string[],
+): Promise<Set<string>> {
+  const valid = shas.filter((sha) => /^[0-9a-f]{40,64}$/.test(sha));
+  if (valid.length === 0) return new Set();
+  const lines = await batchCheck(root, valid);
+  return new Set(valid.filter((sha, i) => lines[i]?.startsWith(`${sha} commit `)));
+}
+
+/** One `git cat-file --batch-check` answer line per input line, in order. */
+async function batchCheck(root: string, inputs: readonly string[]): Promise<string[]> {
   const args = [...BASE_ARGS, 'cat-file', '--batch-check', '--buffer'];
   const child = spawn('git', args, {
     cwd: root,
@@ -120,29 +143,20 @@ export async function readBlobIds(
   });
   const exited = waitForExit(child);
   child.stdin.on('error', () => undefined);
-  child.stdin.end(
-    requests
-      .filter((_, i) => sendable[i])
-      .map((r) => `${r.revision}:${r.path}\n`)
-      .join(''),
-  );
+  child.stdin.end(inputs.map((input) => `${input}\n`).join(''));
 
   const reader = new ByteReader(child.stdout);
   try {
-    const ids: (string | null)[] = [];
-    for (const isSendable of sendable) {
-      if (!isSendable) {
-        ids.push(null);
-        continue;
-      }
+    const lines: string[] = [];
+    for (let i = 0; i < inputs.length; i++) {
       const line = await reader.readLine();
       if (line === null)
         throw new GitError(`git cat-file ended early: ${stderr.trim()}`, args, null, stderr);
-      ids.push(/^([0-9a-f]+) blob \d+$/.exec(line)?.[1] ?? null);
+      lines.push(line);
     }
     const code = await exited;
     if (code !== 0) throw new GitError(`git cat-file failed: ${stderr.trim()}`, args, code, stderr);
-    return ids;
+    return lines;
   } finally {
     if (child.exitCode === null) child.kill();
   }

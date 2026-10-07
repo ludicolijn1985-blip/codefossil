@@ -5,6 +5,7 @@ import {
   insertFileChange,
   listCommitShas,
   markRepositoryIndexed,
+  pruneUnreachableCommits,
   reconcileFilesWithHead,
   recordEvidence,
   recordFileTouch,
@@ -13,7 +14,10 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import {
+  isShallowRepository,
   listHeadFiles,
+  listPresentCommits,
+  listReachableShas,
   openGitRepository,
   readCommits,
   type GitCommit,
@@ -43,6 +47,8 @@ export interface IndexResult {
   readonly headSha: string | null;
   readonly commitsIndexed: number;
   readonly commitsSkipped: number;
+  /** Indexed commits removed because HEAD's history no longer contains them. */
+  readonly commitsPruned: number;
   readonly fileChanges: number;
   readonly relations: number;
 }
@@ -62,7 +68,7 @@ interface BatchTotals {
  * at HEAD, because change order alone cannot decide it across branches.
  * Re-running is
  * incremental: commits already stored are skipped, so only new history is
- * written. Each batch is one transaction, so an interrupted run never leaves
+ * written; commits no longer reachable from HEAD are pruned first. Each batch is one transaction, so an interrupted run never leaves
  * a half-written commit behind.
  */
 export async function indexRepository(
@@ -81,6 +87,7 @@ export async function indexRepository(
     defaultBranch: git.currentBranch,
   });
 
+  let commitsPruned = 0;
   const totals: BatchTotals = {
     commitsIndexed: 0,
     commitsSkipped: 0,
@@ -88,6 +95,15 @@ export async function indexRepository(
     relations: 0,
   };
   if (git.headSha) {
+    // Only history reachable from HEAD may be cited: drop commits a reset, rebase,
+    // deleted branch or checkout left behind before adding new ones.
+    const headPaths = await listHeadFiles(git.root);
+    commitsPruned = pruneUnreachableCommits(
+      db,
+      repository.id,
+      await historyToKeep(git.root, listCommitShas(db, repository.id)),
+      headPaths,
+    ).commitsPruned;
     const known = listCommitShas(db, repository.id);
     const observedAt = now().toISOString();
     let batch: GitCommit[] = [];
@@ -108,7 +124,6 @@ export async function indexRepository(
     }
     if (batch.length > 0) flush();
 
-    const headPaths = await listHeadFiles(git.root);
     const headCommittedAt =
       findCommitBySha(db, repository.id, git.headSha)?.committedAt ?? observedAt;
     db.transaction((tx) => {
@@ -117,7 +132,27 @@ export async function indexRepository(
   }
 
   markRepositoryIndexed(db, repository.id, now());
-  return { repositoryId: repository.id, root: git.root, headSha: git.headSha, ...totals };
+  return {
+    repositoryId: repository.id,
+    root: git.root,
+    headSha: git.headSha,
+    commitsPruned,
+    ...totals,
+  };
+}
+
+/**
+ * The commits the index may keep: those reachable from HEAD. A shallow clone
+ * lacks older history, and an indexed commit it does not have cannot be told
+ * apart from such history, so those are kept too rather than deleted.
+ */
+async function historyToKeep(root: string, indexed: ReadonlySet<string>): Promise<Set<string>> {
+  const reachable = await listReachableShas(root);
+  if (!(await isShallowRepository(root))) return reachable;
+  const candidates = [...indexed].filter((sha) => !reachable.has(sha));
+  const present = await listPresentCommits(root, candidates);
+  for (const sha of candidates) if (!present.has(sha)) reachable.add(sha);
+  return reachable;
 }
 
 function writeCommit(

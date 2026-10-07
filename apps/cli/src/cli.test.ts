@@ -719,6 +719,46 @@ describe('automatic indexing', () => {
     expect(checks.find((c) => c.name === 'Index')?.detail).toMatch(/^\d+ commits/);
   });
 
+  /** Index a commit on a branch, then leave the branch and delete it. */
+  const indexAbandonedCommit = async () => {
+    const repo = sample?.repo;
+    if (!repo) throw new Error('sample history was not created');
+    await repo.git('checkout', '-q', '-b', 'demo-pr');
+    await repo.write(
+      'src/tax/vat.ts',
+      'export const calculateVAT = (n: number) => n * 0.19; // demo\n',
+    );
+    await repo.commit('demo: try a lower rate');
+    const before = await fossil(root(), 'why', 'calculateVAT', '--no-save');
+    expect(before.stdout).toContain('demo: try a lower rate');
+    await repo.git('checkout', '-q', 'main');
+    await repo.git('branch', '-q', '-D', 'demo-pr');
+  };
+
+  it('drops commits HEAD no longer contains before answering', async () => {
+    await indexAbandonedCommit();
+    const after = await fossil(root(), 'why', 'calculateVAT', '--no-save');
+    expect(after.code).toBe(0);
+    expect(after.stderr).toContain('HEAD left the indexed history');
+    expect(after.stderr).toContain("Removed 1 commit that HEAD's history no longer contains");
+    expect(after.stdout).not.toContain('demo: try a lower rate');
+    expect(after.stdout).toContain('most recently in commit');
+    expect(after.stdout).toContain('Handle reduced VAT rate');
+  });
+
+  it('warns when automatic indexing is off and HEAD left the indexed history', async () => {
+    await indexAbandonedCommit();
+    process.env.CODEFOSSIL_AUTO_INDEX = '0';
+    const result = await fossil(root(), 'why', 'calculateVAT', '--no-save');
+    expect(result.stderr).toMatch(
+      /Warning: The index was built at [0-9a-f]{7}, which is not in the history of HEAD/,
+    );
+    const report = await fossil(root(), 'report');
+    expect(report.stdout).toContain('> **Warning:** The index was built at');
+    const status = await fossil(root(), 'status', '--json');
+    expect(JSON.parse(status.stdout)).toMatchObject({ head: { freshness: 'diverged' } });
+  });
+
   it('can be turned off to use the index exactly as it is', async () => {
     process.env.CODEFOSSIL_AUTO_INDEX = '0';
     const result = await fossil(root(), 'why', 'calculateVAT');
