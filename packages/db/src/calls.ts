@@ -83,6 +83,8 @@ export interface CallableSymbol {
   readonly name: string;
   readonly qualifiedName: string;
   readonly kind: string;
+  readonly startLine: number;
+  readonly endLine: number;
 }
 
 /** Current symbols of files present at HEAD: what calls can resolve to. */
@@ -95,6 +97,8 @@ export function currentSymbols(db: FossilDb, repositoryId: number): CallableSymb
       name: symbols.name,
       qualifiedName: symbols.qualifiedName,
       kind: symbols.kind,
+      startLine: symbols.startLine,
+      endLine: symbols.endLine,
     })
     .from(symbols)
     .innerJoin(files, eq(symbols.fileId, files.id))

@@ -1,5 +1,6 @@
 import {
   callEvidenceByLocator,
+  findFileByPath,
   currentSymbols,
   deleteCallEvidence,
   deleteRelationsByProducer,
@@ -11,6 +12,7 @@ import {
   type RepositoryCall,
 } from '@codefossil/db';
 import type { EntityRef, EvidenceLevel } from '@codefossil/shared';
+import type { CheckedCall } from './typescript-calls.js';
 
 export const CALL_RESOLVER_PRODUCER = 'call-resolver@0.2.0';
 /** Earlier versions whose edges a rebuild replaces. */
@@ -55,6 +57,8 @@ export interface CallGraphResult {
   readonly calls: number;
   /** `CALLS` edges recorded. */
   readonly callEdges: number;
+  /** Calls the TypeScript type checker resolved (0 unless asked for). */
+  readonly checkedCalls: number;
 }
 
 /** Current symbols by file and qualified name, and by qualified name across the repository. */
@@ -62,9 +66,11 @@ class SymbolIndex {
   private readonly byFileKey = new Map<string, CallableSymbol>();
   private readonly byFileName = new Map<string, CallableSymbol[]>();
   private readonly byName = new Map<string, CallableSymbol[]>();
+  private readonly byFile = new Map<number, CallableSymbol[]>();
 
   constructor(symbols: readonly CallableSymbol[]) {
     for (const symbol of symbols) {
+      push(this.byFile, symbol.fileId, symbol);
       this.byFileKey.set(`${String(symbol.fileId)}\0${symbol.stableKey}`, symbol);
       push(this.byFileName, `${String(symbol.fileId)}\0${symbol.qualifiedName}`, symbol);
       push(this.byName, symbol.qualifiedName, symbol);
@@ -81,6 +87,17 @@ class SymbolIndex {
 
   anywhere(qualifiedName: string): readonly CallableSymbol[] {
     return this.byName.get(qualifiedName) ?? [];
+  }
+
+  /** The innermost symbol of a file spanning `line`, optionally with a given name. */
+  at(fileId: number, line: number, name?: string): CallableSymbol | null {
+    let best: CallableSymbol | null = null;
+    for (const symbol of this.byFile.get(fileId) ?? []) {
+      if (line < symbol.startLine || line > symbol.endLine) continue;
+      if (name !== undefined && symbol.name !== name) continue;
+      if (!best || symbol.endLine - symbol.startLine < best.endLine - best.startLine) best = symbol;
+    }
+    return best;
   }
 }
 
@@ -207,6 +224,7 @@ export function rebuildCallEdges(
   repositoryId: number,
   bindings: ImportBindings,
   observedAt: string,
+  checked: { readonly calls: readonly CheckedCall[]; readonly sha: string } | null = null,
 ): CallGraphResult {
   for (const producer of [CALL_RESOLVER_PRODUCER, ...LEGACY_PRODUCERS]) {
     deleteRelationsByProducer(db, repositoryId, producer);
@@ -216,7 +234,18 @@ export function rebuildCallEdges(
   const none = new Map<string, ImportBinding>();
 
   const edges = new Map<string, { source: EntityRef; resolved: Resolved; call: RepositoryCall }>();
+  const fileIds = new Map<string, number | null>();
+  const fileIdOf = (path: string): number | null => {
+    if (!fileIds.has(path)) fileIds.set(path, findFileByPath(db, repositoryId, path)?.id ?? null);
+    return fileIds.get(path) ?? null;
+  };
+  // Lines where the TypeScript checker resolved a call: a name-based reading of them is not kept,
+  // so a guess never stands beside (or against) the exact answer.
+  const checkedSites = new Set(
+    (checked?.calls ?? []).map((call) => `${String(fileIdOf(call.fromPath))}:${String(call.line)}`),
+  );
   for (const call of calls) {
+    if (checkedSites.has(`${String(call.fileId)}:${String(call.line)}`)) continue;
     const caller = call.callerKey === null ? null : index.caller(call.fileId, call.callerKey);
     if (caller === undefined) continue;
     const resolved = resolveSite(call, caller, index, bindings.get(call.fileId) ?? none);
@@ -229,6 +258,37 @@ export function rebuildCallEdges(
     if (!known || resolved.confidence > known.resolved.confidence) {
       edges.set(key, { source, resolved, call });
     }
+  }
+
+  // Calls the TypeScript checker resolved are exact (DERIVED, 1).
+  let checkedEdges = 0;
+  for (const call of checked?.calls ?? []) {
+    const fromFile = fileIdOf(call.fromPath);
+    const toFile = fileIdOf(call.toPath);
+    if (fromFile === null || toFile === null) continue;
+    const target = index.at(toFile, call.toLine, call.toName);
+    const caller = index.at(fromFile, call.line);
+    if (!target || target.id === caller?.id) continue;
+    const source: EntityRef = caller
+      ? { type: 'symbol', id: caller.id }
+      : { type: 'file', id: fromFile };
+    edges.set(`${source.type}:${String(source.id)}>${String(target.id)}`, {
+      source,
+      resolved: { target, level: 'DERIVED', confidence: 1, method: 'typescript-checker' },
+      call: {
+        fileId: fromFile,
+        path: call.fromPath,
+        callerKey: caller?.stableKey ?? null,
+        callee: call.text,
+        line: call.line,
+        localHead: false,
+        selfReceiver: false,
+        via: null,
+        written: null,
+        sha: checked?.sha ?? '',
+      },
+    });
+    checkedEdges++;
   }
 
   // Cite the same evidence row for the same call site as earlier runs did.
@@ -270,5 +330,5 @@ export function rebuildCallEdges(
     repositoryId,
     [...previous.values()].filter((id) => !cited.has(id)),
   );
-  return { calls: calls.length, callEdges: edges.size };
+  return { calls: calls.length, callEdges: edges.size, checkedCalls: checkedEdges };
 }

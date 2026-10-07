@@ -1,9 +1,16 @@
 import { resolve } from 'node:path';
 import { Command, Option } from 'commander';
-import { describeIndexHeadState, indexHeadState, runIndex } from '@codefossil/core';
+import {
+  describeIndexHeadState,
+  indexHeadState,
+  runIndex,
+  typeCheckingRequested,
+  TYPESCRIPT_ENV,
+} from '@codefossil/core';
 import {
   fileImports,
   findFileByPath,
+  forgetGraphSnapshot,
   getIndexStatus,
   importedBy,
   listDependencies,
@@ -51,6 +58,7 @@ interface IndexCommandOptions {
   readonly since?: string;
   readonly offline?: boolean;
   readonly githubMaxRequests: string;
+  readonly typescript?: boolean;
   readonly json?: boolean;
 }
 
@@ -137,6 +145,10 @@ export function createProgram(io: CliIO): Command {
       'GitHub requests allowed in this run; a larger sync continues next run',
       String(DEFAULT_GITHUB_MAX_REQUESTS),
     )
+    .option(
+      '--typescript',
+      `resolve TypeScript calls with the type checker (slower; may load the repository's own compiler; ${TYPESCRIPT_ENV}=1 makes it the default)`,
+    )
     .addOption(new Option('--json', 'print the result as JSON'))
     .action(async (options: IndexCommandOptions) => {
       const since = options.since === undefined ? undefined : parseSince(options.since);
@@ -148,10 +160,14 @@ export function createProgram(io: CliIO): Command {
           maxRequests,
         });
         for (const note of plan.notes) io.stderr(`Note: ${note}\n`);
+        const typescript = options.typescript === true || typeCheckingRequested();
+        // Asked for explicitly: rebuild the call graph now, even if HEAD did not move.
+        if (options.typescript) forgetGraphSnapshot(ws.fossil.db, ws.repositoryId);
         const started = performance.now();
         const result = await runIndex(ws.fossil.db, ws.root, {
           ...(since ? { since } : {}),
           ...(plan.factory ? { github: plan.factory } : {}),
+          ...(typescript ? { typescript: true } : {}),
         });
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
         if (options.json) {

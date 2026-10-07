@@ -316,3 +316,11 @@ export function importBindingsByEvidence(
   }
   return result;
 }
+
+/** Forget which HEAD the graph describes, so the next index run rebuilds it in full. */
+export function forgetGraphSnapshot(db: FossilDb, repositoryId: number): void {
+  db.update(repositories)
+    .set({ graphIndexedSha: null })
+    .where(eq(repositories.id, repositoryId))
+    .run();
+}

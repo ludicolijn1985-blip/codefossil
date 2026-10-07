@@ -20,6 +20,7 @@ const EXTERNAL = [
   '@modelcontextprotocol/server',
   'better-sqlite3',
   'commander',
+  'typescript',
   'drizzle-orm',
   'fastify',
   'smol-toml',

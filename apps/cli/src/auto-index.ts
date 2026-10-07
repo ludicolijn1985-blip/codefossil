@@ -1,6 +1,11 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { describeIndexHeadState, indexHeadState, runIndex } from '@codefossil/core';
+import {
+  describeIndexHeadState,
+  indexHeadState,
+  runIndex,
+  typeCheckingRequested,
+} from '@codefossil/core';
 import { openGitRepository } from '@codefossil/git';
 import { formatIndexResult } from './format.js';
 import type { CliIO } from './io.js';
@@ -37,7 +42,11 @@ export async function openIndexedWorkspace(cwd: string, io: CliIO): Promise<Work
             : "HEAD left the indexed history; updating the index to HEAD's history…\n",
       );
       const started = performance.now();
-      const result = await runIndex(ws.fossil.db, ws.root, {});
+      const result = await runIndex(
+        ws.fossil.db,
+        ws.root,
+        typeCheckingRequested() ? { typescript: true } : {},
+      );
       io.stderr(
         formatIndexResult(result, ((performance.now() - started) / 1000).toFixed(1)) + '\n',
       );

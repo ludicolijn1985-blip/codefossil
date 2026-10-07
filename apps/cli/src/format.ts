@@ -105,7 +105,10 @@ function formatGraphSummary(graph: RunIndexResult['dependencies']): string {
     `${plural(graph.dependencyEdges, 'package dependency edge')}, ` +
     `${plural(graph.dependencies, 'declared dependency', 'declared dependencies')}; ` +
     `${plural(graph.unresolvedImports, 'import')} left unresolved; ` +
-    `${plural(graph.callEdges, 'call edge')} from ${plural(graph.calls, 'call site')}.\n`
+    `${plural(graph.callEdges, 'call edge')} from ${plural(graph.calls, 'call site')}.\n` +
+    (graph.typescript
+      ? `TypeScript ${graph.typescript.compiler ?? '(not found)'}: ${plural(graph.checkedCalls, 'call')} resolved by the type checker${graph.typescript.note ? ` (${graph.typescript.note})` : ''}.\n`
+      : '')
   );
 }
 

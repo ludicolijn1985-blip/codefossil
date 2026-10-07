@@ -13,6 +13,12 @@ export interface RunIndexOptions extends IndexOptions {
    * null) to stay offline: stored GitHub data is still linked to new commits.
    */
   readonly github?: (connection: ProviderConnectionRow) => GitHubClient | null;
+  /**
+   * Resolve TypeScript calls with the type checker when the dependency graph
+   * is rebuilt. Slow on large programs, and it may load the repository's own
+   * compiler from node_modules, so it is never on by default.
+   */
+  readonly typescript?: boolean;
 }
 
 export interface GitHubIndexResult {
@@ -56,7 +62,10 @@ export async function runIndex(
     history.repositoryId,
     history.root,
     history.headSha,
-    clock,
+    {
+      ...clock,
+      ...(options.typescript ? { typescript: true } : {}),
+    },
   );
 
   const coverage = await indexCoverage(db, history.repositoryId, history.root);

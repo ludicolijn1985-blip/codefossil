@@ -42,6 +42,7 @@ import {
 } from '@codefossil/parser';
 import { rebuildCallEdges, type ImportBinding, type ImportBindings } from './call-graph.js';
 import { installedPythonImports, withPackageExtends } from './installed.js';
+import { typeCheckedCalls } from './typescript-calls.js';
 import { detectLanguage } from '@codefossil/shared';
 
 export const IMPORT_RESOLVER_PRODUCER = 'import-resolver@0.1.0';
@@ -68,6 +69,10 @@ export interface DependencyIndexResult {
   /** Distinct call sites at HEAD, and the `CALLS` edges resolved from them. */
   readonly calls: number;
   readonly callEdges: number;
+  /** Calls the TypeScript type checker resolved (with `typescript`), part of `callEdges`. */
+  readonly checkedCalls: number;
+  /** The type-checking run, when asked for: compiler version and anything it skipped. */
+  readonly typescript: { readonly compiler: string | null; readonly note: string | null } | null;
 }
 
 const UNCHANGED: DependencyIndexResult = {
@@ -83,6 +88,8 @@ const UNCHANGED: DependencyIndexResult = {
   unresolvedImports: 0,
   calls: 0,
   callEdges: 0,
+  checkedCalls: 0,
+  typescript: null,
 };
 
 interface ParsedFile {
@@ -121,7 +128,11 @@ export async function indexDependencies(
   repositoryId: number,
   root: string,
   headSha: string | null,
-  options: { readonly now?: () => Date } = {},
+  options: {
+    readonly now?: () => Date;
+    /** Resolve TypeScript calls with the type checker (slow; may load the repository's compiler). */
+    readonly typescript?: boolean;
+  } = {},
 ): Promise<DependencyIndexResult> {
   const previous = getGraphIndexedSha(db, repositoryId);
   if (!headSha || previous === headSha) return UNCHANGED;
@@ -129,6 +140,7 @@ export async function indexDependencies(
 
   const changed = previous ? await changedPaths(root, previous, headSha) : null;
   const snapshot = await readSnapshot(root, headSha, changed);
+  const checked = options.typescript ? await typeCheckedCalls(root) : null;
 
   return db.transaction((tx) => {
     for (const path of snapshot.removed) {
@@ -145,7 +157,13 @@ export async function indexDependencies(
     }
     const dependencies = writeManifests(tx, repositoryId, headSha, snapshot.manifests, observedAt);
     const { bindings, ...edges } = rebuildImportEdges(tx, repositoryId, snapshot, observedAt);
-    const callGraph = rebuildCallEdges(tx, repositoryId, bindings, observedAt);
+    const callGraph = rebuildCallEdges(
+      tx,
+      repositoryId,
+      bindings,
+      observedAt,
+      checked ? { calls: checked.calls, sha: headSha } : null,
+    );
     setGraphIndexedSha(tx, repositoryId, headSha);
     return {
       mode: changed ? 'incremental' : 'full',
@@ -156,6 +174,7 @@ export async function indexDependencies(
       dependencies,
       ...edges,
       ...callGraph,
+      typescript: checked ? { compiler: checked.compiler, note: checked.note } : null,
     };
   });
 }
