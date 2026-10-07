@@ -14,7 +14,7 @@ import {
 import { formatVersion, RUNTIMES, type Runtime, type Version } from '@codefossil/graph';
 import { grammarForPath } from '@codefossil/parser';
 import { isTestPath } from '@codefossil/query';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { issueReference, type EvidenceLevel } from '@codefossil/shared';
 import {
   deadlines,
   isBelowMinimum,
@@ -325,7 +325,7 @@ function discussionSource(discussion: CommitDiscussion): Source {
   const kind = discussion.type === 'issue' ? 'issue' : 'pull request';
   return {
     text: `${discussion.title}\n${discussion.body}`,
-    where: `${kind} #${discussion.number}`,
+    where: `${kind} ${issueReference(discussion)}`,
     evidenceIds: discussion.evidenceIds,
   };
 }

@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Option, type Command } from 'commander';
-import { buildFileStories, type SymbolStory } from '@codefossil/analyzers';
+import { buildFileStories, issueReference, type SymbolStory } from '@codefossil/analyzers';
 import { findFileByPath } from '@codefossil/db';
 import { openIndexedWorkspace } from './auto-index.js';
 import { CliError, writeJson, type CliIO } from './io.js';
@@ -57,7 +57,7 @@ function lensEntry(story: SymbolStory): LensEntry {
             subject: born.subject,
             author: born.authorName,
             level: story.introduction.level,
-            issues: born.discussions.map((d) => `#${d.number}`),
+            issues: born.discussions.map((d) => issueReference(d)),
           }
         : null,
     copiedFrom: story.copiedFrom[0]?.path ?? null,

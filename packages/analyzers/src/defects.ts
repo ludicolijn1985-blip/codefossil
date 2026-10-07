@@ -1,5 +1,5 @@
 import type { AnalysisCommit, CommitDiscussion } from '@codefossil/db';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { issueReference, type EvidenceLevel } from '@codefossil/shared';
 
 /** Why a commit is counted as defect-related, and how sure that reading is. */
 export interface DefectSignal {
@@ -57,7 +57,7 @@ export function classifyDefects(
     const own = commitEvidence.get(commit.sha);
     const cite = (extra: readonly number[] = []) => [...(own === undefined ? [] : [own]), ...extra];
     const signals: DefectSignal[] = (resolvedBugs.get(commit.id) ?? []).map((issue) => ({
-      reason: `resolves issue #${issue.number}, labelled ${issue.labels.filter((l) => BUG_LABEL.test(l)).join(', ')}`,
+      reason: `resolves issue ${issueReference(issue)}, labelled ${issue.labels.filter((l) => BUG_LABEL.test(l)).join(', ')}`,
       level: issue.level === 'INFERRED' ? 'INFERRED' : 'DERIVED',
       confidence: issue.confidence,
       evidenceIds: cite(issue.evidenceIds),

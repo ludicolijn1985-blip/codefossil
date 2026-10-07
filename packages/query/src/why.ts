@@ -1,5 +1,5 @@
 import { entityKey, findEvidenceId, type EntityRecord, type FossilDb } from '@codefossil/db';
-import type { EntityRef } from '@codefossil/shared';
+import { issueReference, resolutionBasis, type EntityRef } from '@codefossil/shared';
 import {
   commitContext,
   commitEvidence,
@@ -342,7 +342,7 @@ function whyWork(
   const noun = work.type === 'issue' ? 'Issue' : 'Pull request';
   const workEvidence = work.url ? findEvidenceId(db, repositoryId, work.type, work.url) : undefined;
   parts.statements.push({
-    text: `${noun} #${work.number} "${work.title}" is ${work.mergedAt ? 'merged' : work.state}.`,
+    text: `${noun} ${issueReference(work)} "${work.title}" is ${work.mergedAt ? 'merged' : work.state}.`,
     role: work.type === 'issue' ? 'the issue' : 'the pull request',
     level: 'FACT',
     confidence: 1,
@@ -351,7 +351,7 @@ function whyWork(
   if (work.type === 'issue') {
     for (const { row, record } of linked(db, repositoryId, ref, 'RESOLVED_BY', 'out')) {
       parts.statements.push({
-        text: `It is resolved by ${labelOf(record)} (closing keyword; confidence ${row.confidence.toFixed(2)}).`,
+        text: `It is resolved by ${labelOf(record)} (${resolutionBasis(row.provenanceJson.method, row.confidence)}).`,
         role: 'resolution',
         level: row.evidenceType,
         confidence: row.confidence,
@@ -372,7 +372,7 @@ function whyWork(
     }
     for (const { row, record } of linked(db, repositoryId, ref, 'RESOLVED_BY', 'in')) {
       parts.statements.push({
-        text: `It resolves ${labelOf(record)} (closing keyword; confidence ${row.confidence.toFixed(2)}).`,
+        text: `It resolves ${labelOf(record)} (${resolutionBasis(row.provenanceJson.method, row.confidence)}).`,
         role: 'resolved issue',
         level: row.evidenceType,
         confidence: row.confidence,

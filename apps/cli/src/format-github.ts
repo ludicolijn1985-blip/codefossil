@@ -25,12 +25,25 @@ export function formatGitHubIndex(result: GitHubIndexResult | null): string {
 
   const pending =
     sync.detailsPending > 0 ? `; ${plural(sync.detailsPending, 'pull request')} still pending` : '';
+  const extras = [
+    sync.closingRefsFetched > 0
+      ? `closing issues of ${plural(sync.closingRefsFetched, 'pull request')}`
+      : '',
+    sync.foreignIssues > 0 ? `${plural(sync.foreignIssues, 'issue')} of other repositories` : '',
+  ].filter((extra) => extra !== '');
+  const read = extras.length > 0 ? `; read ${extras.join(' and ')}` : '';
   const lines = [
     `GitHub ${slug}: synced ${plural(sync.issues, 'issue')} and ` +
       `${plural(sync.pullRequests, 'pull request')} with ${plural(sync.requests, 'request')}; ` +
-      `fetched details of ${plural(sync.detailsFetched, 'pull request')}${pending}.\n`,
+      `fetched details of ${plural(sync.detailsFetched, 'pull request')}${pending}${read}.\n`,
     formatLinks(result),
   ];
+  if (sync.closingRefsError) {
+    lines.push(
+      `Note: GitHub's closing issue links could not be read (${sync.closingRefsError}); ` +
+        'pull requests keep their keyword-based links.\n',
+    );
+  }
   if (sync.stoppedEarly) {
     lines.push(`Note: ${sync.stoppedEarly}. Run \`codefossil index\` again later to continue.\n`);
   }

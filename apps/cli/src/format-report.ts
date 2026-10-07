@@ -1,4 +1,9 @@
-import type { ChangedFileReport, FragileSymbol, RepositoryReport } from '@codefossil/analyzers';
+import {
+  issueReference,
+  type ChangedFileReport,
+  type FragileSymbol,
+  type RepositoryReport,
+} from '@codefossil/analyzers';
 
 /** Marks a CODEFOSSIL report so a later run can find and update its own pull-request comment. */
 export const REPORT_MARKER = '<!-- codefossil-report -->';
@@ -70,7 +75,7 @@ const FIXES_SHOWN = 3;
 
 /** `#123` with the `#` escaped: no link, so old issues get no cross-reference from every PR. */
 const issueRef = (d: FragileSymbol['fixes'][number]['discussions'][number]) =>
-  mdText(`#${d.number}`);
+  mdText(issueReference(d));
 
 function fragileLines(item: FragileSymbol, changed: readonly ChangedFileReport[]): string[] {
   const { symbol, fixes } = item;

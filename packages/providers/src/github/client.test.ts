@@ -45,6 +45,45 @@ describe('GitHubClient', () => {
     expect(github.requestsMade).toBe(2);
   });
 
+  it('posts GraphQL queries next to the REST API, also on GitHub Enterprise', async () => {
+    server = await startFakeGitHub((url, request) =>
+      url.pathname === '/api/graphql' && request.method === 'POST'
+        ? { body: { data: { viewer: { login: 'ada' } } } }
+        : undefined,
+    );
+    const github = new GitHubClient({
+      apiUrl: `${server.apiUrl}/api/v3`,
+      token: 'secret-token',
+      maxRequests: 10,
+    });
+    const shape = z.object({ viewer: z.object({ login: z.string() }) });
+
+    await expect(github.graphql('query { viewer { login } }', {}, shape)).resolves.toEqual({
+      viewer: { login: 'ada' },
+    });
+    const [request] = server.requests;
+    expect(JSON.parse(request?.body ?? '')).toEqual({
+      query: 'query { viewer { login } }',
+      variables: {},
+    });
+    expect(request?.headers.authorization).toBe('Bearer secret-token');
+    expect(github.authenticated).toBe(true);
+  });
+
+  it('turns GraphQL errors into API and rate-limit errors', async () => {
+    let errors: unknown[] = [{ message: 'Field missing' }];
+    const github = await client(() => ({ body: { data: null, errors } }));
+    const shape = z.object({});
+
+    await expect(github.graphql('query { x }', {}, shape)).rejects.toThrow(
+      /GraphQL request failed: Field missing/,
+    );
+    errors = [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }];
+    await expect(github.graphql('query { x }', {}, shape)).rejects.toBeInstanceOf(
+      GitHubRateLimitError,
+    );
+  });
+
   it('omits Authorization when unauthenticated', async () => {
     const github = await client(() => ({ body: [] }), 10, null);
     await github.getList('/things', item);

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, like, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
 import type { EvidenceLevel } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import {
@@ -117,6 +117,8 @@ export interface CommitDiscussion {
   readonly commitId: number;
   readonly type: 'issue' | 'pull_request';
   readonly number: string;
+  /** `owner/name` for an issue of another repository; null for the indexed one. */
+  readonly repo: string | null;
   readonly title: string;
   readonly body: string;
   readonly labels: readonly string[];
@@ -154,6 +156,7 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
       .select({
         id: issues.id,
         number: issues.externalId,
+        repo: issues.sourceRepo,
         title: issues.title,
         body: issues.body,
         labels: issues.labelsJson,
@@ -168,6 +171,8 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
       .select({
         id: pullRequests.id,
         number: pullRequests.externalId,
+        // Only issues of other repositories are synced; every pull request is the repository's own.
+        repo: sql<string>`''`,
         title: pullRequests.title,
         body: pullRequests.body,
         labels: pullRequests.labelsJson,
@@ -191,6 +196,7 @@ export function commitDiscussions(db: FossilDb, repositoryId: number): CommitDis
         commitId,
         type: otherType,
         number: row.number,
+        repo: row.repo === '' ? null : row.repo,
         title: row.title,
         body: row.body,
         labels: row.labels ?? [],

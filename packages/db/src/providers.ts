@@ -1,14 +1,18 @@
-import { and, asc, count, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, count, eq, gte, isNotNull, isNull, lt, or } from 'drizzle-orm';
 import type { FossilDb } from './client.js';
 import {
   commits,
   evidence,
+  foreignLookups,
   issues,
   providerConnections,
   pullRequestCommits,
   pullRequests,
   reviews,
+  type ClosingRef,
 } from './schema.js';
+
+export type { ClosingRef } from './schema.js';
 
 export type ProviderConnectionRow = typeof providerConnections.$inferSelect;
 export type IssueRow = typeof issues.$inferSelect;
@@ -118,14 +122,26 @@ export interface ExternalItem {
   readonly closedAt: string | null;
 }
 
-export function upsertIssue(db: FossilDb, item: ExternalItem): IssueRow {
-  const { number, labels, ...fields } = item;
-  const values = { ...fields, externalId: String(number), labelsJson: [...labels] };
+/**
+ * Store an issue. `sourceRepo` (`owner/name`) marks an issue of another
+ * repository that the indexed one references; omit it for the repository's own.
+ */
+export function upsertIssue(
+  db: FossilDb,
+  item: ExternalItem & { readonly sourceRepo?: string },
+): IssueRow {
+  const { number, labels, sourceRepo = '', ...fields } = item;
+  const values = {
+    ...fields,
+    sourceRepo: sourceRepo.toLowerCase(),
+    externalId: String(number),
+    labelsJson: [...labels],
+  };
   const row = db
     .insert(issues)
     .values(values)
     .onConflictDoUpdate({
-      target: [issues.repositoryId, issues.provider, issues.externalId],
+      target: [issues.repositoryId, issues.provider, issues.sourceRepo, issues.externalId],
       set: values,
     })
     .returning()
@@ -233,7 +249,13 @@ export function findIssueByNumber(
   return db
     .select()
     .from(issues)
-    .where(and(eq(issues.repositoryId, repositoryId), eq(issues.externalId, String(number))))
+    .where(
+      and(
+        eq(issues.repositoryId, repositoryId),
+        eq(issues.sourceRepo, ''),
+        eq(issues.externalId, String(number)),
+      ),
+    )
     .get();
 }
 
@@ -305,20 +327,36 @@ export function findEvidenceId(
     .get()?.id;
 }
 
-/** Issue and pull request ids by number, for linking many references with one query each. */
+/** `owner/name#12`, lower-cased: how issues of other repositories are keyed. */
+export function foreignReference(repo: string, number: number): string {
+  return `${repo.toLowerCase()}#${String(number)}`;
+}
+
+/**
+ * Issue and pull request ids by number, for linking many references with one
+ * query each; issues of other repositories are keyed by `foreignReference`.
+ */
 export function externalIdsByNumber(
   db: FossilDb,
   repositoryId: number,
-): { readonly issues: Map<number, number>; readonly pullRequests: Map<number, number> } {
+): {
+  readonly issues: Map<number, number>;
+  readonly pullRequests: Map<number, number>;
+  readonly foreignIssues: Map<string, number>;
+} {
   const byNumber = (rows: { id: number; externalId: string }[]) =>
     new Map(rows.map((row) => [Number(row.externalId), row.id]));
+  const issueRows = db
+    .select({ id: issues.id, externalId: issues.externalId, sourceRepo: issues.sourceRepo })
+    .from(issues)
+    .where(eq(issues.repositoryId, repositoryId))
+    .all();
   return {
-    issues: byNumber(
-      db
-        .select({ id: issues.id, externalId: issues.externalId })
-        .from(issues)
-        .where(eq(issues.repositoryId, repositoryId))
-        .all(),
+    issues: byNumber(issueRows.filter((row) => row.sourceRepo === '')),
+    foreignIssues: new Map(
+      issueRows
+        .filter((row) => row.sourceRepo !== '')
+        .map((row) => [foreignReference(row.sourceRepo, Number(row.externalId)), row.id]),
     ),
     pullRequests: byNumber(
       db
@@ -352,8 +390,11 @@ export function providerCounts(db: FossilDb, repositoryId: number): ProviderCoun
   const countOf = (value: number | undefined) => value ?? 0;
   return {
     issues: countOf(
-      db.select({ value: count() }).from(issues).where(eq(issues.repositoryId, repositoryId)).get()
-        ?.value,
+      db
+        .select({ value: count() })
+        .from(issues)
+        .where(and(eq(issues.repositoryId, repositoryId), eq(issues.sourceRepo, '')))
+        .get()?.value,
     ),
     pullRequests: countOf(
       db
@@ -364,4 +405,84 @@ export function providerCounts(db: FossilDb, repositoryId: number): ProviderCoun
     ),
     pendingPullRequestDetails: pendingPullRequestDetails(db, repositoryId).length,
   };
+}
+
+/**
+ * Merged pull requests whose closing issue links are missing or older than
+ * their details (a PR edited after the last fetch).
+ */
+export function pendingClosingRefs(db: FossilDb, repositoryId: number): PullRequestRow[] {
+  return db
+    .select()
+    .from(pullRequests)
+    .where(
+      and(
+        eq(pullRequests.repositoryId, repositoryId),
+        isNotNull(pullRequests.mergedAt),
+        isNotNull(pullRequests.detailsSyncedAt),
+        or(
+          isNull(pullRequests.closingRefsSyncedAt),
+          lt(pullRequests.closingRefsSyncedAt, pullRequests.detailsSyncedAt),
+        ),
+      ),
+    )
+    .orderBy(asc(pullRequests.id))
+    .all();
+}
+
+/** Store the issues GitHub links to a pull request as closed by it. */
+export function saveClosingRefs(
+  db: FossilDb,
+  pullRequest: PullRequestRow,
+  refs: readonly ClosingRef[],
+  syncedAt: string,
+): void {
+  // Never stamp earlier than the details, or the PR would stay pending.
+  const stamp =
+    pullRequest.detailsSyncedAt && pullRequest.detailsSyncedAt > syncedAt
+      ? pullRequest.detailsSyncedAt
+      : syncedAt;
+  db.update(pullRequests)
+    .set({
+      closingRefsJson: refs.map((ref) => ({ repo: ref.repo.toLowerCase(), number: ref.number })),
+      closingRefsSyncedAt: stamp,
+    })
+    .where(eq(pullRequests.id, pullRequest.id))
+    .run();
+}
+
+/** Lower-cased `owner/name#12` references looked up at or after `since`. */
+export function recentForeignLookups(
+  db: FossilDb,
+  repositoryId: number,
+  since: string,
+): Set<string> {
+  return new Set(
+    db
+      .select({ reference: foreignLookups.reference })
+      .from(foreignLookups)
+      .where(
+        and(eq(foreignLookups.repositoryId, repositoryId), gte(foreignLookups.checkedAt, since)),
+      )
+      .all()
+      .map((row) => row.reference),
+  );
+}
+
+/** Remember that an `owner/name#12` reference was looked up, and whether it was found. */
+export function recordForeignLookup(
+  db: FossilDb,
+  repositoryId: number,
+  reference: string,
+  found: boolean,
+  checkedAt: string,
+): void {
+  const values = { repositoryId, reference: reference.toLowerCase(), found, checkedAt };
+  db.insert(foreignLookups)
+    .values(values)
+    .onConflictDoUpdate({
+      target: [foreignLookups.repositoryId, foreignLookups.reference],
+      set: { found, checkedAt },
+    })
+    .run();
 }

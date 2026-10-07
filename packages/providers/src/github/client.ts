@@ -119,6 +119,44 @@ export class GitHubClient {
     return this.made;
   }
 
+  /** GitHub's GraphQL API only answers authenticated requests. */
+  get authenticated(): boolean {
+    return this.options.token !== null && this.options.token !== '';
+  }
+
+  /**
+   * Run a GraphQL query and validate its `data` with `schema`. GitHub
+   * Enterprise serves GraphQL at `/api/graphql` next to the REST `/api/v3`.
+   */
+  async graphql<T>(
+    query: string,
+    variables: Readonly<Record<string, unknown>>,
+    schema: z.ZodType<T>,
+  ): Promise<T> {
+    const restPath = this.base.pathname.replace(/\/$/, '');
+    const path = restPath.endsWith('/v3')
+      ? `${restPath.slice(0, -3)}/graphql`
+      : `${restPath}/graphql`;
+    const url = new URL(path, this.base);
+    const envelope = z.object({
+      data: schema.nullable().optional(),
+      errors: z.array(z.object({ type: z.string().optional(), message: z.string() })).optional(),
+    });
+    const { items } = await this.request(url, envelope, {
+      method: 'POST',
+      body: JSON.stringify({ query, variables }),
+    });
+    const errors = items.errors ?? [];
+    if (errors.some((error) => error.type === 'RATE_LIMITED')) throw new GitHubRateLimitError(null);
+    if (items.data === undefined || items.data === null) {
+      throw new GitHubApiError(
+        `GitHub GraphQL request failed: ${errors[0]?.message ?? 'no data returned'}`,
+        null,
+      );
+    }
+    return items.data;
+  }
+
   /** GET `path` (relative to the API URL) and validate the JSON body with `schema`. */
   async get<T>(
     path: string,
@@ -149,7 +187,11 @@ export class GitHubClient {
     return await this.request(url, z.array(item));
   }
 
-  private async request<T>(url: URL, schema: z.ZodType<T>): Promise<Page<T>> {
+  private async request<T>(
+    url: URL,
+    schema: z.ZodType<T>,
+    post?: { readonly method: 'POST'; readonly body: string },
+  ): Promise<Page<T>> {
     if (this.made >= this.options.maxRequests) {
       throw new RequestBudgetExhaustedError(
         `Request budget of ${this.options.maxRequests} GitHub requests used`,
@@ -162,10 +204,12 @@ export class GitHubClient {
       'User-Agent': USER_AGENT,
     };
     if (this.options.token) headers.Authorization = `Bearer ${this.options.token}`;
+    if (post) headers['Content-Type'] = 'application/json';
 
     let response: Response;
     try {
       response = await this.fetchImpl(url, {
+        ...(post ?? {}),
         headers,
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });

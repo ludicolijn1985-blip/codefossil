@@ -7,10 +7,16 @@ export interface FakeResponse {
   readonly body: unknown;
 }
 
-/** Returns the response for a request, or undefined for a 404. `url` includes the query. */
-export type FakeRoute = (url: URL) => FakeResponse | undefined;
+/** A request's method and body, for routes that answer POSTs (GraphQL). */
+export interface FakeRequest {
+  readonly method: string;
+  readonly body: string;
+}
 
-export interface RecordedRequest {
+/** Returns the response for a request, or undefined for a 404. `url` includes the query. */
+export type FakeRoute = (url: URL, request: FakeRequest) => FakeResponse | undefined;
+
+export interface RecordedRequest extends FakeRequest {
   readonly url: URL;
   readonly headers: IncomingHttpHeaders;
 }
@@ -32,14 +38,19 @@ export async function startFakeGitHub(route: FakeRoute): Promise<FakeGitHub> {
   const requests: RecordedRequest[] = [];
   let apiUrl = '';
   const server: Server = createServer((req, res) => {
-    const url = new URL(req.url ?? '/', apiUrl);
-    requests.push({ url, headers: req.headers });
-    const response = route(url);
-    res.writeHead(response?.status ?? (response ? 200 : 404), {
-      'content-type': 'application/json',
-      ...response?.headers,
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      const url = new URL(req.url ?? '/', apiUrl);
+      const request = { method: req.method ?? 'GET', body: Buffer.concat(chunks).toString('utf8') };
+      requests.push({ url, headers: req.headers, ...request });
+      const response = route(url, request);
+      res.writeHead(response?.status ?? (response ? 200 : 404), {
+        'content-type': 'application/json',
+        ...response?.headers,
+      });
+      res.end(JSON.stringify(response?.body ?? { message: 'Not Found' }));
     });
-    res.end(JSON.stringify(response?.body ?? { message: 'Not Found' }));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;

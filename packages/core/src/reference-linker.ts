@@ -4,6 +4,7 @@ import {
   externalIdsByNumber,
   findCommitBySha,
   findEvidenceId,
+  foreignReference,
   listCommitMessages,
   listPullRequests,
   pullRequestCommitShas,
@@ -13,9 +14,11 @@ import {
   type PullRequestRow,
 } from '@codefossil/db';
 import { parseReferences, type TextReference } from '@codefossil/providers';
-import type { EntityRef, RelationInput } from '@codefossil/shared';
+import { GITHUB_CLOSING_METHOD, type EntityRef, type RelationInput } from '@codefossil/shared';
 
-export const GITHUB_LINKER_PRODUCER = 'github-linker@0.1.0';
+export const GITHUB_LINKER_PRODUCER = 'github-linker@0.2.0';
+/** Earlier versions, whose links are replaced on every run. */
+const LEGACY_PRODUCERS = ['github-linker@0.1.0'];
 
 /**
  * A closing keyword closes the issue only when the change reaches the default
@@ -41,6 +44,8 @@ type Draft = Omit<RelationInput, 'repositoryId' | 'provenance'> & {
 interface Lookups {
   readonly issues: ReadonlyMap<number, number>;
   readonly pullRequests: ReadonlyMap<number, number>;
+  /** Issues of other repositories, by `foreignReference`. */
+  readonly foreignIssues: ReadonlyMap<string, number>;
   /** Commits undone by a later `git revert`. */
   readonly reverted: ReadonlySet<string>;
 }
@@ -49,13 +54,18 @@ interface Lookups {
  * Rebuild the links between GitHub records and history from stored data:
  * - `pull_request IMPLEMENTED_BY commit` (FACT): commits GitHub lists for the
  *   PR, and the merge commit of a merged PR, when they exist locally.
+ * - `issue RESOLVED_BY pull_request` (FACT, 1): GitHub records the merged PR as
+ *   closing the issue (its closing issue references, fetched with a token) —
+ *   unless the PR was reverted. When those references are known they replace
+ *   the PR's closing keywords, which then count as mentions.
  * - `issue RESOLVED_BY pull_request|commit` (DERIVED, 0.9): a closing keyword
  *   (`Fixes #12`) in a merged PR or in a commit message — unless that change
  *   was reverted, or is itself a revert.
  * - `pull_request|commit REFERENCES issue|pull_request` (DERIVED, 1): any other
  *   mention of a number that is a synced issue or pull request.
  *
- * Numbers that match no synced record produce no link.
+ * Issues of other repositories (`other/repo#12`) are linked the same way once
+ * synced. References that match no synced record produce no link.
  */
 export function linkGitHubReferences(
   db: FossilDb,
@@ -64,7 +74,9 @@ export function linkGitHubReferences(
   observedAt: string,
 ): LinkResult {
   return db.transaction((tx) => {
-    deleteRelationsByProducer(tx, repositoryId, GITHUB_LINKER_PRODUCER);
+    for (const producer of [GITHUB_LINKER_PRODUCER, ...LEGACY_PRODUCERS]) {
+      deleteRelationsByProducer(tx, repositoryId, producer);
+    }
     const commits = listCommitMessages(tx, repositoryId);
     const lookups: Lookups = {
       ...externalIdsByNumber(tx, repositoryId),
@@ -172,22 +184,85 @@ function pullRequestDrafts(
 
   const reverted =
     pullRequest.mergeCommitSha !== null && lookups.reverted.has(pullRequest.mergeCommitSha);
+  const landed = pullRequest.mergedAt !== null && !reverted;
+  const details = reverted ? { reverted: true } : undefined;
+  const closing = closingRefDrafts(source, pullRequest, slug, lookups, landed, evidenceId, details);
   const references = parseReferences(
     `${pullRequest.title}\n${pullRequest.body}`,
     slug.owner,
     slug.name,
-  ).filter((ref) => String(ref.number) !== pullRequest.externalId);
+  )
+    .filter((ref) => ref.repo !== null || String(ref.number) !== pullRequest.externalId)
+    .filter((ref) => !closing.covered.has(referenceKey(ref)))
+    // GitHub's own closing references, when known, decide what the PR closes.
+    .map((ref) => (pullRequest.closingRefsJson === null ? ref : { ...ref, closing: false }));
   drafts.push(
-    ...referenceDrafts(
-      source,
-      references,
-      lookups,
-      pullRequest.mergedAt !== null && !reverted,
-      evidenceId,
-      reverted ? { reverted: true } : undefined,
-    ),
+    ...closing.drafts,
+    ...referenceDrafts(source, references, lookups, landed, evidenceId, details),
   );
   return drafts;
+}
+
+const referenceKey = (ref: { readonly repo: string | null; readonly number: number }): string =>
+  ref.repo === null ? `#${String(ref.number)}` : foreignReference(ref.repo, ref.number);
+
+/** The issue a reference names, if it is synced. */
+function issueFor(
+  lookups: Lookups,
+  ref: { readonly repo: string | null; readonly number: number },
+): number | undefined {
+  return ref.repo === null
+    ? lookups.issues.get(ref.number)
+    : lookups.foreignIssues.get(foreignReference(ref.repo, ref.number));
+}
+
+/**
+ * Links from the issues GitHub records as closed by a pull request. They are
+ * FACT: GitHub reports the link, nothing is read from text. A PR that did not
+ * land (reverted) only references them.
+ */
+function closingRefDrafts(
+  source: EntityRef,
+  pullRequest: PullRequestRow,
+  slug: { readonly owner: string; readonly name: string },
+  lookups: Lookups,
+  landed: boolean,
+  evidenceId: number | undefined,
+  details: Record<string, unknown> | undefined,
+): { drafts: Draft[]; covered: Set<string> } {
+  const self = `${slug.owner}/${slug.name}`.toLowerCase();
+  const drafts: Draft[] = [];
+  const covered = new Set<string>();
+  for (const closing of pullRequest.closingRefsJson ?? []) {
+    const ref = { repo: closing.repo === self ? null : closing.repo, number: closing.number };
+    const issueId = issueFor(lookups, ref);
+    if (issueId === undefined || covered.has(referenceKey(ref))) continue;
+    covered.add(referenceKey(ref));
+    const issue = { type: 'issue', id: issueId } as const;
+    drafts.push(
+      landed
+        ? {
+            source: issue,
+            relation: 'RESOLVED_BY',
+            target: source,
+            evidenceType: 'FACT',
+            confidence: 1,
+            method: GITHUB_CLOSING_METHOD,
+            evidenceId,
+          }
+        : {
+            source,
+            relation: 'REFERENCES',
+            target: issue,
+            evidenceType: 'FACT',
+            confidence: 1,
+            method: GITHUB_CLOSING_METHOD,
+            evidenceId,
+            ...(details ? { details } : {}),
+          },
+    );
+  }
+  return { drafts, covered };
 }
 
 /**
@@ -204,7 +279,7 @@ function referenceDrafts(
   details: Record<string, unknown> | undefined,
 ): Draft[] {
   return references.flatMap((reference): Draft[] => {
-    const issueId = lookups.issues.get(reference.number);
+    const issueId = issueFor(lookups, reference);
     const extra = details ? { details } : {};
     if (issueId !== undefined && reference.closing && landed) {
       return [
@@ -219,7 +294,9 @@ function referenceDrafts(
         },
       ];
     }
-    const pullRequestId = lookups.pullRequests.get(reference.number);
+    // Pull requests of other repositories are not synced.
+    const pullRequestId =
+      reference.repo === null ? lookups.pullRequests.get(reference.number) : undefined;
     const target: EntityRef | null =
       issueId !== undefined
         ? { type: 'issue', id: issueId }

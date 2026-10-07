@@ -260,8 +260,12 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   matched only for a curated list of well-known packages (`yaml` → PyYAML); Go `replace` directives
   are followed to directories inside the repository. TypeScript `paths` and `baseUrl` come from the
   nearest `tsconfig.json`/`jsconfig.json` (`extends` followed within the repository only).
-- **GitHub links.** Closing keywords (`Fixes #12`) are DERIVED at confidence 0.9, and only
-  same-repository references are linked.
+- **GitHub links.** With a token, the issues GitHub itself links to a merged pull request as closed
+  by it are FACT, including ones linked by hand. Closing keywords in commits (`Fixes #12`), and in
+  pull requests when GitHub cannot be asked (no token), are DERIVED at confidence 0.9: GitHub only
+  closes an issue once the change reaches the default branch. Issues of other repositories
+  (`other/repo#12`) are linked once read (up to 50 new ones per sync, each re-read weekly); pull
+  requests of other repositories are not.
 
 ## License
 

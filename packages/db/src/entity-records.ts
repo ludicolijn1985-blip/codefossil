@@ -54,6 +54,8 @@ export type EntityRecord =
       readonly type: 'issue' | 'pull_request';
       readonly id: number;
       readonly number: number;
+      /** `owner/name` for an issue of another repository; null for the indexed one. */
+      readonly repo: string | null;
       readonly title: string;
       readonly state: string;
       readonly url: string | null;
@@ -137,6 +139,7 @@ const LOADERS: Record<EntityType, Loader> = {
       .select({
         id: issues.id,
         externalId: issues.externalId,
+        sourceRepo: issues.sourceRepo,
         title: issues.title,
         state: issues.state,
         url: issues.url,
@@ -144,9 +147,10 @@ const LOADERS: Record<EntityType, Loader> = {
       .from(issues)
       .where(inArray(issues.id, ids))
       .all()
-      .map(({ externalId, ...row }) => ({
+      .map(({ externalId, sourceRepo, ...row }) => ({
         type: 'issue',
         number: Number(externalId),
+        repo: sourceRepo === '' ? null : sourceRepo,
         mergedAt: null,
         ...row,
       })),
@@ -166,6 +170,7 @@ const LOADERS: Record<EntityType, Loader> = {
       .map(({ externalId, ...row }) => ({
         type: 'pull_request',
         number: Number(externalId),
+        repo: null,
         ...row,
       })),
   review: (db, ids) =>

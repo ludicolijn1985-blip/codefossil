@@ -18,6 +18,12 @@ import {
   type Provenance,
 } from '@codefossil/shared';
 
+/** An issue GitHub links to a pull request as closed by it; `repo` is `owner/name`. */
+export interface ClosingRef {
+  readonly repo: string;
+  readonly number: number;
+}
+
 /** `('FACT', 'DERIVED', 'INFERRED')` for use in CHECK constraints. */
 const evidenceLevelList = sql.raw(`(${EVIDENCE_LEVELS.map((level) => `'${level}'`).join(', ')})`);
 
@@ -223,6 +229,11 @@ export const issues = sqliteTable(
       .notNull()
       .references(() => repositories.id, { onDelete: 'cascade' }),
     provider: text('provider').notNull(),
+    /**
+     * `owner/name` of the repository the issue lives in when that is not the
+     * indexed repository (a cross-repository reference); empty otherwise.
+     */
+    sourceRepo: text('source_repo').notNull().default(''),
     externalId: text('external_id').notNull(),
     title: text('title').notNull(),
     body: text('body').notNull().default(''),
@@ -234,7 +245,14 @@ export const issues = sqliteTable(
     updatedAt: text('updated_at'),
     closedAt: text('closed_at'),
   },
-  (t) => [uniqueIndex('issues_external_idx').on(t.repositoryId, t.provider, t.externalId)],
+  (t) => [
+    uniqueIndex('issues_external_repo_idx').on(
+      t.repositoryId,
+      t.provider,
+      t.sourceRepo,
+      t.externalId,
+    ),
+  ],
 );
 
 export const pullRequests = sqliteTable(
@@ -261,6 +279,12 @@ export const pullRequests = sqliteTable(
     headBranch: text('head_branch'),
     /** When commits, reviews and merge details were fetched; null or older than updated_at means pending. */
     detailsSyncedAt: text('details_synced_at'),
+    /**
+     * The issues GitHub links to this pull request as closed by it (its
+     * `closingIssuesReferences`); null until fetched.
+     */
+    closingRefsJson: text('closing_refs_json', { mode: 'json' }).$type<ClosingRef[]>(),
+    closingRefsSyncedAt: text('closing_refs_synced_at'),
   },
   (t) => [uniqueIndex('pull_requests_external_idx').on(t.repositoryId, t.provider, t.externalId)],
 );
@@ -279,6 +303,25 @@ export const reviews = sqliteTable(
     submittedAt: text('submitted_at').notNull(),
   },
   (t) => [uniqueIndex('reviews_external_idx').on(t.pullRequestId, t.externalId)],
+);
+
+/**
+ * Lookups of issues in other repositories (`owner/name#12`), so a reference
+ * that cannot be read (private, deleted, not an issue) is not asked again on
+ * every sync.
+ */
+export const foreignLookups = sqliteTable(
+  'foreign_lookups',
+  {
+    repositoryId: integer('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    /** Lower-cased `owner/name#number`. */
+    reference: text('reference').notNull(),
+    found: integer('found', { mode: 'boolean' }).notNull(),
+    checkedAt: text('checked_at').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.repositoryId, t.reference] })],
 );
 
 /** Commits GitHub reports as part of a pull request (whether or not they are indexed locally). */

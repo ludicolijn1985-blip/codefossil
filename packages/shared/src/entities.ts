@@ -43,3 +43,28 @@ export const entityRefSchema = z.object({
   id: z.number().int().positive(),
 });
 export type EntityRef = z.infer<typeof entityRefSchema>;
+
+/**
+ * How an issue or pull request is written: `#12` in the indexed repository,
+ * `owner/name#12` in another one.
+ */
+export function issueReference(item: {
+  readonly number: number | string;
+  readonly repo?: string | null;
+}): string {
+  return `${item.repo ? item.repo : ''}#${String(item.number)}`;
+}
+
+/**
+ * Provenance method of an `issue RESOLVED_BY` link that GitHub itself records
+ * (a pull request's closing issue references), as opposed to one read from a
+ * closing keyword in text.
+ */
+export const GITHUB_CLOSING_METHOD = 'github-closing-reference';
+
+/** How a resolution link was established, for answers that cite it. */
+export function resolutionBasis(method: string, confidence: number): string {
+  return method === GITHUB_CLOSING_METHOD
+    ? 'linked as closing on GitHub'
+    : `closing keyword; confidence ${confidence.toFixed(2)}`;
+}

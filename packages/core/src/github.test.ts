@@ -15,10 +15,13 @@ import {
 } from '@codefossil/db';
 import { createFixtureRepo, type FixtureRepo } from '@codefossil/git/testing';
 import { GitHubClient } from '@codefossil/providers';
+import { GITHUB_CLOSING_METHOD } from '@codefossil/shared';
+import { and, eq } from 'drizzle-orm';
 import {
   paged,
   startFakeGitHub,
   type FakeGitHub,
+  type FakeRequest,
   type FakeRoute,
 } from '@codefossil/providers/testing';
 import { GITHUB_LINKER_PRODUCER } from './reference-linker.js';
@@ -61,6 +64,25 @@ const item = (number: number, fields: Record<string, unknown>) => ({
   labels: [],
   ...fields,
 });
+
+/** Answer a closing-references GraphQL query: `closing` maps a PR number to its issues. */
+function closingRefs(closing: Record<number, readonly (readonly [string, number])[]>): FakeRoute {
+  return (_url, request: FakeRequest) => {
+    const { query } = JSON.parse(request.body) as { query: string };
+    const repository: Record<string, unknown> = {};
+    for (const [, number] of query.matchAll(/pr(\d+):/g)) {
+      repository[`pr${String(number)}`] = {
+        closingIssuesReferences: {
+          nodes: (closing[Number(number)] ?? []).map(([repo, issue]) => ({
+            number: issue,
+            repository: { nameWithOwner: repo },
+          })),
+        },
+      };
+    }
+    return { body: { data: { repository } } };
+  };
+}
 
 function githubRoutes(shas: Shas, overrides: Record<string, FakeRoute> = {}): FakeRoute {
   const items = [
@@ -122,9 +144,11 @@ function githubRoutes(shas: Shas, overrides: Record<string, FakeRoute> = {}): Fa
     }),
     '/repos/acme/shop/pulls/4/commits': () => ({ body: [] }),
     '/repos/acme/shop/pulls/4/reviews': () => ({ body: [] }),
+    // GitHub links PR #3 to the issue its body closes.
+    '/graphql': closingRefs({ 3: [['acme/shop', 2]] }),
     ...overrides,
   };
-  return (url) => routes[url.pathname]?.(url);
+  return (url, request) => routes[url.pathname]?.(url, request);
 }
 
 describe('GitHub sync and linking', () => {
@@ -141,7 +165,7 @@ describe('GitHub sync and linking', () => {
     shas = await buildHistory(repo);
     fossil = openDatabase(IN_MEMORY);
     repositoryId = registerRepository(fossil.db, { path: repo.root, name: 'shop' }).id;
-    server = await startFakeGitHub((url) => route(url));
+    server = await startFakeGitHub((url, request) => route(url, request));
     connectProvider(fossil.db, {
       repositoryId,
       provider: 'github',
@@ -159,13 +183,13 @@ describe('GitHub sync and linking', () => {
   });
 
   /** Run a full index against the fake API; `requests` then holds only this run's calls. */
-  async function index(routes: FakeRoute, maxRequests = 100) {
+  async function index(routes: FakeRoute, maxRequests = 100, token: string | null = 'test-token') {
     route = routes;
     const apiUrl = server?.apiUrl ?? '';
     server?.clearRequests();
     return runIndex(fossil.db, repo?.root ?? '', {
       now,
-      github: () => new GitHubClient({ apiUrl, token: 'test-token', maxRequests }),
+      github: () => new GitHubClient({ apiUrl, token, maxRequests }),
     });
   }
 
@@ -192,6 +216,9 @@ describe('GitHub sync and linking', () => {
       pullRequests: 2,
       detailsFetched: 2,
       detailsPending: 0,
+      // Only the merged PR is asked for the issues it closes.
+      closingRefsFetched: 1,
+      closingRefsError: null,
       stoppedEarly: null,
     });
     expect(fossil.db.select().from(schema.reviews).all()).toEqual([
@@ -212,8 +239,8 @@ describe('GitHub sync and linking', () => {
     // A bare mention in the PR body.
     expect(edges(pr3)).toContain(`REFERENCES issue#${ref('issue', 1).id} DERIVED 1`);
 
-    // Closing keywords in a merged PR and in a commit resolve the issues.
-    expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} DERIVED 0.9`]);
+    // GitHub records the merged PR as closing #2 (a fact); a commit's closing keyword resolves #1.
+    expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} FACT 1`]);
     expect(edges(ref('issue', 1))).toEqual([
       `RESOLVED_BY commit#${commit(shas.fix).id} DERIVED 0.9`,
     ]);
@@ -230,8 +257,85 @@ describe('GitHub sync and linking', () => {
     const resolution = incomingRelations(fossil.db, repositoryId, pr3).find(
       (r) => r.relation === 'RESOLVED_BY',
     );
-    expect(resolution?.provenanceJson).toMatchObject({ method: 'closing-keyword' });
+    expect(resolution?.provenanceJson).toMatchObject({ method: GITHUB_CLOSING_METHOD });
     expect(resolution?.provenanceJson.evidenceIds).toHaveLength(1);
+  });
+
+  it('reads closing keywords in pull requests when GitHub cannot be asked (no token)', async () => {
+    const result = await index(githubRoutes(shas), 100, null);
+
+    expect(result.github?.sync).toMatchObject({ closingRefsFetched: 0, closingRefsError: null });
+    expect(server?.requests.some((r) => r.url.pathname === '/graphql')).toBe(false);
+    const pr3 = ref('pull_request', 3);
+    expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} DERIVED 0.9`]);
+  });
+
+  it("lets GitHub's closing links decide over the pull request's keywords", async () => {
+    // GitHub reports PR #3 closing nothing (e.g. it targeted another branch).
+    await index(githubRoutes(shas, { '/graphql': closingRefs({}) }));
+
+    const pr3 = ref('pull_request', 3);
+    expect(edges(ref('issue', 2))).toEqual([]);
+    expect(edges(pr3)).toContain(`REFERENCES issue#${ref('issue', 2).id} DERIVED 1`);
+  });
+
+  it('keeps keyword links and says why when the closing links cannot be read', async () => {
+    const failing: FakeRoute = () => ({ status: 502, body: { message: 'Bad gateway' } });
+    const result = await index(githubRoutes(shas, { '/graphql': failing }));
+
+    expect(result.github?.sync?.closingRefsError).toMatch(/failed with 502/);
+    expect(result.github?.sync?.stoppedEarly).toBeNull();
+    const pr3 = ref('pull_request', 3);
+    expect(edges(ref('issue', 2))).toEqual([`RESOLVED_BY pull_request#${pr3.id} DERIVED 0.9`]);
+  });
+
+  it('links issues of other repositories, and remembers the ones it cannot read', async () => {
+    const fix = (await repo?.commit('Fixes Other/Lib#5, see other/lib#6')) ?? '';
+    const foreign = (number: number, title: string) => () => ({
+      body: item(number, {
+        title,
+        state: 'closed',
+        html_url: `https://github.com/other/lib/issues/${String(number)}`,
+      }),
+    });
+    const routes = githubRoutes(shas, {
+      '/graphql': closingRefs({
+        3: [
+          ['acme/shop', 2],
+          ['Other/Lib', 7],
+        ],
+      }),
+      '/repos/other/lib/issues/5': foreign(5, 'Crash in parser'),
+      '/repos/other/lib/issues/7': foreign(7, 'Upstream rate table'),
+      // #6 is private or gone: a 404.
+    });
+
+    const first = await index(routes);
+    expect(first.github?.sync).toMatchObject({ foreignIssues: 2, stoppedEarly: null });
+
+    const foreignIssue = (number: number) => {
+      const row = fossil.db
+        .select()
+        .from(schema.issues)
+        .where(
+          and(
+            eq(schema.issues.sourceRepo, 'other/lib'),
+            eq(schema.issues.externalId, String(number)),
+          ),
+        )
+        .get();
+      if (!row) throw new Error(`other/lib#${String(number)} not synced`);
+      return { type: 'issue', id: row.id } as const;
+    };
+    const pr3 = ref('pull_request', 3);
+    expect(edges(foreignIssue(5))).toEqual([`RESOLVED_BY commit#${commit(fix).id} DERIVED 0.9`]);
+    expect(edges(foreignIssue(7))).toEqual([`RESOLVED_BY pull_request#${pr3.id} FACT 1`]);
+    // Issues of other repositories are not counted as the repository's own.
+    expect(providerCounts(fossil.db, repositoryId).issues).toBe(2);
+
+    // Within a week nothing is asked again, the unreadable #6 included.
+    await index(routes);
+    expect(server?.requests.some((r) => r.url.pathname.startsWith('/repos/other/'))).toBe(false);
   });
 
   it('resumes from its cursor and does not refetch details that are up to date', async () => {

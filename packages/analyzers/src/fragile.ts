@@ -26,6 +26,7 @@ export interface FragileFix {
   readonly discussions: readonly {
     readonly type: 'issue' | 'pull_request';
     readonly number: string;
+    readonly repo: string | null;
   }[];
 }
 
@@ -86,8 +87,8 @@ function fixHistories(
   const discussionsByCommit = new Map<number, FragileFix['discussions'][number][]>();
   for (const d of discussions) {
     const list = discussionsByCommit.get(d.commitId) ?? [];
-    if (!list.some((x) => x.type === d.type && x.number === d.number)) {
-      list.push({ type: d.type, number: d.number });
+    if (!list.some((x) => x.type === d.type && x.number === d.number && x.repo === d.repo)) {
+      list.push({ type: d.type, number: d.number, repo: d.repo });
     }
     discussionsByCommit.set(d.commitId, list);
   }

@@ -29,6 +29,7 @@ export interface StoryEvent {
   readonly discussions: readonly {
     readonly type: 'issue' | 'pull_request';
     readonly number: string;
+    readonly repo: string | null;
     readonly title: string;
   }[];
 }
@@ -73,8 +74,8 @@ export class StoryContext {
     this.defects = classifyDefects(commits, discussions, commitEvidenceIds(db, repositoryId));
     for (const d of discussions) {
       const list = this.discussionsByCommit.get(d.commitId) ?? [];
-      if (!list.some((x) => x.type === d.type && x.number === d.number)) {
-        list.push({ type: d.type, number: d.number, title: d.title });
+      if (!list.some((x) => x.type === d.type && x.number === d.number && x.repo === d.repo)) {
+        list.push({ type: d.type, number: d.number, repo: d.repo, title: d.title });
       }
       this.discussionsByCommit.set(d.commitId, list);
     }

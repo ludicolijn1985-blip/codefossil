@@ -81,7 +81,13 @@ export function issueOrPullRequestByNumber(
   const issueRows = db
     .select({ id: issues.id, title: issues.title })
     .from(issues)
-    .where(and(eq(issues.repositoryId, repositoryId), eq(issues.externalId, externalId)))
+    .where(
+      and(
+        eq(issues.repositoryId, repositoryId),
+        eq(issues.sourceRepo, ''),
+        eq(issues.externalId, externalId),
+      ),
+    )
     .all()
     .map((row) => ({ type: 'issue' as const, ...row }));
   const pullRows = db

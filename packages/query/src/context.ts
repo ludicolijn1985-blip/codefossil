@@ -8,7 +8,7 @@ import {
   type FossilDb,
   type RelationRow,
 } from '@codefossil/db';
-import type { EntityRef } from '@codefossil/shared';
+import { issueReference, resolutionBasis, type EntityRef } from '@codefossil/shared';
 import { labelOf } from './describe.js';
 import { day, firstParagraph, type RelatedEntity, type Statement } from './statements.js';
 
@@ -130,11 +130,10 @@ function resolutionStatement(
   base: number,
 ): Statement {
   const issue =
-    record.type === 'issue' ? `issue #${record.number} "${record.title}"` : labelOf(record);
+    record.type === 'issue' ? `issue ${issueReference(record)} "${record.title}"` : labelOf(record);
+  const how = resolutionBasis(row.provenanceJson.method, row.confidence);
   return {
-    text:
-      `${resolver[0]?.toUpperCase() ?? ''}${resolver.slice(1)} resolves ${issue} ` +
-      `(closing keyword; confidence ${row.confidence.toFixed(2)}).`,
+    text: `${resolver[0]?.toUpperCase() ?? ''}${resolver.slice(1)} resolves ${issue} (${how}).`,
     role: 'resolved issue',
     level: row.evidenceType,
     confidence: base * row.confidence,
