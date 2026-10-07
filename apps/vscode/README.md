@@ -13,6 +13,15 @@ Everything comes from your repository's own Git history, indexed on your machine
 [CODEFOSSIL](https://github.com/ludicolijn1985-blip/codefossil). Nothing is uploaded, no account
 is needed, and no AI is involved.
 
+## Install
+
+Download `codefossil-vscode-0.1.0.vsix` from the
+[latest release](https://github.com/ludicolijn1985-blip/codefossil/releases/latest), then:
+
+```bash
+code --install-extension codefossil-vscode-0.1.0.vsix
+```
+
 ## How it works
 
 The extension starts one `codefossil mcp` process per workspace folder (through `npx`, so Node.js

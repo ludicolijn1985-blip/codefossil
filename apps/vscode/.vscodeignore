@@ -1,0 +1,7 @@
+src/**
+node_modules/**
+**/*.map
+build.mjs
+tsconfig.json
+vitest.config.ts
+.turbo/**
