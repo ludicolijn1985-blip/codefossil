@@ -6,6 +6,7 @@ export * from './fragile.js';
 export * from './hotspots.js';
 export * from './reach.js';
 export * from './story.js';
+export * from './touched.js';
 export * from './text-signals.js';
 export * from './report.js';
 export { issueReference } from '@codefossil/shared';

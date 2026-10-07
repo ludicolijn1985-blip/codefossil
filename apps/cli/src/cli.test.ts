@@ -845,6 +845,20 @@ describe('codefossil report', () => {
     );
   });
 
+  it('lists the functions a change touches, with what happened to them', async () => {
+    await sample?.repo.write(
+      'src/tax/rates.ts',
+      'export function reducedRate() {\n  return 0.09;\n}\n',
+    );
+    await sample?.repo.commit('Add reduced rate');
+
+    const result = await fossil(root(), 'report', '--base', 'HEAD~1');
+
+    expect(result.stdout).toContain('### Functions this change touches (1)');
+    expect(result.stdout).toContain('| `reducedRate` `src/tax/rates.ts:1` | new | — |');
+    expect(result.stdout).toContain('No current coverage report');
+  });
+
   it('says so when no changed symbol has earlier fixes', async () => {
     const result = await fossil(root(), 'report', '--base', 'HEAD~1');
     expect(result.stdout).toContain(

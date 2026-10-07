@@ -116,6 +116,45 @@ function fragileSection(report: RepositoryReport): string[] {
   ];
 }
 
+const CHANGE_LABEL = {
+  new: 'new',
+  changed: 'changed',
+  renamed: 'renamed',
+  moved: 'moved (edited)',
+  copied: 'copied',
+} as const;
+
+function touchedRow(item: NonNullable<RepositoryReport['touched']>['symbols'][number]): string {
+  const { symbol, from, coverage } = item;
+  const where = `${mdCode(symbol.qualifiedName)} ${mdCode(`${symbol.path}:${String(symbol.startLine)}`)}`;
+  const origin = from
+    ? ` from ${from.path === symbol.path ? mdCode(from.qualifiedName) : mdCode(`${from.path} ${from.qualifiedName}`)}`
+    : '';
+  const lines = coverage
+    ? `${String(coverage.hit)} / ${String(coverage.found)}${coverage.hit === 0 ? ' ⚠️' : ''}`
+    : '—';
+  return `| ${where} | ${CHANGE_LABEL[item.change]}${origin} | ${lines} |`;
+}
+
+function touchedSection(report: RepositoryReport): string[] {
+  const touched = report.touched;
+  if (!touched || touched.total === 0) return [];
+  const hidden = touched.total - touched.symbols.length;
+  return [
+    `### Functions this change touches (${String(touched.total)})`,
+    '',
+    '| Function | Change | Lines run in tests |',
+    '| --- | --- | ---: |',
+    ...touched.symbols.map(touchedRow),
+    ...(hidden > 0 ? ['', `_${plural(hidden, 'more symbol')} not shown._`] : []),
+    '',
+    touched.withCoverage > 0
+      ? '_Lines run in tests come from the coverage report in the working tree, for files not committed since it was written._'
+      : '_No current coverage report (`coverage/lcov.info`); run the tests with coverage before this step to see lines run._',
+    '',
+  ];
+}
+
 export function formatReportMarkdown(report: RepositoryReport): string {
   const { counts, repository } = report;
   const head = repository.headSha
@@ -133,7 +172,7 @@ export function formatReportMarkdown(report: RepositoryReport): string {
 
   if (report.indexWarning) lines.push(`> **Warning:** ${report.indexWarning}`, '');
 
-  lines.push(...fragileSection(report));
+  lines.push(...fragileSection(report), ...touchedSection(report));
 
   if (report.changed) {
     lines.push(

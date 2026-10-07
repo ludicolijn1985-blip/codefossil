@@ -58,6 +58,17 @@ The Action has one output: `report-path`, the Markdown report of the run.
   wording; mostly INFERRED), most fixes first, with the latest fixes, linked issue numbers and how
   many files depend on the file. Issue numbers are not linked, so old issues get no
   cross-reference from every pull request.
+- **Functions this change touches** (pull requests, or with `base`). Each changed function,
+  method and class, marked new, changed, renamed (from its old name), moved with edits or copied
+  (from its old file), and how many of its lines ran in the tests. Line coverage comes from an
+  lcov report in the working tree (`coverage/lcov.info`), so run the tests with coverage in an
+  earlier step; files changed after the report was written are left without it.
+
+  ```yaml
+  - run: npm ci && npx vitest run --coverage --coverage.reporter=lcov # or jest --coverage, pytest --cov --cov-report=lcov
+  - uses: ludicolijn1985-blip/codefossil@main
+  ```
+
 - **Files changed** (pull requests, or with `base`). For each file:
   - its rank among files with history;
   - commits and defect commits;

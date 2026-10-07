@@ -3,6 +3,7 @@ import { analyzeImpact } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
 import { analyzeDeadIntent, type DeadIntentCandidate } from './dead-intent.js';
 import { analyzeFragileSymbols, type FragileReport } from './fragile.js';
+import { analyzeTouchedSymbols, type TouchedReport } from './touched.js';
 import { analyzeHotspots, isGeneratedPath, type Hotspot } from './hotspots.js';
 
 /** How one file changed by a pull request (or any base..HEAD range) stands in the history. */
@@ -50,6 +51,8 @@ export interface RepositoryReport {
   readonly changedTotal: number;
   /** Null without the change's commits; symbols it touches that earlier fixes touched otherwise. */
   readonly fragile: FragileReport | null;
+  /** Functions and classes the change touches: new, renamed, moved, and their line coverage. */
+  readonly touched: TouchedReport | null;
   readonly hotspots: readonly Hotspot[];
   readonly deadIntent: readonly DeadIntentCandidate[];
   readonly filesRanked: number;
@@ -64,6 +67,7 @@ export interface ReportOptions {
   readonly changedCommits?: readonly string[];
   /** Symbols with earlier fixes listed in detail. */
   readonly fragileLimit?: number;
+  readonly touchedLimit?: number;
   readonly hotspotLimit?: number;
   readonly deadIntentLimit?: number;
   /**
@@ -80,6 +84,8 @@ const DEFAULT_REPORT_HOTSPOTS = 10;
 const DEFAULT_REPORT_DEAD_INTENT = 5;
 const DEFAULT_CHANGED_LIMIT = 25;
 const DEFAULT_FRAGILE_LIMIT = 10;
+/** Touched functions listed in a report. */
+const DEFAULT_TOUCHED_LIMIT = 15;
 const IMPACT_EXAMPLES = 3;
 
 /**
@@ -134,6 +140,11 @@ export function buildReport(
     fragile: options.changedCommits
       ? analyzeFragileSymbols(db, repositoryId, options.changedCommits, {
           limit: options.fragileLimit ?? DEFAULT_FRAGILE_LIMIT,
+        })
+      : null,
+    touched: options.changedCommits
+      ? analyzeTouchedSymbols(db, repositoryId, options.changedCommits, {
+          limit: options.touchedLimit ?? DEFAULT_TOUCHED_LIMIT,
         })
       : null,
     hotspots: analyzeHotspots(db, repositoryId, {
