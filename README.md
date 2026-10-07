@@ -215,7 +215,16 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   seen, and files are still counted when they import the defining file.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
-- **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.
+- **HEAD only.** Only history reachable from HEAD is indexed. When HEAD leaves the indexed
+  history (a reset, rebase or force-push, a deleted branch, an older checkout, or a CI cache
+  restored from another branch), the next index run removes the commits HEAD no longer contains,
+  with the symbols, relations and evidence derived from them, re-parses the history of the files
+  they touched and rebuilds the dependency graph at HEAD; GitHub data and saved investigations are
+  kept. Returning to a branch indexes its commits again, so switching far apart (an old tag and
+  back) costs about as much as indexing that history anew. In a shallow clone, indexed commits the
+  clone does not have are kept, since they cannot be told apart from older history: index CI runs
+  with `fetch-depth: 0`. With automatic indexing off (`CODEFOSSIL_AUTO_INDEX=0`), `status`,
+  `doctor`, the report, the API status and the web UI say so instead.
 - **Wrapped modules.** Definitions inside a module-level wrapper (an IIFE, `.call(this)` or a UMD
   factory) count as module level; definitions inside other functions or callbacks are local and are
   not symbols.

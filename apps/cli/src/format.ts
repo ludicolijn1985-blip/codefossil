@@ -56,7 +56,11 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     `${plural(result.fileChanges, 'file change')}; ` +
     `parsed ${plural(result.symbols.versionsParsed, 'file version')} into ` +
     `${plural(result.symbols.symbolVersions, 'symbol version')} in ${seconds}s.\n`;
-  const lines = [summary + formatGraphSummary(result.dependencies)];
+  const pruned =
+    result.commitsPruned > 0
+      ? `Removed ${plural(result.commitsPruned, 'commit')} that HEAD's history no longer contains.\n`
+      : '';
+  const lines = [pruned + summary + formatGraphSummary(result.dependencies)];
   const failures = result.symbols.parseFailures;
   if (failures > 0) {
     lines.push(

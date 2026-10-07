@@ -1,5 +1,6 @@
 import { Option, type Command } from 'commander';
 import { buildReport } from '@codefossil/analyzers';
+import { describeIndexHeadState, indexHeadState } from '@codefossil/core';
 import { changedPaths, commitsBetween, GitError, runGitOptional } from '@codefossil/git';
 import { formatReportMarkdown } from './format-report.js';
 import { CliError, writeJson, type CliIO } from './io.js';
@@ -69,8 +70,10 @@ export function registerReportCommand(program: Command, io: CliIO, repoPath: () 
       await withWorkspace(openIndexedWorkspace(repoPath(), io), async (ws) => {
         const changed =
           options.base === undefined ? undefined : await changedSince(ws, options.base);
+        const head = await indexHeadState(ws.fossil.db, ws.repositoryId, ws.root);
         const report = buildReport(ws.fossil.db, ws.repositoryId, {
           hotspotLimit: limit,
+          indexWarning: describeIndexHeadState(head, { includeBehind: true }),
           ...(options.base !== undefined && changed
             ? { base: options.base, changedPaths: changed.paths, changedCommits: changed.commits }
             : {}),

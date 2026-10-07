@@ -146,6 +146,10 @@ describe('CODEFOSSIL API', () => {
       expect(list.body.data).toMatchObject([{ id: repositoryId }]);
       const one = await call({ method: 'GET', url: repo() });
       expect(one.body.data).toMatchObject({ status: { counts: { commits: 7 } }, github: null });
+      const status = await call({ method: 'GET', url: repo('/status') });
+      const head = (status.body.data as { head: { freshness: string; indexedSha: string } }).head;
+      expect(head.freshness).toBe('current');
+      expect(head.indexedSha).toMatch(/^[0-9a-f]{40}$/);
     });
 
     it('registers only absolute paths inside a Git repository', async () => {
