@@ -4,7 +4,9 @@ import {
   analysisFiles,
   commitDiscussions,
   commitEvidenceIds,
+  fileCoverage,
   fileImportEdges,
+  type FileCoverage,
   type FossilDb,
 } from '@codefossil/db';
 import { isTestPath } from '@codefossil/query';
@@ -54,6 +56,18 @@ export interface Hotspot {
     readonly dependents: number;
     /** Test files among them. */
     readonly testsReaching: number;
+    /**
+     * Line coverage from the last coverage report, when the file has not been
+     * committed since the report was written; `testReachInverse` is then the
+     * uncovered share of its lines instead of a count of tests importing it.
+     */
+    readonly lineCoverage: {
+      readonly linesHit: number;
+      readonly linesFound: number;
+      readonly report: string;
+      readonly generatedAt: string;
+      readonly evidenceId: number;
+    } | null;
   };
   /** DERIVED when the score rests on counts alone; the weakest defect reading otherwise. */
   readonly classification: EvidenceLevel;
@@ -165,6 +179,8 @@ export function analyzeHotspots(
   const maxChurn = Math.max(0, ...activity.map((file) => file.churn));
   const maxDefects = Math.max(0, ...defectCounts);
   const maxDependents = Math.max(0, ...[...reach.values()].map((r) => r.dependents));
+  const coverage = fileCoverage(db, repositoryId);
+  let covered = 0;
 
   const hotspots = activity.map((file, index): Hotspot => {
     const defectCommits = [...file.commitIds]
@@ -191,11 +207,16 @@ export function analyzeHotspots(
       churn: normalized(file.churn, maxChurn),
       defects: normalized(defectCount + 1, maxDefects + 1),
     };
+    const lines = currentCoverage(coverage.get(file.fileId), file.lastChangedAt);
+    if (lines) covered++;
     const risk = {
       changeFrequency,
       dependencyCentrality: normalized(fileReach.dependents, maxDependents),
       bugDensity: defectCount / file.commitIds.size,
-      testReachInverse: 1 / (1 + fileReach.tests),
+      // The uncovered share of lines when a current report covers the file; else fewer tests reaching it.
+      testReachInverse: lines
+        ? 1 - lines.hit.length / lines.found.length
+        : 1 / (1 + fileReach.tests),
     };
     const levels = defectCommits.map((d) => d.level);
     return {
@@ -228,6 +249,15 @@ export function analyzeHotspots(
         },
         dependents: fileReach.dependents,
         testsReaching: fileReach.tests,
+        lineCoverage: lines
+          ? {
+              linesHit: lines.hit.length,
+              linesFound: lines.found.length,
+              report: lines.report,
+              generatedAt: lines.generatedAt,
+              evidenceId: lines.evidenceId,
+            }
+          : null,
       },
       classification: levels.includes('INFERRED') ? 'INFERRED' : 'DERIVED',
       evidenceIds: [
@@ -247,7 +277,7 @@ export function analyzeHotspots(
     filesConsidered: activity.length,
     hotspots: hotspots.slice(0, options.limit ?? DEFAULT_HOTSPOT_LIMIT),
     notes: [
-      ...reportNotes(discussions.length > 0, options),
+      ...reportNotes(discussions.length > 0, options, coverageNote(coverage, covered)),
       ...(activity.length > 0 && maxDefects === 0
         ? [
             'No defect-related commit touches these files, so every risk score is 0; ordering by risk falls back to commit count.',
@@ -257,13 +287,45 @@ export function analyzeHotspots(
   };
 }
 
-function reportNotes(hasDiscussions: boolean, options: HotspotOptions): string[] {
+/**
+ * A file's line coverage, when the report is about its current content: it
+ * instruments lines and was written after the file's last commit.
+ */
+function currentCoverage(
+  coverage: FileCoverage | undefined,
+  lastChangedAt: string | null,
+): FileCoverage | null {
+  if (!coverage || coverage.found.length === 0) return null;
+  const changed = lastChangedAt === null ? Number.NaN : Date.parse(lastChangedAt);
+  const written = Date.parse(coverage.generatedAt);
+  return Number.isFinite(changed) && Number.isFinite(written) && written >= changed
+    ? coverage
+    : null;
+}
+
+function coverageNote(coverage: ReadonlyMap<number, FileCoverage>, covered: number): string {
+  const report = coverage.values().next().value;
+  const reach = `test files that import the file within ${String(REACH_DEPTH)} hops`;
+  if (!report) {
+    return `"Untested" counts ${reach}; it is not line coverage (put an lcov report at coverage/lcov.info to use it).`;
+  }
+  return (
+    `"Untested" is the uncovered share of lines from ${report.report} (written ${report.generatedAt.slice(0, 10)}) ` +
+    `for ${String(covered)} ranked file${covered === 1 ? '' : 's'} not committed since; elsewhere it counts ${reach}.`
+  );
+}
+
+function reportNotes(
+  hasDiscussions: boolean,
+  options: HotspotOptions,
+  testReachNote: string,
+): string[] {
   return [
     'Each component is scaled to 0–1 against the highest value among the files ranked.',
     hasDiscussions
       ? 'Defect commits: resolved issues labelled as bugs (DERIVED), reverts and fix wording in commit subjects (INFERRED).'
       : 'Defect commits come from reverts and fix wording in commit subjects only (INFERRED); connect GitHub to count issues labelled as bugs.',
-    `Test reach counts test files that import the file within ${REACH_DEPTH} hops; it is not line coverage.`,
+    testReachNote,
     'A risk component of 0 makes the risk score 0; read the components, not only the score.',
     ...(options.includeTests
       ? []

@@ -1,5 +1,6 @@
 import { getProviderConnection, type FossilDb, type ProviderConnectionRow } from '@codefossil/db';
 import type { GitHubClient } from '@codefossil/providers';
+import { indexCoverage, type CoverageIndexResult } from './coverage.js';
 import { indexDependencies, type DependencyIndexResult } from './dependency-indexer.js';
 import { indexRepository, type IndexOptions, type IndexResult } from './git-indexer.js';
 import { syncGitHub, type GitHubSyncResult } from './github-sync.js';
@@ -25,6 +26,8 @@ export interface GitHubIndexResult {
 export interface RunIndexResult extends IndexResult {
   readonly symbols: SymbolIndexResult;
   readonly dependencies: DependencyIndexResult;
+  /** Line coverage read from an lcov report in the working tree. */
+  readonly coverage: CoverageIndexResult;
   /** Null when the repository is not connected to GitHub. */
   readonly github: GitHubIndexResult | null;
 }
@@ -56,6 +59,8 @@ export async function runIndex(
     clock,
   );
 
+  const coverage = await indexCoverage(db, history.repositoryId, history.root);
+
   const connection = getProviderConnection(db, history.repositoryId, 'github');
   let github: GitHubIndexResult | null = null;
   if (connection) {
@@ -65,5 +70,5 @@ export async function runIndex(
     const links = linkGitHubReferences(db, history.repositoryId, connection, observedAt);
     github = { owner: connection.owner, name: connection.name, sync, links };
   }
-  return { ...history, symbols, dependencies, github };
+  return { ...history, symbols, dependencies, coverage, github };
 }

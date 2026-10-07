@@ -26,6 +26,8 @@ export const EVIDENCE_KINDS = [
   'incident',
   'manifest',
   'test',
+  /** A line-coverage report (lcov) read from the working tree. */
+  'coverage',
 ] as const;
 export const evidenceKindSchema = z.enum(EVIDENCE_KINDS);
 export type EvidenceKind = z.infer<typeof evidenceKindSchema>;

@@ -1,3 +1,4 @@
+export * from './coverage.js';
 export * from './dependency-indexer.js';
 export * from './git-indexer.js';
 export * from './github-sync.js';

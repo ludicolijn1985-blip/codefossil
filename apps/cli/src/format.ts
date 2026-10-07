@@ -60,7 +60,9 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     result.commitsPruned > 0
       ? `Removed ${plural(result.commitsPruned, 'commit')} that HEAD's history no longer contains.\n`
       : '';
-  const lines = [pruned + summary + formatGraphSummary(result.dependencies)];
+  const lines = [
+    pruned + summary + formatGraphSummary(result.dependencies) + formatCoverage(result.coverage),
+  ];
   const failures = result.symbols.parseFailures;
   if (failures > 0) {
     lines.push(
@@ -74,6 +76,21 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     lines.push(`Warning: ${path} could not be parsed; it contributes no import edges.\n`);
   }
   return lines.join('');
+}
+
+function formatCoverage(coverage: RunIndexResult['coverage']): string {
+  if (!coverage.report) return '';
+  if (coverage.error) {
+    return `Warning: coverage report ${coverage.report} could not be read (${coverage.error}).\n`;
+  }
+  if (coverage.unchanged) {
+    return `Line coverage: ${coverage.report} unchanged (${plural(coverage.files, 'file')}).\n`;
+  }
+  const skipped =
+    coverage.skipped > 0
+      ? `; ${plural(coverage.skipped, 'entry', 'entries')} not in the repository`
+      : '';
+  return `Line coverage: read ${coverage.report} (${plural(coverage.files, 'file')}${skipped}).\n`;
 }
 
 function formatGraphSummary(graph: RunIndexResult['dependencies']): string {

@@ -1,6 +1,7 @@
 export * from './analysis.js';
 export * from './calls.js';
 export * from './client.js';
+export * from './coverage.js';
 export * from './entities.js';
 export * from './entity-records.js';
 export * from './evidence.js';

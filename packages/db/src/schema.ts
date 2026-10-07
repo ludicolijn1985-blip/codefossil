@@ -431,6 +431,24 @@ export const imports = sqliteTable(
 );
 
 /**
+ * Line coverage of a file, from the last coverage report read (lcov). Only
+ * files present in the report have a row; the report itself is the cited
+ * evidence row.
+ */
+export const lineCoverage = sqliteTable('line_coverage', {
+  fileId: integer('file_id')
+    .primaryKey()
+    .references(() => files.id, { onDelete: 'cascade' }),
+  /** Lines the report instruments, ascending. */
+  foundJson: text('found_json', { mode: 'json' }).$type<number[]>().notNull(),
+  /** Instrumented lines run at least once, ascending. */
+  hitJson: text('hit_json', { mode: 'json' }).$type<number[]>().notNull(),
+  evidenceId: integer('evidence_id')
+    .notNull()
+    .references(() => evidence.id, { onDelete: 'cascade' }),
+});
+
+/**
  * Calls found in each file at HEAD (a snapshot, replaced when the file
  * changes): who calls what, as written, before resolution.
  */

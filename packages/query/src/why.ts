@@ -1,4 +1,10 @@
-import { entityKey, findEvidenceId, type EntityRecord, type FossilDb } from '@codefossil/db';
+import {
+  currentFileCoverage,
+  entityKey,
+  findEvidenceId,
+  type EntityRecord,
+  type FossilDb,
+} from '@codefossil/db';
 import { issueReference, resolutionBasis, type EntityRef } from '@codefossil/shared';
 import {
   commitContext,
@@ -152,6 +158,33 @@ function firstChange(db: FossilDb, repositoryId: number, ref: EntityRef): Commit
   return commits.sort((a, b) => a.committedAt.localeCompare(b.committedAt))[0] ?? null;
 }
 
+/**
+ * The symbol's line coverage from the last coverage report, when that report
+ * is about the file's current content and instruments lines of the symbol.
+ */
+function coverageStatement(
+  db: FossilDb,
+  containment: ReturnType<typeof linked>[number]['row'],
+  symbol: Extract<EntityRecord, { type: 'symbol' }>,
+): Statement | null {
+  if (containment.sourceType !== 'file') return null;
+  const coverage = currentFileCoverage(db, containment.sourceId);
+  if (!coverage) return null;
+  const inSymbol = (line: number) => line >= symbol.startLine && line <= symbol.endLine;
+  const found = coverage.found.filter(inSymbol).length;
+  const hit = coverage.hit.filter(inSymbol).length;
+  if (found === 0) return null;
+  return {
+    text:
+      `${String(hit)} of its ${String(found)} instrumented lines ran in the tests ` +
+      `(${coverage.report}, written ${coverage.generatedAt.slice(0, 10)}).`,
+    role: 'line coverage',
+    level: 'DERIVED',
+    confidence: 1,
+    evidenceIds: [coverage.evidenceId],
+  };
+}
+
 function whySymbol(
   db: FossilDb,
   repositoryId: number,
@@ -169,6 +202,9 @@ function whySymbol(
     confidence: 1,
     evidenceIds: containment?.row.provenanceJson.evidenceIds ?? [],
   });
+  const coverage =
+    symbol.current && containment ? coverageStatement(db, containment.row, symbol) : null;
+  if (coverage) parts.statements.push(coverage);
 
   // Copied or moved code was born elsewhere: follow the copies back to the original.
   const { hops, origin } = copyChain(db, repositoryId, ref);
