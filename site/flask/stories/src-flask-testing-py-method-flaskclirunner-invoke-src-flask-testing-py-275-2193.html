@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlaskCliRunner.invoke · flask</title>
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
+.where{color:var(--muted);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
+.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
+.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
+figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
+figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
+svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
+circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
+ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
+.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
+.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
+time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
+.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
+footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../index.html">← pallets/flask</a></p>
+<p class="kicker">CODEFOSSIL · flask</p>
+<h1>FlaskCliRunner.invoke</h1>
+<p class="where">method in <code>src/flask/testing.py:275</code> · Born 2018-02-19 (DERIVED, confidence 1.00)</p>
+<section class="stats" aria-label="At a glance"><div class="stat"><b>8</b><span>years old</span></div><div class="stat"><b>6</b><span>changes</span></div><div class="stat"><b>0</b><span>fixes</span></div><div class="stat"><b>4</b><span>authors</span></div><div class="stat"><b>0</b><span>callers</span></div></section>
+
+<figure><svg viewBox="0 0 960 120" role="img" aria-label="Timeline of every change"><line x1="28" x2="932" y1="81" y2="81" class="axis"/><line x1="118.4" x2="118.4" y1="78" y2="84" class="tick"/><text x="118.4" y="100" class="year">2019</text><line x1="223.1" x2="223.1" y1="78" y2="84" class="tick"/><text x="223.1" y="100" class="year">2020</text><line x1="328.0" x2="328.0" y1="78" y2="84" class="tick"/><text x="328.0" y="100" class="year">2021</text><line x1="432.7" x2="432.7" y1="78" y2="84" class="tick"/><text x="432.7" y="100" class="year">2022</text><line x1="537.4" x2="537.4" y1="78" y2="84" class="tick"/><text x="537.4" y="100" class="year">2023</text><line x1="642.1" x2="642.1" y1="78" y2="84" class="tick"/><text x="642.1" y="100" class="year">2024</text><line x1="747.1" x2="747.1" y1="78" y2="84" class="tick"/><text x="747.1" y="100" class="year">2025</text><line x1="851.8" x2="851.8" y1="78" y2="84" class="tick"/><text x="851.8" y="100" class="year">2026</text><circle cx="154.5" cy="60" r="5" class="change"><title>2019-05-06 025589e Reformat with black</title></circle><circle cx="250.2" cy="60" r="5" class="change"><title>2020-04-04 524fd0b apply pyupgrade</title></circle><circle cx="361.2" cy="60" r="5" class="change"><title>2021-04-26 7723709 Add initial type hints</title></circle><circle cx="419.5" cy="60" r="5" class="change"><title>2021-11-15 564bb27 deprecate as_tuple</title></circle><circle cx="646.6" cy="60" r="5" class="change"><title>2024-01-16 6000e80 address mypy strict findings</title></circle><circle cx="736.2" cy="60" r="5" class="change"><title>2024-11-24 54c3f87 fix type hint for `cli_runner.invoke`</title></circle><circle cx="28.0" cy="60" r="8" class="introduced"><title>2018-02-19 cf5525f add test_cli_runner for testing app.cli commands</title></circle></svg><figcaption>Every commit that changed it, 2018-02-19 – 2024-11-24. Raised orange dots are fixes.</figcaption></figure>
+<ol><li class="event changed"><time datetime="2024-11-24T01:50:40.000Z">2024-11-24</time><div><p class="what"><strong>Changed</strong> fix type hint for `cli_runner.invoke`</p><p class="who"><code>54c3f87</code> · kurtatter </p></div></li><li class="event changed"><time datetime="2024-01-16T18:11:13.000Z">2024-01-16</time><div><p class="what"><strong>Changed</strong> address mypy strict findings</p><p class="who"><code>6000e80</code> · David Lord </p></div></li><li class="event changed"><time datetime="2021-11-15T21:13:18.000Z">2021-11-15</time><div><p class="what"><strong>Changed</strong> deprecate as_tuple</p><p class="who"><code>564bb27</code> · David Lord </p></div></li><li class="event changed"><time datetime="2021-04-26T16:29:53.000Z">2021-04-26</time><div><p class="what"><strong>Changed</strong> Add initial type hints</p><p class="who"><code>7723709</code> · pgjones </p></div></li><li class="event changed"><time datetime="2020-04-04T19:10:00.000Z">2020-04-04</time><div><p class="what"><strong>Changed</strong> apply pyupgrade</p><p class="who"><code>524fd0b</code> · David Lord </p></div></li><li class="event changed"><time datetime="2019-05-06T20:28:58.000Z">2019-05-06</time><div><p class="what"><strong>Changed</strong> Reformat with black</p><p class="who"><code>025589e</code> · David Baumgold </p></div></li><li class="event introduced"><time datetime="2018-02-19T23:34:46.000Z">2018-02-19</time><div><p class="what"><strong>Born</strong> add test_cli_runner for testing app.cli commands</p><p class="who"><code>cf5525f</code> · David Lord </p></div></li></ol>
+<footer>
+Built by <a href="https://github.com/ludicolijn1985-blip/codefossil">CODEFOSSIL</a> from this repository's own history at <code>d086db8</code> on 2026-10-07.
+Dates and commits are facts read from git; "changed" compares each version with its parent commit (DERIVED);
+fixes are recognised from issue labels, reverts and commit wording, so most are inferences.
+</footer>
+</main>
+</body>
+</html>

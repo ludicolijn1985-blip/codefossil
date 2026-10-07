@@ -345,6 +345,22 @@ describe('defect wording that is not about code', () => {
     );
     expect([...result.keys()]).toEqual([5]);
   });
+
+  it('ignores fixes to type annotations and linter findings', () => {
+    const result = classifyDefects(
+      [
+        commit(1, 'fix typing'),
+        commit(2, 'fix pyright type errors'),
+        commit(3, 'type hint fix for flask.send_file'),
+        commit(4, 'fix mypy finding with new werkzeug endpoint type'),
+        commit(5, 'Fix ruff warnings'),
+        commit(6, 'Fix subdomain inheritance for nested blueprints.'),
+      ],
+      [],
+      new Map(),
+    );
+    expect([...result.keys()]).toEqual([6]);
+  });
 });
 
 describe('declaration files', () => {

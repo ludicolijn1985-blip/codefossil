@@ -18,7 +18,7 @@ const FIX_WORDS = /\b(?:fix(?:es|ed)?|bug(?:fix)?|hotfix|crash(?:es|ed)?|regress
  * in the code: `fix(deps): bump qs`, `Fix an incorrect @api jsdoc`.
  */
 const NOT_A_DEFECT =
-  /\b(?:typos?|spelling|lint(?:ing)?|format(?:ting)?|docs?|documentation|jsdoc|comments?|readme|changelog|whitespace|bump(?:s|ed)?|deps|dev-?deps|dependenc(?:y|ies)|dependabot|renovate)\b|^(?:fix|hotfix|bugfix)\((?:deps|deps-dev|dev-?deps|ci|build|docs?|tests?|lint|release|chore|types|refactor|style|perf)\)/i;
+  /\b(?:typos?|spelling|lint(?:ing)?|format(?:ting)?|docs?|documentation|jsdoc|comments?|readme|changelog|whitespace|bump(?:s|ed)?|deps|dev-?deps|dependenc(?:y|ies)|dependabot|renovate|typing|type[- ]?hints?|annotations?|mypy|pyright|flake8|pylint|ruff|isort|eslint|prettier)\b|^(?:fix|hotfix|bugfix)\((?:deps|deps-dev|dev-?deps|ci|build|docs?|tests?|lint|release|chore|types|refactor|style|perf)\)/i;
 
 /** Confidence of each heuristic; a label on a resolved issue is the strongest reading. */
 export const DEFECT_CONFIDENCE = {

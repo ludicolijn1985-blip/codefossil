@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>createApplication · express</title>
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1b16;--muted:#6b665a;--line:#d9d3c4;--card:#fffdf8;--born:#2f7d5b;--copied:#3d6fb6;--change:#9a9282;--fix:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#14130f;--ink:#efeadf;--muted:#a39d8d;--line:#3a362c;--card:#1c1a15;--born:#4fbf8c;--copied:#7aa6e8;--change:#8c8576;--fix:#fb923c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1000px;margin:0 auto;padding:48px 20px 64px}
+.kicker{font:600 12px/1 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(32px,6vw,56px)/1.05 ui-monospace,SFMono-Regular,Consolas,monospace;margin:14px 0 8px;overflow-wrap:anywhere}
+.where{color:var(--muted);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-bottom:28px}
+.stat{background:var(--card);padding:18px 20px}.stat b{display:block;font-size:34px;line-height:1.1}.stat span{color:var(--muted);font-size:14px}
+.note{background:var(--card);border-left:3px solid var(--copied);padding:10px 14px;border-radius:6px}
+figure{margin:0 0 32px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 12px 6px}
+figcaption{color:var(--muted);font-size:13px;padding:0 10px 6px}
+svg{width:100%;height:auto;display:block}.axis{stroke:var(--line);stroke-width:2}.tick{stroke:var(--muted)}.year{fill:var(--muted);font:11px ui-monospace,monospace;text-anchor:middle}
+circle.introduced{fill:var(--born)}circle.copied{fill:var(--copied)}circle.change{fill:var(--change);opacity:.75}circle.fix{fill:var(--fix)}
+ol{list-style:none;margin:0;padding:0;border-left:2px solid var(--line)}
+.event{display:grid;grid-template-columns:110px 1fr;gap:16px;padding:10px 0 10px 18px;position:relative}
+.event::before{content:"";position:absolute;left:-7px;top:17px;width:12px;height:12px;border-radius:50%;background:var(--change)}
+.event.introduced::before{background:var(--born)}.event.copied::before{background:var(--copied)}.event.is-fix::before{background:var(--fix)}
+time{font:13px ui-monospace,monospace;color:var(--muted);padding-top:3px}.what{margin:0}.who{margin:2px 0 0;color:var(--muted);font-size:14px}
+code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.badge{display:inline-block;font:600 11px/1 ui-monospace,monospace;padding:4px 7px;border-radius:999px;border:1px solid var(--line);margin-left:6px}
+.fix-badge{color:var(--fix);border-color:currentColor}.ref{color:var(--copied);border-color:currentColor}
+footer{margin-top:40px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:16px}
+@media (max-width:560px){.event{grid-template-columns:1fr;gap:2px}.stats{grid-template-columns:1fr 1fr}.stat:last-child:nth-child(odd){grid-column:1/-1}}
+</style>
+</head>
+<body>
+<main>
+<p class="back"><a href="../index.html">← expressjs/express</a></p>
+<p class="kicker">CODEFOSSIL · express</p>
+<h1>createApplication</h1>
+<p class="where">function in <code>lib/express.js:36</code> · Born 2010-07-05 (DERIVED, confidence 0.90)</p>
+<section class="stats" aria-label="At a glance"><div class="stat"><b>16</b><span>years old</span></div><div class="stat"><b>7</b><span>changes</span></div><div class="stat"><b>2</b><span>fixes</span></div><div class="stat"><b>4</b><span>authors</span></div><div class="stat"><b>0</b><span>callers</span></div></section>
+<p class="note">Renamed from <code>createServer</code>, then Copied here from <code>lib/express/index.js</code>; its history is followed back to where it was born.</p>
+<figure><svg viewBox="0 0 960 120" role="img" aria-label="Timeline of every change"><line x1="28" x2="932" y1="81" y2="81" class="axis"/><line x1="55.3" x2="55.3" y1="78" y2="84" class="tick"/><text x="55.3" y="100" class="year">2011</text><line x1="110.8" x2="110.8" y1="78" y2="84" class="tick"/><text x="110.8" y="100" class="year">2012</text><line x1="166.6" x2="166.6" y1="78" y2="84" class="tick"/><text x="166.6" y="100" class="year">2013</text><line x1="222.1" x2="222.1" y1="78" y2="84" class="tick"/><text x="222.1" y="100" class="year">2014</text><line x1="277.7" x2="277.7" y1="78" y2="84" class="tick"/><text x="277.7" y="100" class="year">2015</text><line x1="333.3" x2="333.3" y1="78" y2="84" class="tick"/><text x="333.3" y="100" class="year">2016</text><line x1="389.0" x2="389.0" y1="78" y2="84" class="tick"/><text x="389.0" y="100" class="year">2017</text><line x1="444.6" x2="444.6" y1="78" y2="84" class="tick"/><text x="444.6" y="100" class="year">2018</text><line x1="500.1" x2="500.1" y1="78" y2="84" class="tick"/><text x="500.1" y="100" class="year">2019</text><line x1="555.7" x2="555.7" y1="78" y2="84" class="tick"/><text x="555.7" y="100" class="year">2020</text><line x1="611.4" x2="611.4" y1="78" y2="84" class="tick"/><text x="611.4" y="100" class="year">2021</text><line x1="667.0" x2="667.0" y1="78" y2="84" class="tick"/><text x="667.0" y="100" class="year">2022</text><line x1="722.6" x2="722.6" y1="78" y2="84" class="tick"/><text x="722.6" y="100" class="year">2023</text><line x1="778.1" x2="778.1" y1="78" y2="84" class="tick"/><text x="778.1" y="100" class="year">2024</text><line x1="833.9" x2="833.9" y1="78" y2="84" class="tick"/><text x="833.9" y="100" class="year">2025</text><line x1="889.4" x2="889.4" y1="78" y2="84" class="tick"/><text x="889.4" y="100" class="year">2026</text><circle cx="103.0" cy="60" r="5" class="change"><title>2011-11-10 e27b224 make sure req/res protos are app-specific</title></circle><circle cx="191.2" cy="60" r="5" class="change"><title>2013-06-11 a3c9eac move .app to req&#39;s &#38; res&#39;s prototypes</title></circle><circle cx="225.8" cy="60" r="5" class="change"><title>2014-01-25 718e68f use utils-merge module to mixin object properties</title></circle><circle cx="227.3" cy="60" r="5" class="change"><title>2014-02-03 f41d09a remove app.router and refactor middleware processing</title></circle><circle cx="267.0" cy="34" r="5" class="fix"><title>2014-10-22 af10438 Fix internal utils.merge deprecation warnings</title></circle><circle cx="286.8" cy="34" r="5" class="fix"><title>2015-03-01 31cb541 Fix constructing application with non-configurable prototype properties</title></circle><circle cx="397.1" cy="60" r="5" class="change"><title>2017-02-23 12ff56e Use Object.create to setup request &#38; response prototypes</title></circle><circle cx="97.8" cy="60" r="8" class="copied"><title>2011-10-07 ce03cf4 uncommented old code</title></circle><circle cx="28.0" cy="60" r="8" class="introduced"><title>2010-07-05 1dcb7ea .</title></circle></svg><figcaption>Every commit that changed it, 2010-07-05 – 2017-02-23. Raised orange dots are fixes.</figcaption></figure>
+<ol><li class="event changed"><time datetime="2017-02-23T06:52:49.000Z">2017-02-23</time><div><p class="what"><strong>Changed</strong> Use Object.create to setup request &#38; response prototypes</p><p class="who"><code>12ff56e</code> · Douglas Christopher Wilson </p></div></li><li class="event changed is-fix"><time datetime="2015-03-01T21:33:09.000Z">2015-03-01</time><div><p class="what"><strong>Changed</strong> Fix constructing application with non-configurable prototype properties</p><p class="who"><code>31cb541</code> · Douglas Christopher Wilson <span class="badge fix-badge" title="subject says &#34;Fix&#34;">fix · INFERRED</span></p></div></li><li class="event changed is-fix"><time datetime="2014-10-22T19:18:10.000Z">2014-10-22</time><div><p class="what"><strong>Changed</strong> Fix internal utils.merge deprecation warnings</p><p class="who"><code>af10438</code> · Douglas Christopher Wilson <span class="badge fix-badge" title="subject says &#34;Fix&#34;">fix · INFERRED</span></p></div></li><li class="event changed"><time datetime="2014-02-03T20:59:52.000Z">2014-02-03</time><div><p class="what"><strong>Changed</strong> remove app.router and refactor middleware processing</p><p class="who"><code>f41d09a</code> · Roman Shtylman </p></div></li><li class="event changed"><time datetime="2014-01-25T00:16:37.000Z">2014-01-25</time><div><p class="what"><strong>Changed</strong> use utils-merge module to mixin object properties</p><p class="who"><code>718e68f</code> · Roman Shtylman </p></div></li><li class="event changed"><time datetime="2013-06-11T15:42:30.000Z">2013-06-11</time><div><p class="what"><strong>Changed</strong> move .app to req&#39;s &#38; res&#39;s prototypes</p><p class="who"><code>a3c9eac</code> · Max Melentiev </p></div></li><li class="event changed"><time datetime="2011-11-10T19:31:38.000Z">2011-11-10</time><div><p class="what"><strong>Changed</strong> make sure req/res protos are app-specific</p><p class="who"><code>e27b224</code> · Tj Holowaychuk </p></div></li><li class="event copied"><time datetime="2011-10-07T17:01:30.000Z">2011-10-07</time><div><p class="what"><strong>Moved here</strong> uncommented old code</p><p class="who"><code>ce03cf4</code> · Tj Holowaychuk </p></div></li><li class="event introduced"><time datetime="2010-07-05T22:13:19.000Z">2010-07-05</time><div><p class="what"><strong>Born</strong> .</p><p class="who"><code>1dcb7ea</code> · Tj Holowaychuk </p></div></li></ol>
+<footer>
+Built by <a href="https://github.com/ludicolijn1985-blip/codefossil">CODEFOSSIL</a> from this repository's own history at <code>9efc29e</code> on 2026-10-07.
+Dates and commits are facts read from git; "changed" compares each version with its parent commit (DERIVED);
+fixes are recognised from issue labels, reverts and commit wording, so most are inferences.
+</footer>
+</main>
+</body>
+</html>

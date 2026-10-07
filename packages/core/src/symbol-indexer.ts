@@ -92,7 +92,7 @@ export interface SymbolIndexResult {
   readonly symbolsMoved: number;
   /** Versions the parser failed on; counted in versionsSkipped as well. */
   readonly parseFailures: number;
-  /** Versions whose symbols came from the parse cache (content parsed in an earlier run). */
+  /** Versions whose symbols came from the parse cache (the same content was parsed before). */
   readonly versionsFromCache: number;
 }
 

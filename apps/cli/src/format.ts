@@ -56,7 +56,7 @@ export function formatIndexResult(result: RunIndexResult, seconds: string): stri
     `${plural(result.fileChanges, 'file change')}; ` +
     `parsed ${plural(result.symbols.versionsParsed, 'file version')}${
       result.symbols.versionsFromCache > 0
-        ? ` (${String(result.symbols.versionsFromCache)} known from earlier runs)`
+        ? ` (${String(result.symbols.versionsFromCache)} seen before, not parsed again)`
         : ''
     } into ` +
     `${plural(result.symbols.symbolVersions, 'symbol version')} in ${seconds}s.\n`;

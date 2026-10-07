@@ -110,8 +110,10 @@ command that reproduces it:
   2011; `res.send` has had 17 fix commits.
 - [#2 React](docs/fossil-records/02-react.md): a function from the 2013 initial public release
   still ships.
+- [#3 Flask](docs/fossil-records/03-flask.md): `render_template` has moved three times since the
+  first commit; the package's bus factor is 1.
 
-Browse both as [websites](https://ludicolijn1985-blip.github.io/codefossil/), built with
+Browse all three as [websites](https://ludicolijn1985-blip.github.io/codefossil/), built with
 `codefossil site`.
 
 ## Evidence, not guesses
