@@ -7,6 +7,7 @@ export * from './graph.js';
 export * from './history.js';
 export * from './investigations.js';
 export * from './providers.js';
+export * from './prune.js';
 export * from './relations.js';
 export * from './repositories.js';
 export * from './search.js';

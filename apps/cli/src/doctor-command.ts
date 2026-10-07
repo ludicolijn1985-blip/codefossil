@@ -2,13 +2,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Option, type Command } from 'commander';
 import { loadAiConfig } from '@codefossil/ai';
-import {
-  findRepositoryByPath,
-  getGraphIndexedSha,
-  getIndexStatus,
-  IN_MEMORY,
-  openDatabase,
-} from '@codefossil/db';
+import { describeIndexHeadState, indexHeadState } from '@codefossil/core';
+import { findRepositoryByPath, getIndexStatus, IN_MEMORY, openDatabase } from '@codefossil/db';
 import { openGitRepository, runGit } from '@codefossil/git';
 import { SymbolExtractor, type GrammarId } from '@codefossil/parser';
 import { CliError, writeJson, type CliIO } from './io.js';
@@ -117,13 +112,20 @@ async function repositoryChecks(cwd: string): Promise<Check[]> {
         detail: 'the database describes no repository; run `codefossil init`',
       });
     } else {
-      const fresh = getGraphIndexedSha(fossil.db, repository.id) === git.headSha;
+      const state = await indexHeadState(fossil.db, repository.id, git.root);
+      const warning = describeIndexHeadState(state);
+      const freshness =
+        state.freshness === 'current'
+          ? ''
+          : warning
+            ? ` — ${warning} The next question does this automatically.`
+            : ' — behind HEAD; the next question catches up';
       checks.push({
         name: 'Index',
         ok: true,
         detail:
           `${String(status.counts.commits)} commits, ${String(status.counts.currentFiles)} files, ` +
-          `indexed ${status.repository.indexedAt ?? 'never'}${fresh ? '' : ' — behind HEAD; the next question catches up'}`,
+          `indexed ${status.repository.indexedAt ?? 'never'}${freshness}`,
       });
     }
   } finally {

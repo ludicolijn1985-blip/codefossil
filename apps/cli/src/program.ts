@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Command, Option } from 'commander';
-import { runIndex } from '@codefossil/core';
+import { describeIndexHeadState, indexHeadState, runIndex } from '@codefossil/core';
 import {
   fileImports,
   findFileByPath,
@@ -242,14 +242,20 @@ export function createProgram(io: CliIO): Command {
     .description('Show index health and counts.')
     .addOption(new Option('--json', 'print the status as JSON'))
     .action(async (options: JsonOption) => {
-      await withWorkspace(openWorkspace(repoPath()), (ws) => {
+      await withWorkspace(openWorkspace(repoPath()), async (ws) => {
         const status = getIndexStatus(ws.fossil.db, ws.repositoryId);
         if (!status) throw new CliError('Repository is not registered. Run `codefossil init`.');
+        const head = await indexHeadState(ws.fossil.db, ws.repositoryId, ws.root);
         if (options.json) {
-          writeJson(io, { ...status, github: gitHubStatus(ws) });
+          writeJson(io, { ...status, head, github: gitHubStatus(ws) });
           return;
         }
-        io.stdout(formatStatus(status) + formatGitHubStatus(gitHubStatus(ws)));
+        const warning = describeIndexHeadState(head, { includeBehind: true });
+        io.stdout(
+          formatStatus(status) +
+            (warning ? `Warning: ${warning}\n` : '') +
+            formatGitHubStatus(gitHubStatus(ws)),
+        );
       });
     });
 

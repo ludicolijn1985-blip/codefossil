@@ -17,6 +17,16 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Commits outside HEAD's history.** The index only ever added commits, so after a reset, a
+  rebase, a deleted branch, an older checkout or a CI run that restored another branch's cached
+  index, answers could cite commits HEAD does not contain. Every index run (and every question
+  that updates the index) now removes them, with their symbols, relations and evidence, and
+  rebuilds the symbol history of the files they touched and the dependency graph; GitHub data and
+  saved investigations are kept. A shallow clone keeps indexed commits it does not have. When the index is not updated (`CODEFOSSIL_AUTO_INDEX=0`, or the API serving an older
+  index), `status`, `doctor`, the Markdown report, `GET /api/repositories/:id/status` (new `head`
+  field) and the web UI warn that HEAD left the indexed history. Existing indexes are re-indexed
+  once on the next question.
+
 - **Symbol history on branchy repositories.** A symbol version is now diffed against the same file
   in the commit's first parent, including versions only a merge produced. Before, it was diffed
   against the version indexed last, which on repositories with parallel release lines alternated

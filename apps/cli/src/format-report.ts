@@ -126,6 +126,8 @@ export function formatReportMarkdown(report: RepositoryReport): string {
     '',
   ];
 
+  if (report.indexWarning) lines.push(`> **Warning:** ${report.indexWarning}`, '');
+
   lines.push(...fragileSection(report));
 
   if (report.changed) {

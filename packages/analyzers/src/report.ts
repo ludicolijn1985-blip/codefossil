@@ -1,4 +1,4 @@
-import { findFileByPath, getIndexStatus, type FossilDb } from '@codefossil/db';
+import { findFileByPath, getGraphIndexedSha, getIndexStatus, type FossilDb } from '@codefossil/db';
 import { analyzeImpact } from '@codefossil/query';
 import type { EvidenceLevel } from '@codefossil/shared';
 import { analyzeDeadIntent, type DeadIntentCandidate } from './dead-intent.js';
@@ -32,9 +32,12 @@ export interface ChangedFileReport {
 export interface RepositoryReport {
   readonly repository: {
     readonly name: string;
+    /** The commit the index was built at. */
     readonly headSha: string | null;
     readonly indexedAt: string | null;
   };
+  /** Set when the index does not cover exactly HEAD's history (see ReportOptions.indexWarning). */
+  readonly indexWarning: string | null;
   readonly counts: {
     readonly commits: number;
     readonly files: number;
@@ -63,6 +66,11 @@ export interface ReportOptions {
   readonly fragileLimit?: number;
   readonly hotspotLimit?: number;
   readonly deadIntentLimit?: number;
+  /**
+   * How the indexed history differs from HEAD, when it does (computed by the
+   * caller, which can read git): shown so no one mistakes the report for HEAD's.
+   */
+  readonly indexWarning?: string | null;
   /** Changed files examined in detail; the rest are counted. */
   readonly changedLimit?: number;
   readonly now?: Date;
@@ -110,9 +118,10 @@ export function buildReport(
   return {
     repository: {
       name: status.repository.name,
-      headSha: status.latestCommit?.sha ?? null,
+      headSha: getGraphIndexedSha(db, repositoryId),
       indexedAt: status.repository.indexedAt,
     },
+    indexWarning: options.indexWarning ?? null,
     counts: {
       commits: status.counts.commits,
       files: status.counts.currentFiles,

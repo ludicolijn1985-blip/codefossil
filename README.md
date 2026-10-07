@@ -184,7 +184,16 @@ More languages are a great first contribution; see [CONTRIBUTING.md](CONTRIBUTIN
   imports the defining file counts as a dependent even if it never calls the symbol.
 - **Inferred defects.** Without GitHub, defect commits come from reverts and fix wording in
   subjects (INFERRED). Test reach is import reach, not line coverage.
-- **HEAD only.** Only history reachable from HEAD is indexed. Rewritten history is not detected.
+- **HEAD only.** Only history reachable from HEAD is indexed. When HEAD leaves the indexed
+  history (a reset, rebase or force-push, a deleted branch, an older checkout, or a CI cache
+  restored from another branch), the next index run removes the commits HEAD no longer contains,
+  with the symbols, relations and evidence derived from them, re-parses the history of the files
+  they touched and rebuilds the dependency graph at HEAD; GitHub data and saved investigations are
+  kept. Returning to a branch indexes its commits again, so switching far apart (an old tag and
+  back) costs about as much as indexing that history anew. In a shallow clone, indexed commits the
+  clone does not have are kept, since they cannot be told apart from older history: index CI runs
+  with `fetch-depth: 0`. With automatic indexing off (`CODEFOSSIL_AUTO_INDEX=0`), `status`,
+  `doctor`, the report, the API status and the web UI say so instead.
 - **Wrapped modules.** Functions defined inside a wrapper (`(function () { exports.x = … })()`, UMD)
   are not symbols yet; module-level definitions are.
 - **Symbol identity.** A symbol is identified by kind and qualified name within a file. A rename
