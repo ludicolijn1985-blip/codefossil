@@ -38,8 +38,10 @@ export type {
   DeadIntentCandidate,
   DeadIntentReport,
   DeadIntentSignal,
+  FileOwnership,
   Hotspot,
   HotspotReport,
+  OwnershipReport,
 } from '@codefossil/analyzers';
 export type { EvidenceLevel } from '@codefossil/shared';
 

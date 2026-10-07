@@ -13,7 +13,7 @@ function typing(target: EventTarget | null): boolean {
 /**
  * Keyboard-first navigation: `/` focuses the page's search or question box,
  * `g` then a letter jumps to a section (o overview, i investigate, f files,
- * g graph, h hotspots, x dead intent, d dependencies).
+ * g graph, h hotspots, w owners, x dead intent, d dependencies).
  */
 export function Shortcuts({ base }: { base: string }) {
   const router = useRouter();
@@ -37,6 +37,7 @@ export function Shortcuts({ base }: { base: string }) {
           f: '/files',
           g: '/graph',
           h: '/hotspots',
+          w: '/owners',
           x: '/dead-intent',
           d: '/dependencies',
         }[event.key];

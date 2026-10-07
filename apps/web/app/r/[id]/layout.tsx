@@ -33,6 +33,7 @@ export default async function RepositoryLayout({
     { href: `${base}/files`, label: 'Files', hint: 'g f' },
     { href: `${base}/graph`, label: 'Graph', hint: 'g g' },
     { href: `${base}/hotspots`, label: 'Hotspots', hint: 'g h' },
+    { href: `${base}/owners`, label: 'Owners', hint: 'g w' },
     { href: `${base}/dead-intent`, label: 'Dead intent', hint: 'g x' },
     { href: `${base}/dependencies`, label: 'Dependencies', hint: 'g d' },
   ];

@@ -69,8 +69,9 @@ function Row({
             <ComponentBar label="untested" value={r.testReachInverse} />
             <p className="mt-1 text-2xs text-muted">
               {plural(hotspot.risk.dependents, 'file')} import it;{' '}
-              {plural(hotspot.risk.testsReaching, 'test')}{' '}
-              {hotspot.risk.testsReaching === 1 ? 'reaches' : 'reach'} it.
+              {hotspot.risk.lineCoverage
+                ? `${String(hotspot.risk.lineCoverage.linesHit)} of ${String(hotspot.risk.lineCoverage.linesFound)} lines ran in the tests (${hotspot.risk.lineCoverage.report}, ${day(hotspot.risk.lineCoverage.generatedAt)}).`
+                : `${plural(hotspot.risk.testsReaching, 'test')} ${hotspot.risk.testsReaching === 1 ? 'reaches' : 'reach'} it.`}
             </p>
           </div>
           <div className="flex flex-col gap-2">
