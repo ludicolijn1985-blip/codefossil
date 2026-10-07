@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, like, or, sql } from 'drizzle-orm';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { lineageKind, type EvidenceLevel, type LineageKind } from '@codefossil/shared';
 import type { FossilDb } from './client.js';
 import {
   commits,
@@ -314,7 +314,10 @@ export interface SymbolOrigin {
   readonly copiedFrom: {
     readonly symbolId: number;
     readonly path: string;
+    readonly qualifiedName: string;
     readonly confidence: number;
+    /** How it continues that symbol: copied (identical), renamed, or moved with edits. */
+    readonly kind: LineageKind;
   } | null;
 }
 
@@ -331,7 +334,12 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
   const introductions = new Map<number, Introduction>();
   const copies = new Map<
     number,
-    { readonly symbolId: number; readonly confidence: number; readonly level: EvidenceLevel }
+    {
+      readonly symbolId: number;
+      readonly confidence: number;
+      readonly level: EvidenceLevel;
+      readonly kind: LineageKind;
+    }
   >();
   for (const row of db
     .select({
@@ -356,6 +364,7 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
         symbolId: row.targetId,
         confidence: row.confidence,
         level: row.level,
+        kind: lineageKind(row.provenance.method),
       });
       continue;
     }
@@ -369,14 +378,14 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
       });
     }
   }
-  const pathOf = new Map(
+  const locationOf = new Map(
     db
-      .select({ id: symbols.id, path: files.path })
+      .select({ id: symbols.id, path: files.path, qualifiedName: symbols.qualifiedName })
       .from(symbols)
       .innerJoin(files, eq(symbols.fileId, files.id))
       .where(eq(files.repositoryId, repositoryId))
       .all()
-      .map((row) => [row.id, row.path]),
+      .map((row) => [row.id, row]),
   );
   const originOf = (symbolId: number): Introduction | null => {
     const seen = new Set([symbolId]);
@@ -425,8 +434,10 @@ export function currentSymbolOrigins(db: FossilDb, repositoryId: number): Symbol
         copiedFrom: copy
           ? {
               symbolId: copy.symbolId,
-              path: pathOf.get(copy.symbolId) ?? '',
+              path: locationOf.get(copy.symbolId)?.path ?? '',
+              qualifiedName: locationOf.get(copy.symbolId)?.qualifiedName ?? '',
               confidence: copy.confidence,
+              kind: copy.kind,
             }
           : null,
       };

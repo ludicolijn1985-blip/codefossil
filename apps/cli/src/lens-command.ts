@@ -23,6 +23,8 @@ export interface LensEntry {
   } | null;
   /** Where the code lived before it was copied into this file. */
   readonly copiedFrom: string | null;
+  /** How it continues `copiedFrom`: copied, renamed or moved; null when it does not. */
+  readonly lineage: 'copied' | 'renamed' | 'moved' | null;
   readonly changes: number;
   readonly fixes: number;
   readonly authors: number;
@@ -61,6 +63,7 @@ function lensEntry(story: SymbolStory): LensEntry {
           }
         : null,
     copiedFrom: story.copiedFrom[0]?.path ?? null,
+    lineage: story.copiedFrom[0]?.kind ?? null,
     changes: changes.length,
     fixes: story.fixes,
     authors: story.authors,
@@ -78,7 +81,7 @@ const plural = (n: number, noun: string, many = `${noun}s`) =>
 export function lensTitle(entry: LensEntry): string {
   return [
     entry.born ? `born ${entry.born.date.slice(0, 4)}` : 'born before the indexed history',
-    ...(entry.copiedFrom ? ['moved'] : []),
+    ...(entry.lineage ? [entry.lineage] : []),
     plural(entry.changes, 'change'),
     ...(entry.fixes > 0 ? [plural(entry.fixes, 'fix', 'fixes')] : []),
     ...(entry.callers > 0 ? [plural(entry.callers, 'caller')] : []),

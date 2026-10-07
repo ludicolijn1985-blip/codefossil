@@ -73,3 +73,10 @@ export function resolutionBasis(method: string, confidence: number): string {
     ? 'linked as closing on GitHub'
     : `closing keyword; confidence ${confidence.toFixed(2)}`;
 }
+
+/** How a symbol continues an earlier one, by the provenance method of its `COPIED_FROM` link. */
+export type LineageKind = 'copied' | 'renamed' | 'moved';
+
+export function lineageKind(method: string): LineageKind {
+  return method === 'renamed' ? 'renamed' : method === 'moved-with-edits' ? 'moved' : 'copied';
+}

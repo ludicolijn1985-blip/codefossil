@@ -17,6 +17,8 @@ export interface LensEntry {
     readonly issues: readonly string[];
   } | null;
   readonly copiedFrom: string | null;
+  /** Absent from codefossil 0.2.0, which reported every lineage as a move. */
+  readonly lineage?: 'copied' | 'renamed' | 'moved' | null;
   readonly changes: number;
   readonly fixes: number;
   readonly authors: number;
@@ -72,7 +74,7 @@ const plural = (n: number, noun: string, many = `${noun}s`) =>
 export function lensTitle(entry: LensEntry): string {
   return [
     entry.born ? `born ${entry.born.date.slice(0, 4)}` : 'born before the indexed history',
-    ...(entry.copiedFrom ? ['moved'] : []),
+    ...(entry.copiedFrom ? [entry.lineage ?? 'moved'] : []),
     plural(entry.changes, 'change'),
     ...(entry.fixes > 0 ? [plural(entry.fixes, 'fix', 'fixes')] : []),
     ...(entry.callers > 0 ? [plural(entry.callers, 'caller')] : []),
@@ -100,7 +102,10 @@ export function hoverMarkdown(entry: LensEntry): string {
     lines.push('Its origin lies before the indexed history.');
   }
   if (entry.copiedFrom)
-    lines.push('', `Moved here from \`${entry.copiedFrom.replace(/`/g, '')}\`.`);
+    lines.push(
+      '',
+      `${entry.lineage === 'renamed' ? 'Renamed in' : entry.lineage === 'copied' ? 'Copied here from' : 'Moved here from'} \`${entry.copiedFrom.replace(/`/g, '')}\`.`,
+    );
   if (entry.lastChange) {
     lines.push(
       '',

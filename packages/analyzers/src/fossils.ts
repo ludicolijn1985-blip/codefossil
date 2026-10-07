@@ -5,7 +5,7 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import { isTestPath } from '@codefossil/query';
-import type { EvidenceLevel } from '@codefossil/shared';
+import type { EvidenceLevel, LineageKind } from '@codefossil/shared';
 import { isCodePath, isDeclarationPath, isGeneratedPath, isIllustrativePath } from './hotspots.js';
 
 export type FossilOrder = 'introduced' | 'untouched';
@@ -37,7 +37,13 @@ export interface Fossil {
    * Set when the code was copied or moved here from another file: where from,
    * and the commit that made the copy. `introduced` is then the original's.
    */
-  readonly copied: { readonly fromPath: string; readonly commit: FossilCommit | null } | null;
+  readonly copied: {
+    readonly fromPath: string;
+    readonly fromName: string;
+    /** Copied with identical content, renamed, or moved with edits. */
+    readonly kind: LineageKind;
+    readonly commit: FossilCommit | null;
+  } | null;
   /** Commits that changed the symbol after it was introduced (or copied here). */
   readonly changesSince: number;
   /** The latest such change; null when it is unchanged since. */
@@ -132,7 +138,14 @@ export function analyzeFossils(
           confidence: introduction.confidence,
           evidenceIds: introduction.evidenceIds,
         },
-        copied: origin.copiedFrom ? { fromPath: origin.copiedFrom.path, commit: arrival } : null,
+        copied: origin.copiedFrom
+          ? {
+              fromPath: origin.copiedFrom.path,
+              fromName: origin.copiedFrom.qualifiedName,
+              kind: origin.copiedFrom.kind,
+              commit: arrival,
+            }
+          : null,
         changesSince: later.length,
         lastChange: later[0] ?? null,
       },

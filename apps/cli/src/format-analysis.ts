@@ -70,6 +70,13 @@ export function formatDeadIntent(report: DeadIntentReport): string {
 
 const day = (iso: string) => iso.slice(0, 10);
 
+/** "renamed from parse", "moved here from lib/a.js", "copied here from lib/a.js". */
+function lineagePhrase(copied: { kind: string; fromPath: string; fromName: string }): string {
+  if (copied.kind === 'renamed') return `renamed from ${copied.fromName}`;
+  const how = copied.kind === 'moved' ? 'moved here, with edits,' : 'copied here';
+  return `${how} from ${copied.fromPath}`;
+}
+
 export function formatFossils(report: FossilReport): string {
   const ordering =
     report.order === 'introduced'
@@ -91,12 +98,12 @@ export function formatFossils(report: FossilReport): string {
       `     introduced ${day(born.committedAt)} in ${born.sha.slice(0, SHORT_SHA_LENGTH)} "${born.subject}" by ${born.authorName} · ${born.level} ${score(born.confidence)}`,
       ...(fossil.copied
         ? [
-            `     copied here from ${fossil.copied.fromPath}${fossil.copied.commit ? ` on ${day(fossil.copied.commit.committedAt)} in ${fossil.copied.commit.sha.slice(0, SHORT_SHA_LENGTH)} "${fossil.copied.commit.subject}"` : ''}`,
+            `     ${lineagePhrase(fossil.copied)}${fossil.copied.commit ? ` on ${day(fossil.copied.commit.committedAt)} in ${fossil.copied.commit.sha.slice(0, SHORT_SHA_LENGTH)} "${fossil.copied.commit.subject}"` : ''}`,
           ]
         : []),
       lastChange
         ? `     changed ${plural(fossil.changesSince, 'time')} since, last on ${day(lastChange.committedAt)} in ${lastChange.sha.slice(0, SHORT_SHA_LENGTH)} "${lastChange.subject}"`
-        : `     unchanged since${fossil.copied ? ' it was copied here' : ''}`,
+        : `     unchanged since${fossil.copied ? ` it was ${fossil.copied.kind} here` : ''}`,
     ].join('\n');
   });
   return `${header}\n${blocks.join('\n\n')}\n`;

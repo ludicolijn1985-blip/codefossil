@@ -12,7 +12,7 @@ import {
   type FossilDb,
 } from '@codefossil/db';
 import { copyChain } from '@codefossil/query';
-import type { EvidenceLevel } from '@codefossil/shared';
+import { lineageKind, type EvidenceLevel, type LineageKind } from '@codefossil/shared';
 import { classifyDefects, type DefectSignal } from './defects.js';
 
 /** One commit in a symbol's life. */
@@ -48,7 +48,11 @@ export interface SymbolStory {
   /** The introduction (of the original, for copied code); null when the history does not show it. */
   readonly introduction: { readonly level: EvidenceLevel; readonly confidence: number } | null;
   /** Where the code lived before it was copied here, nearest first. */
-  readonly copiedFrom: readonly { readonly path: string; readonly qualifiedName: string }[];
+  readonly copiedFrom: readonly {
+    readonly path: string;
+    readonly qualifiedName: string;
+    readonly kind: LineageKind;
+  }[];
   /** Oldest first: the introduction, any copies, then every change. */
   readonly events: readonly StoryEvent[];
   readonly authors: number;
@@ -176,6 +180,7 @@ export function buildSymbolStory(
     copiedFrom: hops.map((hop) => ({
       path: hop.source.path,
       qualifiedName: hop.source.qualifiedName,
+      kind: lineageKind(hop.row.provenanceJson.method),
     })),
     events,
     authors: new Set(events.map((e) => e.authorName)).size,

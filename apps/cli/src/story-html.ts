@@ -55,6 +55,13 @@ const KIND_LABEL: Readonly<Record<StoryEvent['kind'], string>> = {
   changed: 'Changed',
 };
 
+/** How one lineage step reads: renamed from a name, or copied or moved from a file. */
+function lineageNote(step: SymbolStory['copiedFrom'][number]): string {
+  if (step.kind === 'renamed') return `Renamed from <code>${escape(step.qualifiedName)}</code>`;
+  const how = step.kind === 'moved' ? 'Moved here, with edits,' : 'Copied here';
+  return `${how} from <code>${escape(step.path)}</code>`;
+}
+
 function eventItem(e: StoryEvent): string {
   const fix = e.fix
     ? `<span class="badge fix-badge" title="${escape(e.fix.reason)}">fix · ${e.fix.level}</span>`
@@ -133,9 +140,9 @@ export function storyHtml(
     .join('');
   const copied =
     story.copiedFrom.length > 0
-      ? `<p class="note">Moved here from ${story.copiedFrom
-          .map((c) => `<code>${escape(c.path)}</code>`)
-          .join(', then from ')}; its history is followed back to where it was born.</p>`
+      ? `<p class="note">${story.copiedFrom
+          .map((c, i) => `${i === 0 ? '' : ', then '}${lineageNote(c)}`)
+          .join('')}; its history is followed back to where it was born.</p>`
       : '';
   const origin = story.introduction
     ? `Born ${born ? day(born.committedAt) : ''} (${story.introduction.level}, confidence ${story.introduction.confidence.toFixed(2)})`
