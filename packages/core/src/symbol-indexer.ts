@@ -19,20 +19,18 @@ import {
   type PendingSymbolChange,
 } from '@codefossil/db';
 import { readBlobIds, readBlobs } from '@codefossil/git';
-import { grammarForPath, SymbolExtractor, type ExtractResult } from '@codefossil/parser';
+import {
+  extractionVersion,
+  grammarForPath,
+  SymbolExtractor,
+  type ExtractResult,
+} from '@codefossil/parser';
 import type { ProvenanceInput } from '@codefossil/shared';
 
 export const SYMBOL_INDEXER_PRODUCER = 'symbol-indexer@0.1.0';
 
 /** Parsed file versions written per database transaction. */
 const DEFAULT_BATCH_SIZE = 200;
-
-/**
- * Version of what the symbol extraction produces. Bump it whenever symbols,
- * keys or hashes change, so parse results cached under an older version are
- * not reused.
- */
-export const SYMBOL_EXTRACTION_VERSION = 'symbols@2';
 
 /** A commit's changes are written in one transaction up to this many batches. */
 const MAX_BATCHES_PER_COMMIT = 25;
@@ -380,13 +378,7 @@ class BlobParser {
   ): Promise<ExtractResult | null> {
     const grammar = grammarForPath(path);
     if (grammar && oid) {
-      const cached = loadParsedBlob(
-        this.db,
-        this.repositoryId,
-        oid,
-        grammar,
-        SYMBOL_EXTRACTION_VERSION,
-      );
+      const cached = loadParsedBlob(this.db, this.repositoryId, oid, grammar, extractionVersion());
       if (isCachedParse(cached)) {
         if (counted) this.totals.versionsFromCache++;
         return {
@@ -415,7 +407,7 @@ class BlobParser {
         repositoryId: this.repositoryId,
         oid,
         grammar,
-        version: SYMBOL_EXTRACTION_VERSION,
+        version: extractionVersion(),
         result,
       });
     }

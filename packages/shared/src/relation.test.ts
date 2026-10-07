@@ -97,3 +97,13 @@ describe('relationInputSchema', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('lineageKind', () => {
+  it('names the lineage by its provenance method, copied by default', async () => {
+    const { lineageKind } = await import('./entities.js');
+    expect(lineageKind('renamed')).toBe('renamed');
+    expect(lineageKind('moved-with-edits')).toBe('moved');
+    expect(lineageKind('identical-content')).toBe('copied');
+    expect(lineageKind('anything-else')).toBe('copied');
+  });
+});

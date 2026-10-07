@@ -75,6 +75,23 @@ describe('installed packages', () => {
     expect(imports.get('six')).toEqual(['six']);
   });
 
+  it('survives a malformed environment committed to the repository', async () => {
+    await write(join(root, '.venv/pyvenv.cfg'), '');
+    // `lib` as a file instead of a directory (on Windows also `Lib`).
+    await write(join(root, '.venv/lib'), 'not a directory');
+    expect(installedPythonImports(root).size).toBe(0);
+  });
+
+  it('does not follow an environment linked to outside the repository', async () => {
+    await write(join(outside, 'pyvenv.cfg'), '');
+    await write(
+      join(outside, 'lib/python3.12/site-packages/secret-1.0.dist-info/top_level.txt'),
+      'secret\n',
+    );
+    await symlink(outside, join(root, '.venv'), 'junction');
+    expect(installedPythonImports(root).size).toBe(0);
+  });
+
   it('reads nothing without a virtual environment', () => {
     expect(installedPythonImports(root).size).toBe(0);
   });

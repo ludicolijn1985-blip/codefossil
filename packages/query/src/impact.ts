@@ -100,6 +100,29 @@ function bestDependents(
 }
 
 /**
+ * Whether an imported name (`imported` of an import binding into the
+ * defining file) may give access to the symbol `qualified`: the whole module
+ * or its default export, the symbol itself, its container (`Cart` for
+ * `Cart.total`), a member of it, or a name the defining file does not define
+ * (a submodule, an alias, a re-export), which could be anything. Only a name
+ * that is another definition of that file is known not to reach it.
+ */
+export function bindingMayReach(
+  imported: string,
+  qualified: string,
+  defined: ReadonlySet<string>,
+): boolean {
+  return (
+    imported === '*' ||
+    imported === 'default' ||
+    imported === qualified ||
+    qualified.startsWith(`${imported}.`) ||
+    imported.startsWith(`${qualified}.`) ||
+    !defined.has(imported)
+  );
+}
+
+/**
  * Import paths from a symbol, without those through a file whose imports of
  * the defining file name only other things (`import { b } from './a'` does not
  * use `a`). A statement binding no names, the whole module (`*`) or its
@@ -120,13 +143,7 @@ function importersOfSymbol(
       ? listFileSymbols(db, definingFile.id).map((s) => s.qualifiedName)
       : [],
   );
-  const reaches = (imported: string): boolean =>
-    imported === '*' ||
-    imported === 'default' ||
-    imported === qualified ||
-    qualified.startsWith(`${imported}.`) ||
-    imported.startsWith(`${qualified}.`) ||
-    !defined.has(imported);
+  const reaches = (imported: string) => bindingMayReach(imported, qualified, defined);
   // paths are [symbol, defining file, importer, ...]; edges[1] is the importer's IMPORTS edge.
   const evidenceIds = paths.flatMap((path) => path.edges[1]?.provenance.evidenceIds ?? []);
   const bindings = importBindingsByEvidence(db, evidenceIds);

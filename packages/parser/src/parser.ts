@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,6 +68,35 @@ const EXTENSION_GRAMMARS: Readonly<Record<string, GrammarId>> = {
 };
 
 /** The grammar that parses `path`, or null when symbols cannot be extracted from it. */
+/**
+ * Version of what symbol extraction produces. Bump it whenever symbols, their
+ * keys or their hashes change; `extraction-version.test.ts` fails when the
+ * output changes without a bump. Parse results cached under another version
+ * are not reused.
+ */
+export const SYMBOL_EXTRACTION_VERSION = 'symbols@2';
+
+let extractionVersionCache: string | undefined;
+
+/**
+ * {@link SYMBOL_EXTRACTION_VERSION} plus a hash of the grammar files, so
+ * upgrading any grammar also invalidates cached parse results.
+ */
+export function extractionVersion(): string {
+  if (extractionVersionCache === undefined) {
+    const hash = createHash('sha256');
+    for (const { wasm } of Object.values(GRAMMARS)) {
+      try {
+        hash.update(readFileSync(grammarFile(wasm)));
+      } catch {
+        hash.update(`missing:${wasm}`);
+      }
+    }
+    extractionVersionCache = `${SYMBOL_EXTRACTION_VERSION}+${hash.digest('hex').slice(0, 12)}`;
+  }
+  return extractionVersionCache;
+}
+
 export function grammarForPath(path: string): GrammarId | null {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const dot = name.lastIndexOf('.');

@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, posix, relative, sep } from 'node:path';
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { dirname, isAbsolute, join, posix, relative, sep } from 'node:path';
 import type { TsConfig } from '@codefossil/graph';
 
 /**
@@ -11,15 +11,61 @@ import type { TsConfig } from '@codefossil/graph';
 /** A repository-relative path for an absolute one, or null when it lies outside the root. */
 function insideRoot(root: string, absolute: string): string | null {
   const path = relative(realpathSync(root), absolute);
-  if (path === '' || path.startsWith('..') || path.includes(':')) return null;
-  return path.split(sep).join('/');
+  if (path === '' || isAbsolute(path)) return null;
+  const parts = path.split(sep);
+  return parts[0] === '..' ? null : parts.join('/');
 }
 
+/**
+ * The working tree is untrusted (a repository can commit a `.venv` or a
+ * `node_modules`): every read here fails soft, follows no link out of the
+ * repository, and is bounded.
+ */
 function isFile(path: string): boolean {
   try {
     return statSync(path).isFile();
   } catch {
     return false;
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `path` (after following links) is still inside the repository. */
+function staysInside(root: string, path: string): boolean {
+  try {
+    return insideRoot(root, realpathSync(path)) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/** Directory entries, at most `limit`; none when the directory cannot be listed. */
+function listDirectory(path: string, limit: number): string[] {
+  try {
+    return readdirSync(path).slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+/** Largest metadata file read (`top_level.txt`, `RECORD`); real ones are far smaller. */
+const MAX_METADATA_BYTES = 4 * 1024 * 1024;
+
+/** A small text file's content, or null when it is missing, too large or unreadable. */
+function readSmallText(path: string): string | null {
+  try {
+    const info = statSync(path);
+    if (!info.isFile() || info.size > MAX_METADATA_BYTES) return null;
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
   }
 }
 
@@ -69,32 +115,30 @@ const VIRTUAL_ENVIRONMENTS = ['.venv', 'venv', 'env'];
 const MAX_DISTRIBUTIONS = 5000;
 
 /** `site-packages` directories of a virtual environment (Unix `lib/pythonX.Y`, Windows `Lib`). */
-function sitePackages(venv: string): string[] {
-  const found: string[] = [];
-  const windows = join(venv, 'Lib', 'site-packages');
-  if (existsSync(windows)) found.push(windows);
+function sitePackages(root: string, venv: string): string[] {
   const lib = join(venv, 'lib');
-  if (existsSync(lib)) {
-    for (const entry of readdirSync(lib)) {
-      if (/^python\d/.test(entry)) found.push(join(lib, entry, 'site-packages'));
-    }
-  }
-  return found.filter((dir) => existsSync(dir));
+  const candidates = [
+    join(venv, 'Lib', 'site-packages'),
+    ...listDirectory(lib, 64)
+      .filter((entry) => /^python\d/.test(entry))
+      .map((entry) => join(lib, entry, 'site-packages')),
+  ];
+  return candidates.filter((dir) => isDirectory(dir) && staysInside(root, dir));
 }
 
 /** Import names a distribution provides: `top_level.txt`, else the top entries of `RECORD`. */
 function importNames(distInfo: string): string[] {
-  const topLevel = join(distInfo, 'top_level.txt');
-  if (isFile(topLevel)) {
-    return readFileSync(topLevel, 'utf8')
+  const topLevel = readSmallText(join(distInfo, 'top_level.txt'));
+  if (topLevel !== null) {
+    return topLevel
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => /^[A-Za-z_][\w]*$/.test(line));
   }
-  const record = join(distInfo, 'RECORD');
-  if (!isFile(record)) return [];
+  const record = readSmallText(join(distInfo, 'RECORD'));
+  if (record === null) return [];
   const names = new Set<string>();
-  for (const line of readFileSync(record, 'utf8').split(/\r?\n/)) {
+  for (const line of record.split(/\r?\n/)) {
     const path = line.split(',')[0] ?? '';
     const top = path.split('/')[0] ?? '';
     const name = top.endsWith('.py') ? top.slice(0, -3) : path.includes('/') ? top : '';
@@ -113,13 +157,17 @@ export function installedPythonImports(root: string): Map<string, string[]> {
   let read = 0;
   for (const name of VIRTUAL_ENVIRONMENTS) {
     const venv = join(root, name);
-    if (!isFile(join(venv, 'pyvenv.cfg'))) continue;
-    for (const site of sitePackages(venv)) {
-      for (const entry of readdirSync(site)) {
+    if (!isDirectory(venv) || !staysInside(root, venv) || !isFile(join(venv, 'pyvenv.cfg'))) {
+      continue;
+    }
+    for (const site of sitePackages(root, venv)) {
+      for (const entry of listDirectory(site, MAX_DISTRIBUTIONS * 4)) {
         const match = /^(.+?)-[^-]+\.dist-info$/.exec(entry);
         if (!match?.[1] || read++ >= MAX_DISTRIBUTIONS) continue;
+        const distInfo = join(site, entry);
+        if (!isDirectory(distInfo) || !staysInside(root, distInfo)) continue;
         const distribution = match[1];
-        for (const importName of importNames(join(site, entry))) {
+        for (const importName of importNames(distInfo)) {
           const known = result.get(importName) ?? [];
           if (!known.includes(distribution)) result.set(importName, [...known, distribution]);
         }
