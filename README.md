@@ -193,7 +193,7 @@ function, class and method — `born 2011 · 78 changes · 17 fixes · 64 caller
 birth commit and latest change on hover. It talks to one local `codefossil mcp` process per
 workspace, so nothing leaves your machine. Install it from the
 [latest release](https://github.com/ludicolijn1985-blip/codefossil/releases/latest)
-(`code --install-extension codefossil-vscode-0.2.0.vsix`). Any editor can do the same with
+(`code --install-extension codefossil-vscode-0.3.0.vsix`). Any editor can do the same with
 `codefossil lens <file> --json`.
 
 ## Web UI

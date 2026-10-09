@@ -5,6 +5,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
 ### Added
 
 - **Who wrote this function.** `why` states how many people made a symbol's commits, who made
@@ -162,6 +164,7 @@ First public release.
 - **Local UI and API.** A loopback-only JSON API (`codefossil serve`) and a local web UI.
 - **Optional AI layer** (Ollama or Anthropic), off by default, held to the evidence it is shown.
 
+[0.4.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.4.0
 [0.3.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.3.0
 [0.2.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ludicolijn1985-blip/codefossil/releases/tag/v0.1.0
